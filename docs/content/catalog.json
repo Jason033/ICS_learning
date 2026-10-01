@@ -1,0 +1,120 @@
+{
+  "siteTitle": "知識航線",
+  "topics": [
+    {
+      "id": "networking", "title": "電腦網路", "icon": "◎", "summary": "把 IP、Port、TCP／UDP 與資料經過的網路接成一張圖。",
+      "chapters": [
+        {"id": "one-conversation", "title": "一次網路通訊的全貌", "summary": "從兩端程式出發，理解資料如何送達與回覆。", "minutes": 20, "status": "ready"},
+        {"id": "addresses-and-ports", "title": "IP、Port 與端點", "summary": "區分電腦位置與程式的接收入口。", "status": "planned"},
+        {"id": "routes", "title": "資料怎麼走到對方", "summary": "認識同網段、閘道與路由。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "wireshark", "title": "Wireshark", "icon": "⌕", "summary": "從選網卡與抓包開始，練習用封包支持判斷。",
+      "chapters": [
+        {"id": "first-capture", "title": "第一次抓包：看見什麼、還不知道什麼", "summary": "自己產生流量、選擇網卡、讀取封包與篩選。", "minutes": 25, "status": "ready"},
+        {"id": "filters", "title": "擷取與顯示篩選器", "summary": "知道兩種篩選分別何時生效。", "status": "planned"},
+        {"id": "sip-rtp", "title": "觀察 SIP 與 RTP", "summary": "閱讀通話流程並檢查音訊封包。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "ozeki", "title": "Ozeki API", "icon": "◌", "summary": "從官方範例認識軟體電話、通話物件與事件。",
+      "chapters": [
+        {"id": "read-a-call", "title": "先看懂一通電話的物件與事件", "summary": "練習沿官方範例辨認操作、回報與音訊。", "minutes": 20, "status": "ready"},
+        {"id": "registration", "title": "註冊與撥接電話", "summary": "比較設定、請求與狀態事件。", "status": "planned"},
+        {"id": "media", "title": "麥克風、喇叭與媒體連接", "summary": "把通話建立與聲音路徑分開檢查。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "serial", "title": "RS-232 與設備介面", "icon": "⇄", "summary": "讀懂串列設定、收送紀錄與無回應問題。",
+      "chapters": [
+        {"id": "serial-layers", "title": "RS-232、串列設定與命令是三件事", "summary": "從接線、參數、命令與回覆分段檢查。", "minutes": 20, "status": "ready"},
+        {"id": "frame-and-timing", "title": "資料格式與逾時", "summary": "認識邊界、校驗與等待回覆。", "status": "planned"},
+        {"id": "other-interfaces", "title": "RS-422、RS-485 與其他介面", "summary": "辨認設備文件中的不同介面。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "radio", "title": "無線電通訊", "icon": "◉", "summary": "從軟體維護角度認識發射、接收與常見參數。",
+      "chapters": [
+        {"id": "tx-rx-path", "title": "發射與接收：聲音走過哪些環節", "summary": "先建立 TX／RX 圖像，再學會讀觀測值。", "minutes": 20, "status": "ready"},
+        {"id": "rssi-snr", "title": "RSSI、SNR 與品質", "summary": "分清訊號強弱與訊號品質。", "status": "planned"},
+        {"id": "parameters", "title": "頻率、通道與功率", "summary": "讀懂設備規格上的基本欄位。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "ptt", "title": "PTT 與設備狀態", "icon": "↟", "summary": "分辨按鍵、控制請求、設備發射與聲音送出。",
+      "chapters": [
+        {"id": "press-to-tx", "title": "按下 PTT 之後，如何確認真的發射", "summary": "用時間線追查各環節的回報與證據。", "minutes": 20, "status": "ready"},
+        {"id": "state-machine", "title": "Ready、Busy、TX、RX 狀態", "summary": "用狀態圖理解事件與例外。", "status": "planned"},
+        {"id": "interface-box", "title": "介面盒與燈號", "summary": "區分軟體命令與實體輸入輸出。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "sockets", "title": "Socket 程式", "icon": "▣", "summary": "理解程式如何送收資料、處理訊息與逾時。",
+      "chapters": [
+        {"id": "socket-flow", "title": "Client 與 Server 的收送流程", "summary": "從 bind、connect 到 send／recv。", "status": "planned"},
+        {"id": "message-boundaries", "title": "訊息邊界與緩衝", "summary": "理解資料收到一半時怎麼處理。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "voip", "title": "VoIP 與聲音", "icon": "◍", "summary": "理解 SIP、SDP、RTP、Codec 與聲音收送。",
+      "chapters": [
+        {"id": "call-vs-audio", "title": "通話建立與聲音傳送", "summary": "分開看訊號流程與音訊流程。", "status": "planned"},
+        {"id": "audio-path", "title": "從麥克風到喇叭", "summary": "理解取樣、編碼與播放。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "integration", "title": "ICS／RCS 與廠商 API", "icon": "◇", "summary": "學會閱讀文件、追程式呼叫與事件回報。",
+      "chapters": [
+        {"id": "trace-an-action", "title": "追查一次操作的程式路徑", "summary": "從畫面操作找到實際呼叫與回報。", "status": "planned"},
+        {"id": "read-an-icd", "title": "怎麼讀 API Manual 與 ICD", "summary": "辨認連線、命令、回覆與錯誤。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "reliability", "title": "可靠性與並行處理", "icon": "↻", "summary": "認識逾時、重試、重連、事件順序與競爭問題。",
+      "chapters": [
+        {"id": "timeouts", "title": "逾時、重試與重連", "summary": "用時間線還原失敗與恢復。", "status": "planned"},
+        {"id": "concurrency", "title": "事件同時發生時", "summary": "認識執行緒、佇列與競爭狀態。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "systems", "title": "Windows／Linux 觀測", "icon": "▤", "summary": "找到程序、服務、裝置、網路設定與紀錄。",
+      "chapters": [
+        {"id": "find-evidence", "title": "從作業系統找證據", "summary": "對照程序、網卡、音訊設備與時間戳。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "satellite", "title": "衛星與多鏈路", "icon": "⌁", "summary": "理解高延遲鏈路、狀態監測與切換。",
+      "chapters": [
+        {"id": "latency", "title": "高延遲對程式的影響", "summary": "從 RTT、丟包與 timeout 開始。", "status": "planned"},
+        {"id": "failover", "title": "鏈路故障與切換", "summary": "看懂健康檢查、切換與恢復。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "dsp", "title": "訊號、DSP 與 SDR", "icon": "∿", "summary": "先建立訊號與頻譜的直覺，再進入模擬。",
+      "chapters": [
+        {"id": "time-frequency", "title": "時域與頻域", "summary": "從圖像理解取樣、頻譜與噪聲。", "status": "planned"},
+        {"id": "sdr-intro", "title": "SDR 模擬入門", "summary": "認識訊號源、濾波與通道模型。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "security", "title": "通訊資安", "icon": "⬡", "summary": "辨認驗證、權限、憑證與安全日誌問題。",
+      "chapters": [
+        {"id": "auth", "title": "驗證與權限", "summary": "分清網路不通、驗證失敗與無權操作。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "troubleshooting", "title": "故障分析方法", "icon": "⌖", "summary": "從症狀與證據出發，建立可驗證的排查步驟。",
+      "chapters": [
+        {"id": "evidence", "title": "症狀、假設與證據", "summary": "練習提出下一個最有用的檢查。", "status": "planned"},
+        {"id": "one-way-audio", "title": "單向語音案例", "summary": "逐步排查一個模擬故障。", "status": "planned"}
+      ]
+    },
+    {
+      "id": "big-picture", "title": "通訊系統概念地圖", "icon": "✣", "summary": "用可選的綜合案例，把已學概念放到同一張圖。",
+      "chapters": [
+        {"id": "control-and-audio", "title": "控制與聲音的兩條路", "summary": "練習在簡化架構圖上區分已知與未知。", "status": "planned"}
+      ]
+    }
+  ]
+}

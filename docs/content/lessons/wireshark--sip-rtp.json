@@ -1,0 +1,195 @@
+{
+  "intro": "這篇先看通話建立，不急著判斷聲音好壞。用一份 16 筆合成封包，沿 SIP 的 INVITE、回應、ACK、BYE 看一次通話控制，再從 SDP 找出預告的兩端音訊 Port。SIP 200 OK 表示該教學呼叫流程的訊號回覆，不保證有人聽見聲音。",
+  "plan": [
+    {
+      "label": "篩出 SIP 與 Call-ID",
+      "minutes": 9
+    },
+    {
+      "label": "讀 INVITE 到 ACK",
+      "minutes": 11
+    },
+    {
+      "label": "從 SDP 找音訊端點",
+      "minutes": 10
+    },
+    {
+      "label": "用 VoIP Calls 看流程",
+      "minutes": 9
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 11
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-sip-rtp.pcap",
+      "label": "下載：SIP 與 RTP 練習檔（PCAP）",
+      "description": "16 筆合成封包：7 筆 SIP 訊號、9 筆 RTP 資料，全部使用文件保留位址與無實際語音的固定資料。"
+    }
+  ],
+  "goals": [
+    "能用 sip 篩出一次呼叫的控制訊號，找出 Call-ID 與方向。",
+    "能依序說明 INVITE、100、180、200、ACK、BYE 的位置。",
+    "能從 SDP 找出 RTP 的雙向 IP／Port。",
+    "能分清 SIP 訊號成功、RTP 封包出現與實際聽見聲音三種證據。"
+  ],
+  "sections": [
+    {
+      "heading": "先篩出 SIP，確認這是一通教學呼叫",
+      "paragraphs": [
+        "下載並開啟合成 PCAP。清除篩選後應有 16 筆；輸入 sip 應有 7 筆。選 INVITE，展開 Session Initiation Protocol，找 Request-Line、From、To、Call-ID、CSeq。此檔 Call-ID 為 training-call-001@example.invalid，可用它核對後續訊息是否屬同一通。",
+        "Call-ID 是呼叫關聯線索，不是使用者身分證明。若現場有多通電話，不能只靠 IP 或 Port 混在一起讀，應結合 Call-ID、時間與方向。"
+      ],
+      "code": {
+        "title": "這份教學檔的篩選與辨識",
+        "text": "sip\nsip.Call-ID == \"training-call-001@example.invalid\"\n來源 A：192.0.2.10:5060\n目的 B：198.51.100.20:5060"
+      },
+      "note": "example.invalid 是保留用途的教學網域；這份 PCAP 不連到真實 SIP 伺服器。"
+    },
+    {
+      "heading": "把控制流程按時間排好",
+      "paragraphs": [
+        "本檔 A 發 INVITE，B 回 100 Trying、180 Ringing、200 OK，A 再發 ACK。稍後 A 發 BYE，B 回 200 OK。這是一份刻意簡化的直接端點示例；真實部署可能有 Proxy、Registrar、認證、轉送與更多回應。",
+        "SIP 的 200 OK 是對某個請求的回覆，必須看 CSeq 才知道是 INVITE 還是 BYE。不能把 BYE 的 200 OK 當成接通證據。"
+      ],
+      "flow": [
+        "A → B INVITE",
+        "B → A 100 Trying",
+        "B → A 180 Ringing",
+        "B → A 200 OK (INVITE)",
+        "A → B ACK",
+        "A → B BYE",
+        "B → A 200 OK (BYE)"
+      ],
+      "note": "180 Ringing 表示信令回覆，不保證對端實體喇叭真的響；200 OK 也不保證音訊可聽。"
+    },
+    {
+      "heading": "從 SDP 讀出預告的音訊路徑",
+      "paragraphs": [
+        "在 INVITE 的訊息本文展開 Session Description Protocol（SDP），找 c= 的媒體位址與 m=audio 40000 RTP/AVP 0。B 的 200 OK (INVITE) 中，SDP 宣告 198.51.100.20 的音訊 Port 40002；本檔對應的 RTP 流量是 A:40000 → B:40002 和 B:40002 → A:40000。",
+        "SDP 是通話雙方協商或宣告的媒體資訊。它告訴你預期往哪裡送，不能單靠 SDP 證明資料真的到達或聲音可播放。"
+      ],
+      "table": {
+        "caption": "本檔兩個方向的媒體端點",
+        "headers": [
+          "方向",
+          "來源",
+          "目的"
+        ],
+        "rows": [
+          [
+            "A → B",
+            "192.0.2.10:40000",
+            "198.51.100.20:40002"
+          ],
+          [
+            "B → A",
+            "198.51.100.20:40002",
+            "192.0.2.10:40000"
+          ]
+        ]
+      },
+      "note": "本檔使用 PCMU/8000 作為可辨認的示意媒體格式，但負載全部是固定教學位元組，沒有錄製語音。"
+    },
+    {
+      "heading": "VoIP Calls 與 Flow Sequence 幫你畫時間線",
+      "paragraphs": [
+        "可在「電話 → VoIP Calls（Telephony → VoIP Calls）」尋找這通被辨識的 SIP 呼叫，選取後開「Flow Sequence」看訊息方向。若介面或版本未把它列出，仍可用 sip 篩選與 Call-ID 手動讀控制訊號；不要因此宣稱 PCAP 沒有 SIP。",
+        "VoIP Calls 視窗依可見訊號建立關聯。若擷取從通話中間開始、缺關鍵封包或 SDP，工具可能無法完整連結 RTP。此時應回到原始 SIP 與 UDP 欄位。"
+      ],
+      "steps": [
+        "套 sip，按 Time 讀 INVITE 到 BYE。",
+        "逐筆核對 Call-ID 與 CSeq。",
+        "嘗試用 VoIP Calls／Flow Sequence 顯示流程。",
+        "回到 INVITE 與 200 OK 的 SDP，核對音訊 Port。"
+      ],
+      "note": "不同 Wireshark 版本的選單翻譯可能不同；官方指南提供英文功能名稱。"
+    },
+    {
+      "heading": "能接通、能收到 RTP、能聽見聲音：要分開寫",
+      "paragraphs": [
+        "若看到 INVITE 的 200 OK 與 ACK，可支持這段 SIP 訊號流程完成；若看到 RTP，才有媒體封包出現的證據；若要宣稱使用者聽見聲音，還要檢查 Codec、解碼、程式音訊路徑與設備。",
+        "本檔沒有真實麥克風或喇叭，也不包含公司軟體、Ozeki API 或無線電鏈路。練習的是如何提出下一個證據，不是推測現場架構。"
+      ],
+      "table": {
+        "caption": "三種不同結論",
+        "headers": [
+          "觀察",
+          "可支持",
+          "仍需查"
+        ],
+        "rows": [
+          [
+            "SIP 200 OK (INVITE) + ACK",
+            "控制訊號已進入建立狀態",
+            "RTP 是否出現"
+          ],
+          [
+            "兩方向 RTP 封包",
+            "媒體資料在此觀測點出現",
+            "封包是否完整、可解碼"
+          ],
+          [
+            "播放端真的有聲",
+            "人耳／設備觀察到輸出",
+            "若品質差，查丟包、抖動與音訊處理"
+          ]
+        ]
+      },
+      "note": "SIP、SDP 與 RTP 的通用原理後續在 VoIP 主題可再深入；本篇只練 Wireshark 判讀。"
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【數量】此檔共有幾筆，sip 篩選後預期幾筆？",
+      "answer": "總共 16 筆；sip 篩選後 7 筆控制訊號。"
+    },
+    {
+      "question": "【流程】把 INVITE、100、180、200 (INVITE)、ACK 排成順序，誰先發起？",
+      "answer": "A 發 INVITE，B 依序回 100 Trying、180 Ringing、200 OK，A 回 ACK。"
+    },
+    {
+      "question": "【CSeq】最後的 200 OK 代表通話接通嗎？",
+      "answer": "不是。要看 CSeq；最後一筆是對 BYE 的 200 OK，屬結束流程。"
+    },
+    {
+      "question": "【SDP】哪兩個 UDP Port 應該承載教學 RTP？",
+      "answer": "A 使用 40000，B 使用 40002；需在 INVITE 與 200 OK 的 SDP 核對。"
+    },
+    {
+      "question": "【證據】只看到 SDP 寫 40002，就能說 B 已收到音訊嗎？",
+      "answer": "不能。SDP 是宣告或協商；還要看實際 RTP／UDP 封包與 B 端觀測。"
+    },
+    {
+      "question": "【工具】VoIP Calls 視窗沒列出呼叫時，應直接說檔案沒有 SIP 嗎？",
+      "answer": "不能。先用 sip 篩選和 Call-ID 查原始訊號；可能因擷取不完整或解析設定使自動關聯失敗。"
+    }
+  ],
+  "recap": [
+    "用 Call-ID、CSeq、時間與方向對齊同一通呼叫。",
+    "INVITE 的 200 OK 與 BYE 的 200 OK 意義不同。",
+    "SDP 宣告媒體端點，不保證媒體送達。",
+    "VoIP Calls 是整理工具，原始 SIP 欄位才是判斷基礎。",
+    "SIP 接通、RTP 出現與實際有聲需分開驗證。"
+  ],
+  "sources": [
+    {
+      "label": "Wireshark 官方指南：VoIP Calls 與 Flow Sequence",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+    },
+    {
+      "label": "Wireshark 官方 SIP 欄位參考",
+      "url": "https://www.wireshark.org/docs/dfref/s/sip.html"
+    },
+    {
+      "label": "RFC 3261：SIP",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261.html"
+    },
+    {
+      "label": "RFC 8866：SDP",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866.html"
+    }
+  ]
+}

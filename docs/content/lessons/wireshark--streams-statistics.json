@@ -1,0 +1,192 @@
+{
+  "intro": "單看一行封包，常看不出完整對話。這篇把一條 TCP 串流與統計視窗接起來：Follow TCP Stream 看應用資料，Conversations 看雙端對話，Endpoints 看出現過的端點，I/O Graphs 看流量隨時間變化。每個工具都只是不同視角，不能取代細節欄位。",
+  "plan": [
+    {
+      "label": "追一次 TCP 串流",
+      "minutes": 10
+    },
+    {
+      "label": "讀 Conversations 與 Endpoints",
+      "minutes": 9
+    },
+    {
+      "label": "看 I/O Graphs 與時間窗",
+      "minutes": 9
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 12
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-first-capture.pcap",
+      "label": "下載：第一次抓包練習檔（PCAP）",
+      "description": "用來追 GET /status 與 200 OK，並查看端點／對話。"
+    },
+    {
+      "path": "./assets/labs/wireshark-tcp-cases.pcap",
+      "label": "下載：TCP 故障練習檔（PCAP）",
+      "description": "時間跨度約 5 秒，適合比較 SYN 嘗試與另一條 TCP 對話。"
+    }
+  ],
+  "goals": [
+    "能從封包開啟 Follow TCP Stream，讀出兩端的應用資料方向。",
+    "能用 Conversations 與 Endpoints 分清「一條對話」和「一個端點」。",
+    "能用 I/O Graphs 找出流量何時出現，同時理解時間區間限制。",
+    "能在統計數字之外回到原始封包驗證。"
+  ],
+  "sections": [
+    {
+      "heading": "Follow TCP Stream：把同一條 TCP 的位元組放在一起看",
+      "paragraphs": [
+        "打開第一份 PCAP，選第 6 筆 HTTP GET，對該封包使用「分析 → 追蹤 → TCP 串流（Analyze → Follow → TCP Stream）」。視窗會把同一條 TCP 連線兩方向的應用位元組排在一起；此檔可見 GET /status 與 HTTP/1.1 200 OK。",
+        "Follow 工具通常會順便套用只顯示該串流的顯示篩選。關掉視窗後若封包列表只剩部分封包，先看上方篩選欄，不要誤以為原檔被刪。"
+      ],
+      "steps": [
+        "先選第 6 筆，確認它屬於 TCP 54000 ↔ 8080。",
+        "開 Follow TCP Stream，找出請求、回覆及各自方向。",
+        "關閉視窗，檢查上方是否留下 tcp.stream 條件。",
+        "清除篩選，再確認總數仍是 13 筆。"
+      ],
+      "note": "Follow 顯示的是重新整理後的串流資料，不等於原本封包邊界；加密流量也不會憑空變明文。"
+    },
+    {
+      "heading": "Conversations：一對端點之間的對話",
+      "paragraphs": [
+        "「統計 → 對話（Statistics → Conversations）」可依 Ethernet、IPv4、TCP、UDP 等層次列出成對端點與封包／位元組數。第一份 PCAP 的 TCP 對話是 192.0.2.10:54000 與 198.51.100.20:8080；DNS 是另一條 UDP 對話。",
+        "對話視窗可幫你快速找到最活躍的配對，但它的封包數只統計這個擷取檔內、目前設定下可計入的資料；不等於對端真實總流量。"
+      ],
+      "table": {
+        "caption": "統計視窗各自回答什麼",
+        "headers": [
+          "工具",
+          "你可先看",
+          "不能直接推出"
+        ],
+        "rows": [
+          [
+            "Conversations",
+            "哪兩個端點互相通訊、檔案內有多少資料",
+            "對端程式成功處理"
+          ],
+          [
+            "Endpoints",
+            "檔案出現過哪些 MAC／IP／Port",
+            "每個端點必定是一個獨立設備"
+          ],
+          [
+            "I/O Graphs",
+            "流量在哪些時間區間出現",
+            "尖峰一定由網路故障造成"
+          ]
+        ]
+      },
+      "note": "多張網卡、NAT、代理或擷取點不同時，同一業務的端點外觀可能變化。"
+    },
+    {
+      "heading": "Endpoints：先盤點，再聚焦",
+      "paragraphs": [
+        "「統計 → 端點（Statistics → Endpoints）」可列出檔案中被辨認的端點。以 IPv4 分頁看，第一份檔案應能找到 A 192.0.2.10、DNS 192.0.2.53 與 B 198.51.100.20。",
+        "端點清單像通訊錄，對話清單像通話紀錄：前者回答「出現過誰」，後者回答「誰和誰有交換」。兩者仍需搭配時間與封包細節。"
+      ],
+      "flow": [
+        "Endpoints 找參與者",
+        "Conversations 找配對",
+        "Follow Stream 讀內容",
+        "回原始封包核對"
+      ],
+      "note": "Wireshark 的名稱解析設定可能讓位址改顯示為名稱；比對時先確認實際 IP。"
+    },
+    {
+      "heading": "I/O Graphs：用時間看流量，不只看總數",
+      "paragraphs": [
+        "「統計 → I/O 圖表（Statistics → I/O Graphs）」把符合條件的封包按時間區間計數或累加。第一份 PCAP 全部不到一秒，若使用 1 秒區間，大多落在同一區；改看第二份 TCP 案例，較容易看出 0、1、3、5 秒附近有封包。",
+        "圖表能指出事件時段，不能單靠一條曲線判定丟包或程式原因。請記錄圖表的顯示篩選、區間大小和量測單位，再回封包列表看代表性封包。"
+      ],
+      "steps": [
+        "開第二份 PCAP，清除既有顯示篩選。",
+        "開 I/O Graphs，觀察大約 0、1、3、5 秒的封包出現時點。",
+        "套 tcp.port == 7000，只看三次 SYN 嘗試。",
+        "回列表確認這三筆沒有在檔案內看到回覆。"
+      ],
+      "note": "圖表的「沒有流量」只表示這份檔案／觀測點／篩選在那個區間沒有顯示封包。"
+    },
+    {
+      "heading": "統計視窗常見誤判",
+      "paragraphs": [
+        "總封包多不等於品質好，沒有 RTP 也不等於沒有聲音：可能抓錯位置、被加密、不是此協定，或只截到部分時間。Follow Stream 看得到文字，也不代表對方最終設備已完成動作。",
+        "有用的工作順序是：先用統計工具縮小候選端點與時間，再回到原始封包讀協定欄位，最後和應用程式 log 對齊。"
+      ],
+      "table": {
+        "caption": "看到結果後下一步",
+        "headers": [
+          "觀察",
+          "合理下一步"
+        ],
+        "rows": [
+          [
+            "Conversations 有一條 TCP 對話",
+            "選該對話封包，檢查握手與應用回覆"
+          ],
+          [
+            "I/O Graphs 某秒升高",
+            "查看那一秒的協定與方向"
+          ],
+          [
+            "Follow Stream 只有請求",
+            "查是否有回覆封包、解密限制與擷取完整性"
+          ]
+        ]
+      },
+      "note": "本章所有統計只對教學檔成立，不是現場設備的實測值。"
+    }
+  ],
+  "exercises": [
+    {
+      "question": "在第一份 PCAP 選 HTTP GET 追蹤 TCP 串流，應看到哪兩個主要應用訊息？",
+      "answer": "A 發送 GET /status，B 回 HTTP/1.1 200 OK，內容包含 {\"status\":\"ready\"}。"
+    },
+    {
+      "question": "關閉 Follow TCP Stream 後，列表只剩 TCP 封包，原本 DNS 被刪了嗎？",
+      "answer": "沒有。Follow 可能留下 tcp.stream 顯示篩選；清掉後原本 DNS 仍在檔案。"
+    },
+    {
+      "question": "Endpoints 與 Conversations 的差別是什麼？",
+      "answer": "Endpoints 盤點出現過的端點；Conversations 列出成對交換。兩者都不是應用成功的證明。"
+    },
+    {
+      "question": "第一份檔案的 IPv4 Endpoints 預期有哪三個位址？",
+      "answer": "192.0.2.10、192.0.2.53、198.51.100.20。這些是教學保留位址。"
+    },
+    {
+      "question": "第二份 PCAP 中 tcp.port == 7000 的三筆 SYN 分別在 0、1、3 秒附近。I/O Graphs 的空白可證明 B 沒收到嗎？",
+      "answer": "不能。只表示這個擷取檔和目前條件下沒有看到回覆；仍需 B 端或路徑上的證據。"
+    },
+    {
+      "question": "Follow Stream 能看到 STATUS? 卻沒有文字回覆，就能說 B 程式壞了嗎？",
+      "answer": "不能。需確認擷取完整、B 程式是否收到與處理，以及是否走其他回覆路徑。"
+    }
+  ],
+  "recap": [
+    "Follow TCP Stream 讓你看同一條連線的應用位元組，會影響顯示篩選。",
+    "Conversations 看配對，Endpoints 看參與者。",
+    "I/O Graphs 看時段，須說明區間、條件和單位。",
+    "統計視窗只在檔案可見範圍內計算。",
+    "用統計找線索，回原始封包與 log 驗證。"
+  ],
+  "sources": [
+    {
+      "label": "Wireshark 官方指南：Follow Protocol Streams",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvFollowStreamSection.html"
+    },
+    {
+      "label": "Wireshark 官方指南：I/O Graphs",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChStatIOGraphs.html"
+    },
+    {
+      "label": "Wireshark 官方使用指南：Conversations 與 Endpoints",
+      "url": "https://www.wireshark.org/docs/wsug_html/"
+    }
+  ]
+}

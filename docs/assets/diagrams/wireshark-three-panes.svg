@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 660" role="img" aria-labelledby="title desc">
+<title id="title">Wireshark 三個主要區塊示意</title>
+<desc id="desc">上方是封包列表，中間是所選封包的協定細節，下方是原始位元組。示意資料為教學用 DNS 與 TCP 封包。</desc>
+<rect width="1120" height="660" rx="22" fill="#eef4ef"/>
+<rect x="30" y="28" width="1060" height="604" rx="15" fill="#ffffff" stroke="#c5d8cb" stroke-width="2"/>
+<rect x="30" y="28" width="1060" height="44" rx="15" fill="#173b37"/>
+<rect x="30" y="55" width="1060" height="17" fill="#173b37"/>
+<text x="54" y="56" font-size="18" font-family="sans-serif" font-weight="700" fill="#f6fbf6">封包練習檔 · 三個觀察區塊</text>
+<rect x="48" y="88" width="1024" height="44" rx="7" fill="#e9f4ea" stroke="#d0e5d4"/>
+<text x="64" y="116" font-size="17" font-family="monospace" fill="#1e6b52">顯示篩選：tcp  或  dns</text>
+<rect x="48" y="148" width="1024" height="177" rx="8" fill="#f9fbf9" stroke="#d8e6da"/>
+<rect x="48" y="148" width="1024" height="37" rx="8" fill="#dcecdf"/>
+<text x="66" y="173" font-size="16" font-family="sans-serif" font-weight="700" fill="#174436">① 封包列表：先看時間、來源、目的、協定與摘要</text>
+<text x="66" y="211" font-size="15" font-family="monospace" fill="#405b4e">1   0.000   192.0.2.10    192.0.2.53       DNS   查詢 lab.example</text>
+<rect x="58" y="222" width="1002" height="35" rx="5" fill="#f1e8d5"/>
+<text x="66" y="246" font-size="15" font-family="monospace" fill="#405b4e">3   0.040   192.0.2.10    198.51.100.20    TCP   54000 → 8080  SYN</text>
+<text x="66" y="285" font-size="15" font-family="monospace" fill="#405b4e">4   0.058   198.51.100.20 192.0.2.10       TCP   8080 → 54000  SYN, ACK</text>
+<rect x="48" y="341" width="1024" height="132" rx="8" fill="#f9fbf9" stroke="#d8e6da"/>
+<rect x="48" y="341" width="1024" height="37" rx="8" fill="#dcecdf"/>
+<text x="66" y="366" font-size="16" font-family="sans-serif" font-weight="700" fill="#174436">② 封包細節：展開 Ethernet、IP、TCP 等欄位</text>
+<text x="66" y="404" font-size="15" font-family="monospace" fill="#405b4e">▸ Ethernet II   來源 MAC / 目的 MAC</text>
+<text x="66" y="432" font-size="15" font-family="monospace" fill="#405b4e">▾ Internet Protocol Version 4   192.0.2.10 → 198.51.100.20</text>
+<text x="66" y="459" font-size="15" font-family="monospace" fill="#405b4e">▸ Transmission Control Protocol   來源 Port 54000，目的 Port 8080</text>
+<rect x="48" y="489" width="1024" height="125" rx="8" fill="#f9fbf9" stroke="#d8e6da"/>
+<rect x="48" y="489" width="1024" height="37" rx="8" fill="#dcecdf"/>
+<text x="66" y="514" font-size="16" font-family="sans-serif" font-weight="700" fill="#174436">③ 原始位元組：核對封包實際資料；初學時先認識位置</text>
+<text x="66" y="552" font-size="15" font-family="monospace" fill="#405b4e">0000   02 00 00 00 00 0b 02 00 00 00 00 0a 08 00 45 00</text>
+<text x="66" y="580" font-size="15" font-family="monospace" fill="#405b4e">0010   00 28 00 03 40 00 40 06 ...</text>
+</svg>

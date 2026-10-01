@@ -24,6 +24,15 @@ for (const topic of catalog.topics) {
       const lesson = JSON.parse(fs.readFileSync(file, 'utf8'));
       for (const field of ['intro', 'goals', 'sections', 'exercises', 'recap']) assert(lesson[field]?.length, `${file} 缺少 ${field}`);
       for (const source of lesson.sources || []) assert.match(source.url, /^https:\/\//);
+      for (const resource of lesson.resources || []) {
+        assert.match(resource.path, /^\.\/assets\/labs\/[a-z0-9-]+\.pcap$/);
+        assert(fs.existsSync(path.join(docs, resource.path.slice(2))), `${file} 缺少練習檔 ${resource.path}`);
+      }
+      for (const section of lesson.sections) {
+        if (!section.image) continue;
+        assert.match(section.image.src, /^\.\/assets\/diagrams\/[a-z0-9-]+\.svg$/);
+        assert(fs.existsSync(path.join(docs, section.image.src.slice(2))), `${file} 缺少示意圖`);
+      }
       for (const section of lesson.sections) {
         if (!section.table) continue;
         assert(section.table.headers.length > 1, `${file} 表格缺少欄位`);
@@ -33,7 +42,7 @@ for (const topic of catalog.topics) {
   }
 }
 assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 15);
+assert.equal(readyCount, 22);
 assert.equal(catalog.topics[0].chapters.length, 10);
 for (const chapter of catalog.topics[0].chapters) {
   assert.equal(chapter.contentType, 'full');
@@ -41,6 +50,16 @@ for (const chapter of catalog.topics[0].chapters) {
   assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
   assert(lesson.sections.length >= 4, `${chapter.id} 教學段落不足`);
   assert(lesson.exercises.length >= 5, `${chapter.id} 練習不足`);
+}
+
+assert.equal(catalog.topics[1].chapters.length, 8);
+for (const chapter of catalog.topics[1].chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `wireshark--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 5, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 5, `${chapter.id} 練習不足`);
+  assert(lesson.resources.length >= 1, `${chapter.id} 缺少實作 PCAP`);
 }
 
 const elements = new Map();
@@ -86,7 +105,17 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /第一次抓包/);
   assert.match(element('#main').innerHTML, /#\/lesson\/wireshark\/first-capture/);
-  assert.doesNotMatch(element('#main').innerHTML, /#\/lesson\/wireshark\/filters/);
+  assert.match(element('#main').innerHTML, /#\/lesson\/wireshark\/filters/);
+  assert.match(element('#main').innerHTML, /完整教材/);
+
+  context.location.hash = '#/lesson/wireshark/first-capture';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /wireshark-first-capture\.pcap/);
+  assert.match(element('#main').innerHTML, /wireshark-three-panes\.svg/);
+  assert.match(element('#main').innerHTML, /練習 06/);
+  context.location.hash = '#/lesson/wireshark/evidence-and-logs';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /練習 07/);
 
   const first = catalog.topics[0].chapters[0];
   const firstLesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons/networking--one-conversation.json'), 'utf8'));

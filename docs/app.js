@@ -8,6 +8,10 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function safeAsset(value) {
+  return /^\.\/assets\/[a-z0-9/-]+\.(?:pcap|pcapng|svg|png)$/.test(value || '') ? value : '#';
+}
+
 function safeLink(value) {
   try {
     const url = new URL(value);
@@ -142,6 +146,7 @@ function renderSection(section, index) {
     ${section.bullets ? `<ul class="content-list">${section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join('')}</ul>` : ''}
     ${section.steps ? `<ol class="step-list">${section.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>` : ''}
     ${section.table ? `<div class="data-table-wrap" role="region" tabindex="0" aria-label="可左右捲動的表格：${escapeHtml(section.table.caption || section.heading)}"><span class="table-scroll-hint">表格可左右滑動</span><table class="lesson-table"><caption>${escapeHtml(section.table.caption || section.heading)}</caption><thead><tr>${section.table.headers.map((header) => `<th scope="col">${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+    ${section.image ? `<figure class="lesson-image"><img src="${escapeHtml(safeAsset(section.image.src))}" alt="${escapeHtml(section.image.alt || '')}" loading="lazy"><figcaption>${escapeHtml(section.image.caption || '教學示意圖')}</figcaption></figure>` : ''}
     ${section.code ? `<figure class="code-example"><figcaption>${escapeHtml(section.code.title || '教學範例')}</figcaption><pre><code>${escapeHtml(section.code.text)}</code></pre></figure>` : ''}
     ${section.note ? `<aside class="note-box"><strong>留意這一點</strong><p>${escapeHtml(section.note)}</p></aside>` : ''}
   </div></section>`;
@@ -159,6 +164,7 @@ function renderLesson(topic, chapter, lesson) {
     <div class="lesson-layout"><aside class="lesson-aside" aria-label="本主題章節目錄"><div class="aside-sticky"><a class="aside-topic" href="${topicHref(topic)}"><span aria-hidden="true">${escapeHtml(topic.icon)}</span>${escapeHtml(topic.title)} <b aria-hidden="true">↗</b></a><p class="aside-label">本主題章節</p><ol>${topic.chapters.map((item) => `<li>${item.status === 'ready' ? `<a href="${lessonHref(topic, item)}" ${item.id === chapter.id ? 'aria-current="page"' : ''}>${escapeHtml(item.title)}</a>` : `<span class="aside-planned">${escapeHtml(item.title)} <small>規劃中</small></span>`}</li>`).join('')}</ol></div></aside>
     <article class="lesson-article"><header class="lesson-header"><p class="eyebrow">${escapeHtml(topic.title)} · ${String(currentIndex + 1).padStart(2, '0')} / ${String(topic.chapters.length).padStart(2, '0')}</p><h1>${escapeHtml(chapter.title)}</h1><div class="lesson-meta"><span>◷ 約 ${chapter.minutes || 20} 分鐘</span><span>${chapter.contentType === 'full' ? '完整教材' : '入門樣本'}</span><span>圖文 · 練習 · 解答</span></div><p class="lesson-intro">${escapeHtml(lesson.intro)}</p></header>
     <section class="goal-box" aria-labelledby="goal-title"><div class="goal-icon" aria-hidden="true">✳</div><div><h2 id="goal-title">學完這章，你能…</h2><ul>${(lesson.goals || []).map((goal) => `<li>${escapeHtml(goal)}</li>`).join('')}</ul></div></section>
+    ${(lesson.resources || []).length ? `<section class="lesson-resources" aria-labelledby="resources-title"><h2 id="resources-title">本章練習檔</h2><ul>${lesson.resources.map((resource) => `<li><a href="${escapeHtml(safeAsset(resource.path))}" download>${escapeHtml(resource.label)} <span aria-hidden="true">↓</span></a><p>${escapeHtml(resource.description || '')}</p></li>`).join('')}</ul></section>` : ''}
     ${lesson.plan ? `<section class="lesson-plan" aria-labelledby="plan-title"><h2 id="plan-title">建議學習節奏</h2><ol>${lesson.plan.map((part) => `<li><span>${escapeHtml(part.label)}</span><strong>約 ${escapeHtml(part.minutes)} 分鐘</strong></li>`).join('')}</ol></section>` : ''}
     ${(lesson.sections || []).map(renderSection).join('')}
     <section class="exercise-block" id="practice"><p class="eyebrow">PRACTICE</p><h2>想一想，再看解答</h2><p class="exercise-lead">先自己回答。解答會說明判斷依據，也會指出目前還不能確定什麼。</p>${(lesson.exercises || []).map((exercise, index) => `<div class="exercise-card"><div class="exercise-question"><span>練習 ${String(index + 1).padStart(2, '0')}</span><p>${escapeHtml(exercise.question)}</p></div><details><summary>查看解答與判斷過程 <span aria-hidden="true">↓</span></summary><p>${escapeHtml(exercise.answer)}</p></details></div>`).join('')}</section>

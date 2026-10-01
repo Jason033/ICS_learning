@@ -1,0 +1,194 @@
+{
+  "intro": "通話控制完成後，還要看媒體封包是否出現。這篇用同一份合成 SIP/RTP 檔，在 Wireshark 找兩個方向的 RTP、讀序號與時間戳、觀察一個刻意留白的序號，並練習正確描述「這份檔案顯示什麼」而非直接宣稱網路丟包或人耳無聲。",
+  "plan": [
+    {
+      "label": "找到雙向 RTP",
+      "minutes": 9
+    },
+    {
+      "label": "讀序號、時間戳與 SSRC",
+      "minutes": 11
+    },
+    {
+      "label": "使用 RTP Streams／Analysis",
+      "minutes": 10
+    },
+    {
+      "label": "判讀缺口與品質界線",
+      "minutes": 10
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 10
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-sip-rtp.pcap",
+      "label": "下載：SIP 與 RTP 練習檔（PCAP）",
+      "description": "同一通教學呼叫含 9 筆 RTP：A→B 5 筆，B→A 4 筆；B→A 的序號 302 刻意不在檔案中。"
+    }
+  ],
+  "goals": [
+    "能依 SDP 與 UDP Port 找到兩個方向的 RTP。",
+    "能讀出 RTP 的 Sequence Number、Timestamp、SSRC 與 Payload Type。",
+    "能使用 RTP Streams／RTP Stream Analysis 找出序號缺口與時序線索。",
+    "能分清擷取檔中的缺口、網路丟失、解碼成功和實際有聲。"
+  ],
+  "sections": [
+    {
+      "heading": "先確認 Wireshark 真的把資料認成 RTP",
+      "paragraphs": [
+        "開啟練習檔，先看上一章的 SIP 與 SDP：A 宣告 Port 40000，B 宣告 40002。若 Wireshark 根據 SDP 辨認 RTP，輸入 rtp 應看到 9 筆：A→B 5 筆、B→A 4 筆。",
+        "若只顯示 UDP，先確認 SIP/SDP 是否完整、選的是正確 Port 與最新版解析設定；可在已知是 RTP 的教學檔上用「分析 → 解碼為（Decode As）」指定 RTP，再核對標頭欄位。不要對未知 UDP 一律硬解為 RTP。"
+      ],
+      "table": {
+        "caption": "教學檔兩個方向",
+        "headers": [
+          "方向",
+          "UDP 端點",
+          "RTP 筆數"
+        ],
+        "rows": [
+          [
+            "A → B",
+            "192.0.2.10:40000 → 198.51.100.20:40002",
+            "5"
+          ],
+          [
+            "B → A",
+            "198.51.100.20:40002 → 192.0.2.10:40000",
+            "4"
+          ]
+        ]
+      },
+      "note": "RTP 是音訊封包資料，不等於人耳聽到聲音；本檔負載是固定靜音教學位元組。"
+    },
+    {
+      "heading": "序號找連續性，時間戳找媒體時間",
+      "paragraphs": [
+        "RTP Sequence Number 通常逐筆增加，可用來發現擷取序列中的缺口；Timestamp 對應媒體取樣時間，不是電腦時鐘的日期時間。SSRC 區分同步來源，Payload Type 說明負載格式。",
+        "本檔 A→B 序號 100～104，B→A 是 300、301、303、304。兩方向的 SSRC 各自獨立，不能把 A 的 104 和 B 的 300 接成同一條序列。PCMU/8000 的教學例子每 20 毫秒對應 160 個取樣時間單位。"
+      ],
+      "code": {
+        "title": "本檔簡化的 RTP 欄位",
+        "text": "A→B：seq 100, 101, 102, 103, 104；SSRC 0x11111111\nB→A：seq 300, 301, 303, 304；SSRC 0x22222222\nB→A：seq 302 在本檔中沒有"
+      },
+      "note": "RTP 序號與時間戳可回繞；真實分析需考慮分流、擷取起點與編碼特性，不能只看一個差值。"
+    },
+    {
+      "heading": "用 RTP Streams 與 Stream Analysis 看同一條流",
+      "paragraphs": [
+        "「電話 → RTP → RTP Streams」可列出被辨識的流；選 B→A 方向，再開 RTP Stream Analysis，看封包數、序號問題與時間差。若選單沒有對應流，回到 SIP/SDP 與 UDP 欄位確認解析條件。",
+        "Analysis 可能顯示 Lost、Jitter、Delta 等數值。這些是依可見封包與演算法計算的指標；本檔每方向只有幾筆，不能把計算出的平均 jitter 當成真實通話品質。"
+      ],
+      "steps": [
+        "清除篩選，確認 SIP 與 RTP 都在同一檔。",
+        "開 RTP Streams，找 40000 → 40002 與 40002 → 40000。",
+        "選 B→A，開 Stream Analysis，查看序號與缺口。",
+        "回到封包細節核對 seq 301 到 303 的跳躍。"
+      ],
+      "note": "某些統計欄位需要可解析的 Codec；若欄位缺值，先查 Wireshark 是否成功辨認媒體格式。"
+    },
+    {
+      "heading": "「少一個序號」不等於已證明哪裡丟",
+      "paragraphs": [
+        "本檔 B→A 缺少 seq 302。這份檔案只能證明：在所呈現的擷取點與時間窗，沒有收錄 302。它可能是網路中途遺失、發送端未送、擷取漏抓、擷取從中間開始，或其他條件。",
+        "要縮小位置，需在發送端與接收端各抓包，或對照應用／設備紀錄。若發送端有 302、接收端沒有，才較支持問題位於兩端觀測點之間；仍要查抓包完整性。"
+      ],
+      "flow": [
+        "發送端是否送 302？",
+        "路徑中是否可見？",
+        "接收端是否見到？",
+        "播放程式是否收到？",
+        "使用者是否聽見？"
+      ],
+      "note": "Wireshark 的 Lost 統計不是一張定位到哪台設備的事故報告。"
+    },
+    {
+      "heading": "Jitter、Delta 與「無聲」也要分開",
+      "paragraphs": [
+        "Delta 是相鄰可見封包的到達時間差；Jitter 描述到達時間相對媒體時間的變動，計算方式需看工具說明與 RTP 時鐘。某個較大 Delta 可能來自缺包、發送間隔、排隊或擷取缺漏。",
+        "看到 RTP 雙向流，仍不能證明 Codec 解碼正確、音訊連到喇叭、聲音不被靜音，或無線電設備已發射。若要檢查真實聲音，還需授權的端點音訊紀錄、播放測試和設備狀態；這份合成 PCAP 沒有真實人聲可聽。"
+      ],
+      "table": {
+        "caption": "RTP 證據的邊界",
+        "headers": [
+          "看見",
+          "可支持",
+          "仍需確認"
+        ],
+        "rows": [
+          [
+            "SDP 音訊 Port",
+            "雙方宣告媒體端點",
+            "有沒有實際 RTP"
+          ],
+          [
+            "雙向 RTP 封包",
+            "此擷取點有兩方向媒體封包",
+            "接收程式與播放是否成功"
+          ],
+          [
+            "seq 301→303",
+            "此檔少了 302",
+            "發送端是否送出、哪段遺失"
+          ],
+          [
+            "Jitter 數值",
+            "此檔和算法下的時間變動估計",
+            "長時間實際品質與聽感"
+          ]
+        ]
+      },
+      "note": "教學檔沒有 RTCP；沒有 RTCP 統計不代表真實通話不會有。"
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【分流】本檔 RTP 共幾筆？A→B 與 B→A 各幾筆？",
+      "answer": "共 9 筆；A→B 5 筆，B→A 4 筆。前提是 Wireshark 已依 SDP 正確辨認 RTP。"
+    },
+    {
+      "question": "【序號】B→A 的 300、301、303、304 中缺哪一個？能直接判定網路丟包嗎？",
+      "answer": "缺 302。只能先說本檔沒有收錄，不能直接定位成網路丟包；要比對發送端、接收端與抓包完整性。"
+    },
+    {
+      "question": "【方向】A→B 的 SSRC 與 B→A 的 SSRC 為什麼不能合併看一條序號？",
+      "answer": "兩個方向是不同同步來源；本檔 SSRC 分別為 0x11111111 和 0x22222222，各自有自己的序號與時間戳。"
+    },
+    {
+      "question": "【解析】Wireshark 只顯示 UDP 而非 RTP，第一步應檢查什麼？",
+      "answer": "先查 SIP/SDP 是否在檔案中、音訊 Port 是否對得上；確認是已知 RTP 的教學流後才考慮 Decode As。"
+    },
+    {
+      "question": "【品質】本檔只有幾筆 RTP，能用平均 jitter 推論公司通話品質嗎？",
+      "answer": "不能。樣本太短且為合成資料，沒有真實鏈路與播放端；可用來學工具欄位，但不能當品質量測。"
+    },
+    {
+      "question": "【有聲】雙向 RTP 都出現，可否宣稱對方一定聽到聲音？",
+      "answer": "不能。還需檢查封包送達接收程式、Codec 解碼、音訊路徑、音量與設備。"
+    }
+  ],
+  "recap": [
+    "先從 SIP/SDP 確認媒體端點，再找 RTP。",
+    "不同方向的序號與 SSRC 分開分析。",
+    "序號缺口在單一 PCAP 中不能直接定位丟失原因。",
+    "RTP Analysis 的 Jitter／Lost 依可見封包與算法計算。",
+    "看到 RTP 不等於播放成功或設備真的發聲。"
+  ],
+  "sources": [
+    {
+      "label": "Wireshark 官方指南：RTP Streams 與 Analysis",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelRTP.html"
+    },
+    {
+      "label": "Wireshark 官方指南：Decode As",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChCustProtocolDissectionSection.html"
+    },
+    {
+      "label": "RFC 3550：RTP 序號、時間戳與 SSRC",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550.html"
+    }
+  ]
+}

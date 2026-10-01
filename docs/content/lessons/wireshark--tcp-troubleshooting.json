@@ -1,0 +1,185 @@
+{
+  "intro": "這篇用 8 筆刻意簡化的 TCP 教學封包，練習區分「只看到 SYN 嘗試」「TCP 有確認但沒有應用回覆」。你會看旗標、序號、時間、重複嘗試與 Wireshark 的 Expert Info，同時避免把分析提示直接當成故障原因。",
+  "plan": [
+    {
+      "label": "讀兩組故障案例",
+      "minutes": 10
+    },
+    {
+      "label": "看 TCP 旗標與時間",
+      "minutes": 10
+    },
+    {
+      "label": "判斷重傳與 ACK 的界線",
+      "minutes": 11
+    },
+    {
+      "label": "完成練習",
+      "minutes": 14
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-tcp-cases.pcap",
+      "label": "下載：TCP 故障練習檔（PCAP）",
+      "description": "8 筆純教學封包：TCP 7000 有三次 SYN 嘗試；TCP 7001 有握手、STATUS? 與 ACK，但檔案內沒有應用回覆。"
+    }
+  ],
+  "goals": [
+    "能按 Port 將兩組 TCP 案例分開。",
+    "能用 SYN、SYN/ACK、ACK 與應用資料建立時間線。",
+    "能解釋重複 SYN 與 TCP ACK 各能支持到哪一步。",
+    "能提出需要在另一端或程式 log 查的下一個證據。"
+  ],
+  "sections": [
+    {
+      "heading": "先把兩個 Port 分開，不要混成一條故障",
+      "paragraphs": [
+        "這份 PCAP 有兩個 TCP 對話。tcp.port == 7000 只顯示 A:54001 對 B:7000 的三次 SYN；tcp.port == 7001 則顯示 A:54002 對 B:7001 的握手、送出 STATUS? 與 B 的 TCP ACK。",
+        "先清除篩選確認總數 8 筆，再分別套兩個 Port。若把所有封包混在一起，可能誤把 7001 的 SYN/ACK 當成 7000 的回覆。"
+      ],
+      "table": {
+        "caption": "本檔兩組教學資料",
+        "headers": [
+          "對話",
+          "檔案中可見",
+          "尚缺"
+        ],
+        "rows": [
+          [
+            "A:54001 ↔ B:7000",
+            "0、1、3 秒附近三次 SYN",
+            "對應的 SYN/ACK 或 RST"
+          ],
+          [
+            "A:54002 ↔ B:7001",
+            "握手、STATUS?、B 的 TCP ACK",
+            "應用層回覆"
+          ]
+        ]
+      },
+      "note": "PCAP 由程式合成，所有封包在同一個教學觀測視角；沒有實際網路路徑。"
+    },
+    {
+      "heading": "案例一：反覆 SYN，回覆在哪裡？",
+      "paragraphs": [
+        "套 tcp.port == 7000，應看到三筆方向相同、來源與目的 Port 相同、TCP 序號相同的 SYN，約在 0、1、3 秒。這與連線嘗試未在檔案中得到回覆的情形一致；Wireshark 也可能標示為重傳，但提示依版本與分析情境而變。",
+        "這只能說「本檔在這個觀測點沒有相符回覆」。可能是封包沒到 B、回程出問題、B 沒有服務、政策阻擋，也可能是擷取遺漏。下一步看 B 的監聽狀態與 B 端或中間觀測。"
+      ],
+      "code": {
+        "title": "案例一：簡化時間線",
+        "text": "0.000 s  A:54001 → B:7000  SYN seq=10000\n1.000 s  A:54001 → B:7000  SYN seq=10000\n3.000 s  A:54001 → B:7000  SYN seq=10000\n本檔沒有對應回覆"
+      },
+      "note": "重複 SYN 不是「網路必然丟包」的直接證據；要看抓包完整性與兩端視角。"
+    },
+    {
+      "heading": "案例二：握手成功，為何還會等不到結果？",
+      "paragraphs": [
+        "套 tcp.port == 7001，應看到 SYN、SYN/ACK、ACK，再看到 A 送出 STATUS? 和 B 回 TCP ACK。握手能證明 TCP 連線建立；B 的 ACK 是傳輸層對位元組的確認，不能證明 B 程式解析了命令。",
+        "此檔到 ACK 就結束，沒有業務回覆。它沒有記錄 A 等待多久，也沒有 B 的程式 log；若要判定 timeout，需額外的應用紀錄或較完整的時間窗。"
+      ],
+      "flow": [
+        "TCP 建立",
+        "A 送 STATUS?",
+        "B TCP ACK",
+        "B 程式是否讀取？未知",
+        "應用回覆？檔案沒有"
+      ],
+      "note": "「沒有顯示回覆」不等於「B 一定沒有產生回覆」；可能在擷取結束後、別的路徑或觀測點之外。"
+    },
+    {
+      "heading": "Expert Info 是提示，不是判決書",
+      "paragraphs": [
+        "Wireshark 的 Expert Info 或 TCP Analysis 可能提示重傳、重複 ACK、亂序等情形。它依抓到的封包和演算法推斷，對抓包遺漏、單側觀測、順序和時間很敏感。",
+        "如果看到 [TCP Retransmission]，回到同一條串流比對序號、資料長度與時間；再問「原封包和對應 ACK 是否都在檔案中？」。不要只憑紅字或黃色標記寫出「交換器故障」。"
+      ],
+      "table": {
+        "caption": "常見提示的安全讀法",
+        "headers": [
+          "提示",
+          "先確認",
+          "不能直接宣稱"
+        ],
+        "rows": [
+          [
+            "Retransmission",
+            "同一串流的序號、時間與前一筆",
+            "網路鏈路一定丟包"
+          ],
+          [
+            "Duplicate ACK",
+            "ACK 指向哪個序號、前後資料是否完整",
+            "對端程式故障"
+          ],
+          [
+            "Out-of-order",
+            "擷取點與封包到達順序",
+            "一定是路由錯誤"
+          ]
+        ]
+      },
+      "note": "標色也可能由個人 Wireshark profile 改動，顏色本身不是協定欄位。"
+    },
+    {
+      "heading": "時間線要和程式紀錄對起來",
+      "paragraphs": [
+        "可將時間欄切成「相對第一筆」方便看間隔；若要與程式 log 對照，記下絕對時間、時區與兩台電腦時鐘可能的偏差。本檔固定從 2026-01-01 00:00:00 UTC 開始，是合成資料，不是事故時間。",
+        "在真實故障中，先用一個兩端都能確認的事件對時，例如 A 發起特定連線時的 Port 與時間；再比較 B 的接收 log。只看到 ACK，而 B 程式沒有紀錄時，仍要排除記錄層級、緩衝與時間差。"
+      ],
+      "steps": [
+        "記下檔案、觀測點、時間格式與篩選。",
+        "分別畫出 7000、7001 的封包時間線。",
+        "標出最後可靠的證據與第一個缺口。",
+        "對缺口選下一個觀測點：B 端抓包或 B 程式 log。"
+      ],
+      "note": "若同時有多次相似連線，Port、時間與 TCP stream 編號要一起核對。"
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【分流】tcp.port == 7000 預期幾筆？tcp.port == 7001 呢？",
+      "answer": "7000 有 3 筆 SYN；7001 有 5 筆：握手三筆、A 送 STATUS?、B 回 TCP ACK。"
+    },
+    {
+      "question": "【重複 SYN】三次 SYN 的來源 Port 與序號相同，可以直接說 B 已收到三次嗎？",
+      "answer": "不能。只知道本檔有三次發送嘗試；需 B 端觀測確認到達。"
+    },
+    {
+      "question": "【ACK】B 對 STATUS? 回 TCP ACK，能說 B 已執行查詢嗎？",
+      "answer": "不能。ACK 是 TCP 傳輸層確認，還需 B 程式讀取／解析紀錄及應用回覆。"
+    },
+    {
+      "question": "【逾時】本檔在 ACK 後結束。可否單靠它確定 A 在 2 秒後 read timeout？",
+      "answer": "不能。檔案沒有後續時間窗與 A 程式紀錄；需要 log 或更完整擷取。"
+    },
+    {
+      "question": "【Expert Info】Wireshark 提示 Retransmission，第一步應核對哪三項？",
+      "answer": "核對同一 TCP 串流的序號、時間和前後 ACK／資料是否完整，再看抓包位置。"
+    },
+    {
+      "question": "【下一步】7000 沒有 SYN/ACK，最有區分力的下一個觀測點是什麼？",
+      "answer": "B 端或中間路徑的抓包／政策紀錄，加上 B 是否監聽；可區分封包未到與到後未回。"
+    }
+  ],
+  "recap": [
+    "先按協定、IP 和 Port 分開不同對話。",
+    "三次 SYN 沒回覆只說明這份檔案的觀測結果。",
+    "握手與 ACK 不等於應用程式完成。",
+    "Expert Info 是線索，需用序號、時間與雙端證據核對。",
+    "與 log 對時時要記下時區及時鐘偏差。"
+  ],
+  "sources": [
+    {
+      "label": "Wireshark 官方指南：Expert Information 與 TCP Analysis",
+      "url": "https://www.wireshark.org/docs/wsug_html/"
+    },
+    {
+      "label": "Wireshark 官方指南：時間顯示",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChWorkTimeFormatsSection.html"
+    },
+    {
+      "label": "RFC 9293：TCP 確認與重傳",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
+    }
+  ]
+}

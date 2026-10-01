@@ -1,0 +1,199 @@
+{
+  "intro": "打開 PCAP 後，常見的困惑是列表資訊太多，不知道該先看哪一欄。這篇沿用 13 筆教學封包，逐層看「時間、方向、Ethernet、IP、TCP／UDP、原始資料」，並練習辨認哪些欄位是封包真的帶的，哪些是 Wireshark 的解析或顯示設定。",
+  "plan": [
+    {
+      "label": "讀列表與時間",
+      "minutes": 8
+    },
+    {
+      "label": "展開 IP、TCP／UDP 欄位",
+      "minutes": 12
+    },
+    {
+      "label": "辨認原始資料與顯示結果",
+      "minutes": 10
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 10
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-first-capture.pcap",
+      "label": "下載：第一次抓包練習檔（PCAP）",
+      "description": "本章沿用 13 筆 DNS 與 TCP／HTTP 教學封包。"
+    }
+  ],
+  "goals": [
+    "能用列表的 No.、Time、Source、Destination、Protocol、Length、Info 找出關鍵封包。",
+    "能在細節區找到 Ethernet、IPv4、UDP/TCP 與應用欄位。",
+    "能分清擷取時間、相對時間、TCP 序號顯示與原始封包資料。",
+    "能用欄位提出下一步，而不是只看封包顏色或一行摘要。"
+  ],
+  "sections": [
+    {
+      "heading": "先看列表：一行是一筆擷取到的封包",
+      "paragraphs": [
+        "列表 No. 是這個檔案裡的封包序號，不是 TCP 序號。Time 是顯示的時間，可能設定為從第一筆起算、前一筆間隔或實際日期時間；先確認格式。Source、Destination 與 Protocol 幫你定位方向與協定。Length 是這筆擷取資料的長度，不等於應用程式的有效資料長度。",
+        "Info 是解析器整理的摘要，很方便，但不是完整證據。看到「TCP」或「HTTP」應點進細節，確認 Port、旗標與應用資料。"
+      ],
+      "table": {
+        "caption": "封包列表常見欄位",
+        "headers": [
+          "欄位",
+          "先問什麼",
+          "常見誤讀"
+        ],
+        "rows": [
+          [
+            "No.",
+            "第幾筆擷取？",
+            "當作 TCP sequence number"
+          ],
+          [
+            "Time",
+            "何時觀察到？顯示格式是什麼？",
+            "直接當成對端處理時間"
+          ],
+          [
+            "Source／Destination",
+            "此筆往哪個方向？",
+            "只靠 IP 就認定程式角色"
+          ],
+          [
+            "Length",
+            "擷取的封包有多長？",
+            "當成 HTTP 內容長度"
+          ],
+          [
+            "Info",
+            "解析器摘要了什麼？",
+            "跳過細節直接下結論"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "細節區由外到內展開，不要一次看所有位元",
+      "paragraphs": [
+        "選第 3 筆，在中間細節依序展開 Frame、Ethernet II、Internet Protocol Version 4、Transmission Control Protocol。Frame 會列出擷取長度與時間；Ethernet 是這段鏈路上的 MAC；IPv4 顯示來源與目的位址；TCP 顯示 Port、旗標與序號。",
+        "第 1 筆 DNS 則沿 Ethernet → IPv4 → UDP → Domain Name System 展開。不同封包不一定都有 TCP：DNS 在此教學檔使用 UDP。"
+      ],
+      "flow": [
+        "Frame：擷取資訊",
+        "Ethernet：本地鏈路",
+        "IPv4：網路位址",
+        "TCP／UDP：Port 與傳輸",
+        "DNS／HTTP：應用內容"
+      ],
+      "note": "這只是本檔使用的協定路徑。真實抓包可能有 VLAN、IPv6、隧道、加密或其他封裝。"
+    },
+    {
+      "heading": "跟著第 3 筆找出一次 TCP 建立",
+      "paragraphs": [
+        "第 3 筆從 192.0.2.10:54000 到 198.51.100.20:8080，TCP SYN 旗標為 1；第 4 筆方向相反，是 SYN/ACK；第 5 筆再由 A 回 ACK。這三筆支持 TCP 建立過程。",
+        "若要確認某個欄位，可在細節區點選它；下方原始位元組會標出對應區段。對初學者來說，先能說出「欄位來自哪層」比背十六進位值重要。"
+      ],
+      "code": {
+        "title": "第 3～5 筆的教學摘要",
+        "text": "3  A:54000 → B:8080  SYN\n4  B:8080 → A:54000  SYN, ACK\n5  A:54000 → B:8080  ACK"
+      },
+      "note": "Wireshark 可能預設顯示相對 TCP 序號；顯示 0／1 不代表原始標頭真的寫 0／1。"
+    },
+    {
+      "heading": "原始位元組與解析結果如何互相驗證",
+      "paragraphs": [
+        "下方位元組區是擷取檔中的實際資料；Wireshark 依協定格式切出欄位。若只擷取封包前面一部分（snap length 太短），後段欄位可能不完整；若有加密，仍可看到部分外層欄位，但不一定能讀應用內容。",
+        "本教學檔沒有截斷，GET /status 與 HTTP 200 OK 是明文。真實流量若走 TLS，不能期待用 Follow TCP Stream 直接讀到同樣的明文。"
+      ],
+      "table": {
+        "caption": "不同資料來源的證據界線",
+        "headers": [
+          "看見",
+          "比較能說",
+          "還不能說"
+        ],
+        "rows": [
+          [
+            "IP 來源／目的",
+            "封包標頭寫的位址",
+            "一定是使用者本人或真實設備身份"
+          ],
+          [
+            "TCP SYN／ACK",
+            "傳輸層嘗試或回應",
+            "應用命令已完成"
+          ],
+          [
+            "HTTP 200 OK",
+            "此 HTTP 服務產生成功狀態碼",
+            "後端實體動作必然完成"
+          ],
+          [
+            "原始位元組",
+            "檔案確有這些位元組",
+            "沒有加密或截斷時才看得到所有內容"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "練習時固定一個閱讀順序",
+      "paragraphs": [
+        "先記檔案名稱、觀測點與時間格式，再用 Source／Destination／Protocol 找候選封包；展開 IP 和傳輸欄位，最後才讀應用內容或原始位元組。這樣即使遇到很多欄位，也不會迷路。"
+      ],
+      "steps": [
+        "清除顯示篩選，確認本檔 13 筆。",
+        "選第 1 筆 DNS 查詢，寫下問誰、問什麼。",
+        "選第 3 筆 TCP SYN，寫下協定與四個端點欄位。",
+        "選第 8 筆 HTTP 回覆，寫下方向、狀態與不能推出的結論。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/wireshark-three-panes.svg",
+        "alt": "封包列表、協定細節、原始位元組三區塊與教學 DNS/TCP 例子。",
+        "caption": "示意圖使用自製教學資料；請以自己 Wireshark 實際顯示的欄位為準。"
+      },
+      "note": "若名稱解析功能把 IP 改顯示成主機名，可先關閉名稱解析或點欄位看原始 IP，避免兩人看同一檔卻以為端點不同。"
+    }
+  ],
+  "exercises": [
+    {
+      "question": "第 3 筆的 No. 是 3，能推論 TCP sequence number 等於 3 嗎？",
+      "answer": "不能。No. 是檔案中的擷取序號；TCP 序號要在 TCP 細節區另看。"
+    },
+    {
+      "question": "第 1 筆 DNS 查詢應展開哪個傳輸層欄位？",
+      "answer": "此檔使用 UDP，因此展開 UDP，確認來源 Port 53000 與目的 Port 53，再展開 DNS 問題欄位。"
+    },
+    {
+      "question": "第 3 筆與第 4 筆誰先送、方向如何？",
+      "answer": "第 3 筆 A:54000 → B:8080 送 SYN；第 4 筆 B:8080 → A:54000 回 SYN/ACK。"
+    },
+    {
+      "question": "Length 欄顯示一個數字，能直接說 HTTP body 就是這麼多位元組嗎？",
+      "answer": "不能。封包長度包含鏈路、IP、TCP 等標頭；要找 HTTP body 長度需看應用欄位與實際資料。"
+    },
+    {
+      "question": "真實封包以 TLS 加密後，還能期待直接看到 GET /status 明文嗎？",
+      "answer": "通常不能。外層 IP、Port 等可能仍可見，但應用內容受加密保護；需依有權限的端點紀錄或合法解密方式查證。"
+    }
+  ],
+  "recap": [
+    "先看列表定位，再展開細節，最後查原始位元組。",
+    "No.、Time、Length、Info 都要先確認各自意義。",
+    "TCP 相對序號是顯示方式，不等於封包原始值。",
+    "解析結果要和標頭欄位及觀測位置一起讀。",
+    "能指出證據的邊界，比只記住一個顏色重要。"
+  ],
+  "sources": [
+    {
+      "label": "Wireshark 官方指南：封包列表與細節",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChUsePacketListPaneSection.html"
+    },
+    {
+      "label": "Wireshark 官方指南：封包檢視",
+      "url": "https://www.wireshark.org/docs/wsug_html/"
+    }
+  ]
+}

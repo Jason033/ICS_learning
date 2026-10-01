@@ -1,0 +1,192 @@
+{
+  "intro": "Wireshark 有兩套名字相近、語法不同的篩選：擷取篩選在封包存入檔案前決定收不收；顯示篩選只決定目前畫面顯示哪些已擷取封包。這篇用教學 PCAP 實際驗證顯示篩選，再設計一條只供未來即時擷取使用的擷取篩選。",
+  "plan": [
+    {
+      "label": "分清兩種篩選與時機",
+      "minutes": 9
+    },
+    {
+      "label": "練 IP／Port／協定條件",
+      "minutes": 11
+    },
+    {
+      "label": "檢查空結果與錯誤語法",
+      "minutes": 9
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 11
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-first-capture.pcap",
+      "label": "下載：第一次抓包練習檔（PCAP）",
+      "description": "13 筆封包，適合練顯示篩選；打開檔案不會重新套用擷取篩選。"
+    },
+    {
+      "path": "./assets/labs/wireshark-tcp-cases.pcap",
+      "label": "下載：TCP 故障練習檔（PCAP）",
+      "description": "8 筆封包，供練不同 Port 與沒有回覆的條件。"
+    }
+  ],
+  "goals": [
+    "能說明兩種篩選何時生效，以及為何語法不能互換。",
+    "能用 ip.addr、tcp.port、udp.port 與布林條件找出教學流量。",
+    "能區分「篩選後 0 筆」與「檔案原本就沒有」。",
+    "能在即時擷取前設計精確且不漏掉回程的擷取條件。"
+  ],
+  "sections": [
+    {
+      "heading": "先決定你要篩「收入」還是篩「顯示」",
+      "paragraphs": [
+        "擷取篩選（Capture Filter）在封包被保存之前生效，使用 libpcap/BPF 語法。若當時把某些封包排除，事後無法在同一檔案找回。顯示篩選（Display Filter）在讀取或擷取到資料後生效，使用 Wireshark 自己的欄位語法；清除篩選，原封包仍在。",
+        "開啟既有 PCAP 後，上方篩選欄是顯示篩選。不要把 tcp port 8080 貼到這欄；它是擷取篩選語法。此時應輸入 tcp.port == 8080。"
+      ],
+      "table": {
+        "caption": "相同目的，不同語法",
+        "headers": [
+          "用途",
+          "擷取篩選",
+          "顯示篩選"
+        ],
+        "rows": [
+          [
+            "找 TCP 8080",
+            "tcp port 8080",
+            "tcp.port == 8080"
+          ],
+          [
+            "找某個 IPv4 主機",
+            "host 198.51.100.20",
+            "ip.addr == 198.51.100.20"
+          ],
+          [
+            "找 UDP 53",
+            "udp port 53",
+            "udp.port == 53"
+          ]
+        ]
+      },
+      "note": "顯示篩選有更多解析後欄位；擷取篩選通常只能依封包較低層資訊決定是否收進來。"
+    },
+    {
+      "heading": "從協定、位址到 Port，逐步縮小",
+      "paragraphs": [
+        "打開第一份 PCAP，清除篩選應有 13 筆。輸入 dns 得兩筆；輸入 tcp 得 11 筆；輸入 tcp.port == 8080 也得 11 筆。此檔只含一條 TCP 8080 對話，日後真實檔案就不一定如此。",
+        "ip.addr == 192.0.2.10 會同時包含去程與回程，因為來源或目的任一側符合。只要去程可用 ip.src == 192.0.2.10；只要回程可用 ip.dst == 192.0.2.10。"
+      ],
+      "code": {
+        "title": "可在第一份 PCAP 逐行試的顯示篩選",
+        "text": "dns\ntcp.port == 8080\nip.addr == 192.0.2.10\nip.src == 192.0.2.10 && tcp.dstport == 8080\ntcp.flags.syn == 1 && tcp.flags.ack == 0"
+      },
+      "note": "tcp.flags.syn 這類欄位存在不等於值為 1；要篩選 SYN 真的設為 1，請明寫 == 1。"
+    },
+    {
+      "heading": "多個條件：別把方向寫反",
+      "paragraphs": [
+        "&& 是而且，|| 是或者，! 是否定。想找 A → B 的 TCP 8080，應同時限定來源 A 與目的 Port 8080；若把 tcp.srcport == 8080 寫進去，就會轉而找 B → A 的方向。",
+        "括號可幫助避免條件混淆。不要只用 ip.addr == A && ip.addr == B 就推定哪邊是來源；這只說兩個位址都在此封包的 IP 來源／目的欄中。"
+      ],
+      "table": {
+        "caption": "在第一份 PCAP 的預期結果",
+        "headers": [
+          "顯示篩選",
+          "大致對應"
+        ],
+        "rows": [
+          [
+            "dns",
+            "第 1、2 筆"
+          ],
+          [
+            "tcp.flags.syn == 1 && tcp.flags.ack == 0",
+            "第 3 筆，只有最初的 SYN"
+          ],
+          [
+            "ip.src == 192.0.2.10 && tcp.dstport == 8080",
+            "A 往 B 的 TCP 封包"
+          ],
+          [
+            "tcp.port == 7000",
+            "0 筆；此檔沒有 TCP 7000"
+          ]
+        ]
+      },
+      "note": "若 Wireshark 版本或解析設定不同，以細節欄位與原始封包為準；教學檔的端點和封包內容是固定的。"
+    },
+    {
+      "heading": "篩出 0 筆時，先不要宣稱沒有流量",
+      "paragraphs": [
+        "0 筆可能因為打錯 Port、方向、IP 家族、顯示篩選語法，或檔案本身真的沒有相符封包。先清除篩選確認總數，再用寬鬆條件縮小，例如 tcp → tcp.port == 8080 → 加方向。",
+        "若顯示篩選欄提示語法無效，先不要按 Enter；查正式欄位名或在封包細節對欄位按右鍵建立篩選。若在即時擷取時看不到預期流量，還要查介面與擷取篩選。"
+      ],
+      "steps": [
+        "記錄目前顯示 0 筆所用的完整篩選文字。",
+        "清除篩選，看總封包數是否恢復。",
+        "用單一協定或 Port 重新找，再逐項加入位址與方向。",
+        "若仍沒有，檢查觀測位置與擷取時是否漏收。"
+      ],
+      "note": "「沒有看到」永遠要連觀測點、時間與篩選條件一起寫。"
+    },
+    {
+      "heading": "設計即時擷取條件時保留回程",
+      "paragraphs": [
+        "若將來在有權限的環境要擷取 A 與 B 的 TCP 8080，擷取篩選可用 host 198.51.100.20 and tcp port 8080。host 和 port 是雙方向條件，較不容易漏掉回覆。",
+        "擷取前先確認目的：太窄可能漏掉 DNS、ARP、ICMP 錯誤或協定切換；太寬則資料量過大。可先在短時間、小範圍測試，保留原始檔，再用顯示篩選分析。"
+      ],
+      "code": {
+        "title": "這兩行放的位置不同",
+        "text": "即時擷取選項：host 198.51.100.20 and tcp port 8080\n開啟檔案後上方欄：ip.addr == 198.51.100.20 && tcp.port == 8080"
+      },
+      "note": "教學位址 198.51.100.20 保留給文件，不能拿來連線；上面這行只是語法範例。"
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【語法】已開啟 PCAP，想看 TCP 8080，應輸入 tcp port 8080 還是 tcp.port == 8080？",
+      "answer": "在上方顯示篩選欄輸入 tcp.port == 8080；tcp port 8080 是即時擷取的 libpcap 語法。"
+    },
+    {
+      "question": "【數量】第一份 PCAP 的 dns 和 tcp.port == 8080 各預期看到幾筆？",
+      "answer": "dns 是 2 筆；tcp.port == 8080 是 11 筆。清除篩選後應回到 13 筆。"
+    },
+    {
+      "question": "【方向】要找 A 向 B 的 TCP 8080，ip.src 和 tcp.dstport 各應填什麼？",
+      "answer": "ip.src == 192.0.2.10 && tcp.dstport == 8080。仍應檢查目的 IP 與封包實際方向。"
+    },
+    {
+      "question": "【0 筆】輸入 tcp.port == 7000 得 0 筆，可宣稱「整個系統從未使用 7000」嗎？",
+      "answer": "不能。只能說這份檔案在目前解析／篩選條件下沒有相符封包；不同時間、介面或另一份抓包可能有。"
+    },
+    {
+      "question": "【擷取】只想擷取 B 的 TCP 8080，但也要保留 B 的回覆，哪個條件比較合適？",
+      "answer": "可用 host 198.51.100.20 and tcp port 8080；若只限定來源或目的單方向可能漏掉回程。"
+    },
+    {
+      "question": "【旗標】只輸入 tcp.flags.syn 能保證選出的都是 SYN=1 嗎？",
+      "answer": "不能。該欄位在 TCP 封包中可存在且值為 0；要寫 tcp.flags.syn == 1。"
+    }
+  ],
+  "recap": [
+    "擷取篩選決定存進檔案的封包；顯示篩選只改變畫面。",
+    "兩套篩選語法不同，先確認輸入位置。",
+    "篩選 IP 與 Port 時要留意方向。",
+    "0 筆不是整個系統沒有流量的證明。",
+    "即時擷取條件先保留必要回程與相關錯誤流量。"
+  ],
+  "sources": [
+    {
+      "label": "Wireshark 官方指南：擷取篩選",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChCapCaptureFilterSection.html"
+    },
+    {
+      "label": "Wireshark 官方指南：顯示篩選",
+      "url": "https://www.wireshark.org/docs/wsug_html/"
+    },
+    {
+      "label": "Wireshark 官方顯示篩選語法",
+      "url": "https://www.wireshark.org/docs/man-pages/wireshark-filter.html"
+    }
+  ]
+}

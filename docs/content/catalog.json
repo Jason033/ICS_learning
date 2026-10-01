@@ -19,9 +19,14 @@
     {
       "id": "wireshark", "title": "Wireshark", "icon": "⌕", "summary": "從選網卡與抓包開始，練習用封包支持判斷。",
       "chapters": [
-        {"id": "first-capture", "title": "第一次抓包：看見什麼、還不知道什麼", "summary": "自己產生流量、選擇網卡、讀取封包與篩選。", "minutes": 25, "status": "ready", "contentType": "sample"},
-        {"id": "filters", "title": "擷取與顯示篩選器", "summary": "知道兩種篩選分別何時生效。", "status": "planned"},
-        {"id": "sip-rtp", "title": "觀察 SIP 與 RTP", "summary": "閱讀通話流程並檢查音訊封包。", "status": "planned"}
+        {"id": "first-capture", "title": "第一次抓包：從開檔到找到請求", "summary": "開啟教學 PCAP、認識三區塊，選做本機即時擷取。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "packet-panes", "title": "封包列表、細節與原始位元組", "summary": "看時間、方向、IP、Port 與解析欄位，分清證據層級。", "minutes": 40, "status": "ready", "contentType": "full"},
+        {"id": "filters", "title": "擷取與顯示篩選器", "summary": "學會兩套語法、方向條件及 0 筆結果的正確解讀。", "minutes": 40, "status": "ready", "contentType": "full"},
+        {"id": "streams-statistics", "title": "Follow Stream 與統計視窗", "summary": "用 Conversations、Endpoints、I/O Graphs 找對話與時段。", "minutes": 40, "status": "ready", "contentType": "full"},
+        {"id": "tcp-troubleshooting", "title": "TCP 重試、ACK 與無回應", "summary": "比較只有 SYN 和已有 TCP ACK 的兩種故障位置。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "sip-rtp", "title": "觀察 SIP 與 SDP 通話流程", "summary": "從 INVITE、200 OK、ACK 與 SDP 找到音訊端點。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "rtp-analysis", "title": "RTP 串流、序號與 Jitter", "summary": "查雙向媒體、序號缺口與可見品質的證據界線。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "evidence-and-logs", "title": "封包與程式紀錄整合練習", "summary": "把三份 PCAP 和 log 對時，寫出已知、未知與下一步。", "minutes": 45, "status": "ready", "contentType": "full"}
       ]
     },
     {

@@ -108,3 +108,27 @@ button { cursor: pointer; }
 @media (max-width: 760px) { .shell { width: min(100% - 34px, 620px); }.header-inner { min-height: 67px; }.brand-mark { width: 37px; height: 37px; }.brand strong { font-size: 15px; }.brand small { font-size: 8px; }.header-nav { gap: 0; }.header-nav a { padding: 8px 9px; font-size: 12px; }.hero { display: block; min-height: 0; padding: 42px 26px 31px; margin: 20px 0 50px; }.hero h1 { font-size: clamp(30px, 8vw, 43px); }.hero-lead { font-size: 13px; }.hero-visual { min-height: 155px; overflow: hidden; margin-top: 20px; }.orbit-outer { width: 245px; }.orbit-inner { width: 174px; }.hero-center { width: 125px; height: 125px; }.hero-center strong { font-size: 19px; margin: 6px 0; }.hero-center small { font-size: 4px; }.hero-center span { font-size: 8px; }.orbit-symbol { width: 31px; height: 31px; font-size: 20px; }.symbol-a { top: 3px; left: 21%; }.symbol-b { right: 11%; }.symbol-c { bottom: 0; left: 25%; }.section-heading { align-items: start; }.catalog-count { font-size: 28px; }.catalog-count small { font-size: 9px; }.topic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }.topic-card { min-height: 214px; padding: 17px; }.topic-card-title { font-size: 15px; }.topic-card-summary { font-size: 11px; }.topic-icon { width: 42px; height: 42px; }.status-badge { font-size: 9px; padding: 3px 6px; }.topic-hero { padding: 28px; flex-direction: column; align-items: stretch; gap: 20px; }.progress-panel { width: 100%; }.topic-body { margin-top: 35px; }.chapter-row { gap: 12px; padding: 15px; }.chapter-copy strong { font-size: 14px; }.chapter-copy small { font-size: 11px; }.chapter-state { font-size: 10px; }.lesson-layout { display: block; }.lesson-aside { min-height: 0; padding: 0; border: 0; margin-bottom: 22px; }.lesson-aside .aside-sticky { position: static; }.lesson-aside ol, .lesson-aside .aside-label { display: none; }.aside-topic { margin-bottom: 0; }.lesson-header h1 { font-size: 32px; }.lesson-section { grid-template-columns: 25px minmax(0, 1fr); gap: 10px; }.section-content h2 { font-size: 20px; }.footer-inner { min-height: 80px; flex-direction: column; justify-content: center; align-items: start; gap: 2px; }.about-grid { grid-template-columns: 1fr; gap: 18px; } }
 @media (max-width: 480px) { .topic-grid { grid-template-columns: 1fr; }.topic-card { min-height: 0; }.section-heading { display: block; }.catalog-count { margin: 13px 0 0; }.chapter-state { display: none; }.lesson-actions { flex-direction: column; align-items: stretch; }.complete-button { width: 100%; }.flow-steps { display: grid; grid-template-columns: 1fr; text-align: center; }.flow-steps b { transform: rotate(90deg); }.site-footer { margin-top: 55px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+/* 長篇教材的學習節奏、步驟與可讀範例 */
+.lesson-plan { margin: -16px 0 46px; border: 1px solid #dfeae0; border-radius: 12px; background: white; padding: 20px 24px; }
+.lesson-plan h2 { font-size: 14px; margin: 0 0 12px; }
+.lesson-plan ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 22px; }
+.lesson-plan li { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #ecf1eb; padding: 7px 0; color: #536b60; font-size: 12px; }
+.lesson-plan strong { color: var(--green); white-space: nowrap; font-size: 11px; }
+.step-list { counter-reset: lesson-step; list-style: none; margin: 17px 0 22px; padding: 0; }
+.step-list li { position: relative; padding: 0 0 17px 38px; margin: 0; color: #465d53; font-size: 13px; line-height: 1.9; }
+.step-list li::before { counter-increment: lesson-step; content: counter(lesson-step); position: absolute; left: 0; top: 1px; display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: #e0f0e5; color: var(--green); font-weight: 800; font-size: 11px; }
+.step-list li:not(:last-child)::after { content: ''; position: absolute; left: 12px; top: 29px; bottom: 0; border-left: 1px solid #cfe1d4; }
+.data-table-wrap { width: 100%; overflow-x: auto; margin: 21px 0; border: 1px solid #e0e9e1; border-radius: 10px; background: white; }
+.lesson-table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 12px; line-height: 1.7; }
+.lesson-table caption { text-align: left; padding: 12px 16px; font-size: 11px; font-weight: 800; color: var(--green); background: #f5f9f5; }
+.lesson-table th, .lesson-table td { text-align: left; vertical-align: top; padding: 11px 14px; border-top: 1px solid #e9efe9; }
+.lesson-table th { color: #466556; background: #fbfcfa; font-weight: 800; white-space: nowrap; }
+.lesson-table td { color: #4b6256; }
+.lesson-table tr:hover td { background: #f9fbf8; }
+.code-example { margin: 20px 0; border-radius: 10px; overflow: hidden; background: #173b37; }
+.code-example figcaption { padding: 10px 15px; color: #b4dec4; border-bottom: 1px solid rgba(255,255,255,.12); font-size: 11px; font-weight: 800; }
+.code-example pre { margin: 0; padding: 16px; color: #e6f3e9; font: 12px/1.8 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .lesson-plan ol { grid-template-columns: 1fr; }.lesson-plan { padding: 17px; }.lesson-table { min-width: 520px; } }
+
+.table-scroll-hint { display: none; }
+@media (max-width: 480px) { .table-scroll-hint { display: block; padding: 8px 14px 0; color: #627d6c; font-size: 10px; } }

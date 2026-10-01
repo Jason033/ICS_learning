@@ -4,15 +4,22 @@
     {
       "id": "networking", "title": "電腦網路", "icon": "◎", "summary": "把 IP、Port、TCP／UDP 與資料經過的網路接成一張圖。",
       "chapters": [
-        {"id": "one-conversation", "title": "一次網路通訊的全貌", "summary": "從兩端程式出發，理解資料如何送達與回覆。", "minutes": 20, "status": "ready"},
-        {"id": "addresses-and-ports", "title": "IP、Port 與端點", "summary": "區分電腦位置與程式的接收入口。", "status": "planned"},
-        {"id": "routes", "title": "資料怎麼走到對方", "summary": "認識同網段、閘道與路由。", "status": "planned"}
+        {"id": "one-conversation", "title": "一次網路通訊的全貌", "summary": "把 IP、Port、Socket、TCP／UDP、封包與除錯證據串成一次完整流程。", "minutes": 60, "status": "ready", "contentType": "full"},
+        {"id": "addresses-and-ports", "title": "IP、Port 與端點", "summary": "讀懂位址、監聽位置與 IPv4／IPv6 端點。", "minutes": 40, "status": "ready", "contentType": "full"},
+        {"id": "ethernet-vlan", "title": "Ethernet、MAC、ARP 與 VLAN", "summary": "看懂本地鏈路、下一站硬體位址與交換網路分區。", "minutes": 35, "status": "ready", "contentType": "full"},
+        {"id": "routes", "title": "子網、閘道與路由", "summary": "用前綴與路由表判斷資料如何走到對方。", "minutes": 40, "status": "ready", "contentType": "full"},
+        {"id": "tcp-udp", "title": "TCP、UDP 與應用程式回覆", "summary": "分清位元組流、資料報、ACK 與業務成功。", "minutes": 40, "status": "ready", "contentType": "full"},
+        {"id": "dns-dhcp-nat", "title": "DNS、DHCP 與 NAT", "summary": "區分名稱解析、網路配置與位址轉換。", "minutes": 35, "status": "ready", "contentType": "full"},
+        {"id": "multicast", "title": "單播、廣播、群播與 IGMP", "summary": "看懂接收範圍、群組加入與群播缺流量。", "minutes": 35, "status": "ready", "contentType": "full"},
+        {"id": "mtu-qos", "title": "MTU、封包大小與 QoS", "summary": "分析大封包卡住與流量優先權的證據。", "minutes": 35, "status": "ready", "contentType": "full"},
+        {"id": "performance", "title": "頻寬、延遲、丟包與 Jitter", "summary": "把「網路慢」變成可比較的量測。", "minutes": 35, "status": "ready", "contentType": "full"},
+        {"id": "network-troubleshooting", "title": "網路故障整合練習", "summary": "從端點到應用回覆，分段定位並設計重測。", "minutes": 45, "status": "ready", "contentType": "full"}
       ]
     },
     {
       "id": "wireshark", "title": "Wireshark", "icon": "⌕", "summary": "從選網卡與抓包開始，練習用封包支持判斷。",
       "chapters": [
-        {"id": "first-capture", "title": "第一次抓包：看見什麼、還不知道什麼", "summary": "自己產生流量、選擇網卡、讀取封包與篩選。", "minutes": 25, "status": "ready"},
+        {"id": "first-capture", "title": "第一次抓包：看見什麼、還不知道什麼", "summary": "自己產生流量、選擇網卡、讀取封包與篩選。", "minutes": 25, "status": "ready", "contentType": "sample"},
         {"id": "filters", "title": "擷取與顯示篩選器", "summary": "知道兩種篩選分別何時生效。", "status": "planned"},
         {"id": "sip-rtp", "title": "觀察 SIP 與 RTP", "summary": "閱讀通話流程並檢查音訊封包。", "status": "planned"}
       ]
@@ -20,7 +27,7 @@
     {
       "id": "ozeki", "title": "Ozeki API", "icon": "◌", "summary": "從官方範例認識軟體電話、通話物件與事件。",
       "chapters": [
-        {"id": "read-a-call", "title": "先看懂一通電話的物件與事件", "summary": "練習沿官方範例辨認操作、回報與音訊。", "minutes": 20, "status": "ready"},
+        {"id": "read-a-call", "title": "先看懂一通電話的物件與事件", "summary": "練習沿官方範例辨認操作、回報與音訊。", "minutes": 20, "status": "ready", "contentType": "sample"},
         {"id": "registration", "title": "註冊與撥接電話", "summary": "比較設定、請求與狀態事件。", "status": "planned"},
         {"id": "media", "title": "麥克風、喇叭與媒體連接", "summary": "把通話建立與聲音路徑分開檢查。", "status": "planned"}
       ]
@@ -28,7 +35,7 @@
     {
       "id": "serial", "title": "RS-232 與設備介面", "icon": "⇄", "summary": "讀懂串列設定、收送紀錄與無回應問題。",
       "chapters": [
-        {"id": "serial-layers", "title": "RS-232、串列設定與命令是三件事", "summary": "從接線、參數、命令與回覆分段檢查。", "minutes": 20, "status": "ready"},
+        {"id": "serial-layers", "title": "RS-232、串列設定與命令是三件事", "summary": "從接線、參數、命令與回覆分段檢查。", "minutes": 20, "status": "ready", "contentType": "sample"},
         {"id": "frame-and-timing", "title": "資料格式與逾時", "summary": "認識邊界、校驗與等待回覆。", "status": "planned"},
         {"id": "other-interfaces", "title": "RS-422、RS-485 與其他介面", "summary": "辨認設備文件中的不同介面。", "status": "planned"}
       ]
@@ -36,7 +43,7 @@
     {
       "id": "radio", "title": "無線電通訊", "icon": "◉", "summary": "從軟體維護角度認識發射、接收與常見參數。",
       "chapters": [
-        {"id": "tx-rx-path", "title": "發射與接收：聲音走過哪些環節", "summary": "先建立 TX／RX 圖像，再學會讀觀測值。", "minutes": 20, "status": "ready"},
+        {"id": "tx-rx-path", "title": "發射與接收：聲音走過哪些環節", "summary": "先建立 TX／RX 圖像，再學會讀觀測值。", "minutes": 20, "status": "ready", "contentType": "sample"},
         {"id": "rssi-snr", "title": "RSSI、SNR 與品質", "summary": "分清訊號強弱與訊號品質。", "status": "planned"},
         {"id": "parameters", "title": "頻率、通道與功率", "summary": "讀懂設備規格上的基本欄位。", "status": "planned"}
       ]
@@ -44,7 +51,7 @@
     {
       "id": "ptt", "title": "PTT 與設備狀態", "icon": "↟", "summary": "分辨按鍵、控制請求、設備發射與聲音送出。",
       "chapters": [
-        {"id": "press-to-tx", "title": "按下 PTT 之後，如何確認真的發射", "summary": "用時間線追查各環節的回報與證據。", "minutes": 20, "status": "ready"},
+        {"id": "press-to-tx", "title": "按下 PTT 之後，如何確認真的發射", "summary": "用時間線追查各環節的回報與證據。", "minutes": 20, "status": "ready", "contentType": "sample"},
         {"id": "state-machine", "title": "Ready、Busy、TX、RX 狀態", "summary": "用狀態圖理解事件與例外。", "status": "planned"},
         {"id": "interface-box", "title": "介面盒與燈號", "summary": "區分軟體命令與實體輸入輸出。", "status": "planned"}
       ]

@@ -24,11 +24,24 @@ for (const topic of catalog.topics) {
       const lesson = JSON.parse(fs.readFileSync(file, 'utf8'));
       for (const field of ['intro', 'goals', 'sections', 'exercises', 'recap']) assert(lesson[field]?.length, `${file} 缺少 ${field}`);
       for (const source of lesson.sources || []) assert.match(source.url, /^https:\/\//);
+      for (const section of lesson.sections) {
+        if (!section.table) continue;
+        assert(section.table.headers.length > 1, `${file} 表格缺少欄位`);
+        for (const row of section.table.rows) assert.equal(row.length, section.table.headers.length, `${file} 表格欄數不一致`);
+      }
     } else assert.equal(chapter.status, 'planned');
   }
 }
 assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 6);
+assert.equal(readyCount, 15);
+assert.equal(catalog.topics[0].chapters.length, 10);
+for (const chapter of catalog.topics[0].chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `networking--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 4, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 5, `${chapter.id} 練習不足`);
+}
 
 const elements = new Map();
 function element(selector) {
@@ -75,6 +88,25 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   assert.match(element('#main').innerHTML, /#\/lesson\/wireshark\/first-capture/);
   assert.doesNotMatch(element('#main').innerHTML, /#\/lesson\/wireshark\/filters/);
 
+  const first = catalog.topics[0].chapters[0];
+  const firstLesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons/networking--one-conversation.json'), 'utf8'));
+  assert.equal(first.contentType, 'full');
+  assert.equal(firstLesson.plan.reduce((sum, part) => sum + part.minutes, 0), first.minutes);
+  assert(firstLesson.sections.length >= 10);
+  assert(firstLesson.exercises.length >= 8);
+  context.location.hash = '#/lesson/networking/one-conversation';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /建議學習節奏/);
+  assert.match(element('#main').innerHTML, /<table class="lesson-table">/);
+  assert.match(element('#main').innerHTML, /模擬封包摘要/);
+  assert.match(element('#main').innerHTML, /練習 09/);
+  assert.match(element('#main').innerHTML, /下一篇/);
+
+  context.location.hash = '#/lesson/networking/network-troubleshooting';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /案例三：TCP 已建立/);
+  assert.match(element('#main').innerHTML, /練習 07/);
+
   context.location.hash = '#/lesson/ozeki/read-a-call';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /Softphone/);
@@ -93,5 +125,5 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這篇教材尚未開放/);
 
-  console.log(`通過：${catalog.topics.length} 個獨立主題、${readyCount} 篇教材，以及首頁／主題／章節／進度／規劃中頁面的互動檢查。`);
+  console.log(`通過：${catalog.topics.length} 個獨立主題、${readyCount} 篇教材，以及首頁／主題／完整教材／進度／規劃中頁面的互動檢查。`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

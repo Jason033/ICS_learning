@@ -1,5 +1,9 @@
 # 知識航線：可擴充的個人學習網站
 
+**公開網站：** https://jason033.github.io/ICS_learning/  
+**GitHub 儲存庫：** https://github.com/Jason033/ICS_learning  
+**發布來源：** `main` 分支的 `/docs`，GitHub Pages 已啟用。
+
 這個專案讓使用者依主題學習通訊、程式與設備知識，目標是逐步具備維護系統與分析故障的能力。每個主題有自己的章節順序；只有內容確實相關時才連到另一個主題。未來可以加入任何新領域，不必放進通訊系統的分類。
 
 網站已完成可使用的第一版。首頁列出 16 個獨立主題，其中 6 個有可閱讀的入門章節，其餘清楚標示「規劃中」。每章有學習目標、白話說明、流程圖、練習與可展開的解答。教材狀態與實際內容一致；「列在目錄上」不等於「教材已完成」。
@@ -41,11 +45,11 @@ Windows 若使用 Python Launcher，可改用 `py -m http.server 8000 --director
 
 網站使用原生 HTML、CSS、JavaScript 與 JSON，沒有套件安裝或建置步驟。`docs/` 是可直接發布的網站目錄。
 
-1. 建立 GitHub repository，將本專案資料夾中的檔案放在儲存庫根目錄。
+1. 若要建立另一份網站，先建立 GitHub repository，將本專案資料夾中的檔案放在儲存庫根目錄。
 2. 在 repository 的 **Settings → Pages**，選擇 **Deploy from a branch**、`main` 分支及 `/docs` 資料夾，儲存設定。
 3. 等待 GitHub 顯示網站網址，再用瀏覽器測試首頁、主題頁與章節頁。專案型 Pages 網址一般會包含 repository 名稱；本站採雜湊網址，章節連結也能在該路徑下運作。
 
-這個資料夾尚未連到 GitHub repository，因此目前沒有公開網址。上傳前請檢視教材與檔案，避免將公司或廠商非公開資料發布到公開儲存庫。GitHub Pages 的[官方發布說明](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)可作設定參考。
+本專案已發布在上方所列網址。後續更新公開內容前，請檢視教材與檔案，避免將公司或廠商非公開資料放進公開儲存庫。GitHub Pages 的[官方發布說明](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)可作設定參考。
 
 ## 怎麼新增或修改教材
 
@@ -74,7 +78,7 @@ docs/
 
 目前沒有完成學習成效實驗，也沒有真實公司系統的測試結果。六篇教材是第一版樣本；Ozeki 具體 API 需依使用版本核對，設備狀態、RS-232 接線與 PTT 行為需依授權文件及實測確認。Wireshark、SDK 和硬體實驗需要相應的桌面工具或測試環境，網頁提供步驟、說明與解答。
 
-開發檢查已涵蓋 JSON 解析、教材與目錄對應、JavaScript 語法、頁面導覽、本機伺服器供檔；也已用本機 Chrome 檢視桌面首頁、教材頁及窄視窗教材頁。正式發布後仍需以實際公開網址複查，並在使用者常用的手機瀏覽器確認排版。
+開發檢查已涵蓋 JSON 解析、教材與目錄對應、JavaScript 語法、頁面導覽、本機伺服器供檔；也已用本機 Chrome 檢視桌面首頁、教材頁及窄視窗教材頁。GitHub Pages 完成建置後，公開網址的首頁、樣式、程式、主題清單與教材資料都回應成功；仍可在使用者常用的手機瀏覽器檢視排版。
 
 ## 檔案用途與下一步
 

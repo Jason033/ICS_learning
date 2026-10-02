@@ -42,7 +42,7 @@ for (const topic of catalog.topics) {
   }
 }
 assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 22);
+assert.equal(readyCount, 28);
 assert.equal(catalog.topics[0].chapters.length, 10);
 for (const chapter of catalog.topics[0].chapters) {
   assert.equal(chapter.contentType, 'full');
@@ -60,6 +60,17 @@ for (const chapter of catalog.topics[1].chapters) {
   assert(lesson.sections.length >= 5, `${chapter.id} 教學段落不足`);
   assert(lesson.exercises.length >= 5, `${chapter.id} 練習不足`);
   assert(lesson.resources.length >= 1, `${chapter.id} 缺少實作 PCAP`);
+}
+
+assert.equal(catalog.topics[2].chapters.length, 7);
+for (const chapter of catalog.topics[2].chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `ozeki--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 5, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 7, `${chapter.id} 練習不足`);
+  assert(lesson.sources.length >= 2, `${chapter.id} 缺少官方來源`);
+  for (const source of lesson.sources) assert.match(source.url, /^https:\/\/(?:www\.)?voip-sip-sdk\.com\//);
 }
 
 const elements = new Map();
@@ -139,6 +150,8 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   context.location.hash = '#/lesson/ozeki/read-a-call';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /Softphone/);
+  assert.match(element('#main').innerHTML, /ozeki-roles\.svg/);
+  assert.match(element('#main').innerHTML, /練習 07/);
   assert.match(element('#main').innerHTML, /查看解答與判斷過程/);
   const button = element('#complete-button');
   assert(button.listeners.click, '完成按鈕未綁定');
@@ -147,10 +160,17 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
 
   context.location.hash = '#/topic/ozeki';
   await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /<strong>1<span> \/ 1<\/span><\/strong>/);
+  assert.match(element('#main').innerHTML, /<strong>1<span> \/ 7<\/span><\/strong>/);
+  assert.match(element('#main').innerHTML, /#\/lesson\/ozeki\/registration/);
   assert.match(element('#main').innerHTML, /✓ 已完成/);
 
-  context.location.hash = '#/lesson/ozeki/registration';
+  context.location.hash = '#/lesson/ozeki/media';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /ozeki-media-path\.svg/);
+  context.location.hash = '#/lesson/ozeki/evidence-troubleshooting';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /練習 08/);
+  context.location.hash = '#/lesson/serial/frame-and-timing';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這篇教材尚未開放/);
 

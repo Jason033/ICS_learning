@@ -30,11 +30,15 @@
       ]
     },
     {
-      "id": "ozeki", "title": "Ozeki API", "icon": "◌", "summary": "從官方範例認識軟體電話、通話物件與事件。",
+      "id": "ozeki", "title": "Ozeki API", "icon": "◌", "summary": "辨認 SDK 版本、物件與事件，逐段追查註冊、通話及音訊。",
       "chapters": [
-        {"id": "read-a-call", "title": "先看懂一通電話的物件與事件", "summary": "練習沿官方範例辨認操作、回報與音訊。", "minutes": 20, "status": "ready", "contentType": "sample"},
-        {"id": "registration", "title": "註冊與撥接電話", "summary": "比較設定、請求與狀態事件。", "status": "planned"},
-        {"id": "media", "title": "麥克風、喇叭與媒體連接", "summary": "把通話建立與聲音路徑分開檢查。", "status": "planned"}
+        {"id": "read-a-call", "title": "先看懂一通電話的物件與事件", "summary": "分清應用程式、範例包裝層、SDK 與證據。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "documentation-and-version", "title": "辨認 SDK 版本與官方文件", "summary": "查實際參照、方法宣告及範例與 SDK 的差異。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "registration", "title": "註冊：設定、請求與回報", "summary": "追 REGISTER、認證、回覆與註冊狀態事件。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "calls-and-events", "title": "撥接電話與通話事件", "summary": "追每通電話的物件、來電、撥號與控制結果。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "media", "title": "麥克風、喇叭與媒體連接", "summary": "分開檢查送出與接收音訊的每一段。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "lifecycle-and-events", "title": "事件、資源清理與第二通問題", "summary": "查訂閱、解除、媒體擁有者與回呼時序。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "evidence-troubleshooting", "title": "Ozeki 除錯整合練習", "summary": "用四個虛構故障案例寫出已知、未知與下一步。", "minutes": 55, "status": "ready", "contentType": "full"}
       ]
     },
     {

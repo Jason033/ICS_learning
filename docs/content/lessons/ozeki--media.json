@@ -1,0 +1,216 @@
+{
+  "intro": "通話接通但沒聲音時，最容易忽略的是音訊根本沒接到通話物件。本章從麥克風與喇叭兩個方向，追 MediaConnector、PhoneCallAudioSender／Receiver、通話物件、RTP 與播放端；每一步都要有自己的證據。",
+  "plan": [
+    {
+      "label": "畫雙向媒體路徑",
+      "minutes": 10
+    },
+    {
+      "label": "讀官方媒體元件",
+      "minutes": 12
+    },
+    {
+      "label": "核對啟動與附著",
+      "minutes": 10
+    },
+    {
+      "label": "分析單向無聲",
+      "minutes": 10
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 8
+    }
+  ],
+  "goals": [
+    "能畫出送出與接收兩條獨立音訊路徑。",
+    "能區分 Connect、AttachToCall、Start 與設備實際工作。",
+    "能在「已接通但單向無聲」案例提出下一個檢查。"
+  ],
+  "sections": [
+    {
+      "heading": "先把送出與接收畫成兩條路",
+      "paragraphs": [
+        "官方媒體範例使用 Microphone、Speaker、MediaConnector、PhoneCallAudioSender、PhoneCallAudioReceiver。送出方向從麥克風走向 sender，再附著到通話；接收方向從通話走向 receiver，再接到喇叭。兩條路的元件或裝置可以分別出問題。",
+        "這張圖說的是官方教學用的軟體電話，不表示公司程式真的使用預設麥克風、喇叭、某個介面盒或哪條音訊線。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/ozeki-media-path.svg",
+        "alt": "送出路徑是麥克風到 MediaConnector、AudioSender、通話；接收路徑是通話到 AudioReceiver、MediaConnector、喇叭。",
+        "caption": "自製雙向路徑示意，實際產品配置需以版本及原始碼核對。"
+      }
+    },
+    {
+      "heading": "Connect、Attach、Start 分別在做什麼",
+      "paragraphs": [
+        "MediaConnector.Connect 是把媒體元件接成一條資料路徑；AttachToCall 是把 sender 或 receiver 接到某通電話；Start／Stop 控制相關媒體元件是否開始或停止處理。這些動作的實際呼叫順序，請以你使用版本的範例與程式核對。",
+        "只看到 connector 物件被建立，不代表已 Connect；只看到通話 Answered，不代表 sender 或 receiver 已附著；只看到 Start，也不代表對端真的收到或播放。"
+      ],
+      "table": {
+        "caption": "每個動作回答不同問題",
+        "headers": [
+          "動作",
+          "能先支持",
+          "仍需核對"
+        ],
+        "rows": [
+          [
+            "Connect",
+            "本機元件間建立連線的要求",
+            "來源／目的是否正確及是否真的流動"
+          ],
+          [
+            "AttachToCall",
+            "媒體元件接到指定通話的要求",
+            "是否接到正確那通"
+          ],
+          [
+            "Start",
+            "媒體來源／目的開始運作的要求",
+            "裝置可用、資料量與錯誤"
+          ],
+          [
+            "RTP 出現在抓包點",
+            "網路媒體封包可見",
+            "解碼與使用者是否聽到"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "一條路只要斷一段，就可能單向無聲",
+      "paragraphs": [
+        "若對方聽不到本地端，沿「輸入裝置 → 麥克風物件 → connector → sender → call → RTP → 對端」查；若本地端聽不到對方，沿相反方向查。不同環節的證據不同，不能只看 SIP 已接通。",
+        "本機設備可能選錯、被靜音、被其他程式佔用，或應用沒有啟動正確 handler；封包有 RTP 也可能仍無法解碼或播放。不要只憑一個點就宣布根因。"
+      ],
+      "table": {
+        "caption": "單向無聲的第一輪查法",
+        "headers": [
+          "症狀",
+          "先查本機",
+          "再查其他觀測點"
+        ],
+        "rows": [
+          [
+            "對方聽不到我",
+            "輸入裝置、sender、附著與 Start",
+            "本機是否送 RTP、對端是否收到"
+          ],
+          [
+            "我聽不到對方",
+            "本機是否收到 RTP、receiver、喇叭",
+            "對端是否送出、Codec 是否匹配"
+          ],
+          [
+            "雙方都沒聲音",
+            "兩向媒體設定、SDP 與 Port",
+            "網路路徑及對端音訊設備"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "用 SDP／RTP 核對媒體，不取代裝置檢查",
+      "paragraphs": [
+        "SIP／SDP 告訴你協商或宣告了哪些媒體位址、Port 與格式；RTP 顯示封包是否在觀測點出現。即使兩向 RTP 都可見，也不能證明麥克風有有效聲音、Codec 解碼成功或喇叭正在播放。",
+        "反過來說，若 Wireshark 不顯示 RTP，先核對抓包點、解碼設定與 SDP；不宜直接說 SDK 一定沒送。可搭配本站 Wireshark 主題的 SIP／RTP 練習檔，但本章本身可獨立讀。"
+      ],
+      "flow": [
+        "SIP／SDP 協商",
+        "媒體元件附著",
+        "RTP 出現在觀測點",
+        "解碼與播放",
+        "人耳聽見"
+      ],
+      "note": "Wireshark 的合成 PCAP 沒有真實人聲，不可用作公司通話品質測量。"
+    },
+    {
+      "heading": "虛構案例：接通後本地端沒聲音",
+      "paragraphs": [
+        "假設教學記錄顯示通話狀態為 InCall，SIP 200 OK／ACK 已看見，本機抓到 B→A 的 RTP；應用紀錄有 mediaReceiver.AttachToCall，但沒有找到 Speaker.Start 的對應紀錄。這支持「接收媒體已進入本機，播放路徑仍待查」，並不直接證明 Speaker.Start 沒執行，因為日誌可能不完整。",
+        "下一步應先確認實際選用的輸出裝置、handler 啟動和是否有音訊資料量；若有授權的測試條件，再做端點播放測試。"
+      ],
+      "table": {
+        "caption": "虛構紀錄中的已知／未知",
+        "headers": [
+          "已知",
+          "未知",
+          "下一個證據"
+        ],
+        "rows": [
+          [
+            "SDK 回報 InCall",
+            "音訊物件是否正確啟動",
+            "handler 狀態或日誌"
+          ],
+          [
+            "有 B→A RTP",
+            "是否成功解碼",
+            "Codec／解碼錯誤"
+          ],
+          [
+            "receiver 曾附著",
+            "喇叭是否選對且播放",
+            "裝置選擇與播放測試"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "結束時也要拆開媒體路徑",
+      "paragraphs": [
+        "官方範例在通話結束時停止設備、將媒體處理器從通話 detach，並解除事件訂閱。若下一通失去聲音，除了連線問題，也要看上一通清理是否讓元件仍接在舊物件。",
+        "不同版本及應用程式的資源所有權可能不同；不要無條件對共享音訊元件呼叫 Dispose。先確認誰建立、誰共用、誰負責關閉。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【方向】對方聽不到我，應先查 sender 還是 receiver？",
+      "answer": "先查本地輸入／sender 路徑，再查本機是否送出 RTP 與對端接收；receiver 是本地聽對方的方向。"
+    },
+    {
+      "question": "【動作】建立 MediaConnector 物件是否等於已經有聲音資料流？",
+      "answer": "不等於。還需核對 Connect、AttachToCall、Start、裝置及實際資料流。"
+    },
+    {
+      "question": "【附著】sender.AttachToCall 呼叫時，最容易接錯的是什麼？",
+      "answer": "接到錯誤或已結束的通話物件；要核對該通的身分與生命週期。"
+    },
+    {
+      "question": "【封包】有雙向 RTP，就能寫「雙方一定聽到聲音」嗎？",
+      "answer": "不能。封包存在不保證負載有聲、解碼成功、播放器與喇叭可用。"
+    },
+    {
+      "question": "【案例】有收到 B→A RTP 但本地沒聲音，下一步查哪些本地元件？",
+      "answer": "查 receiver 是否附著、connector 到 Speaker 的路徑、Speaker 是否選對且啟動、是否有解碼錯誤。"
+    },
+    {
+      "question": "【缺紀錄】沒看到 Speaker.Start 的日誌，就能說它沒執行嗎？",
+      "answer": "不能。日誌可能沒記到；應查程式呼叫點或做授權測試，確認事件與裝置狀態。"
+    },
+    {
+      "question": "【清理】通話結束就對所有媒體元件 Dispose 合理嗎？",
+      "answer": "未必。先查元件是否被多通共用與誰負責擁有；應依實際版本和應用設計清理。"
+    }
+  ],
+  "recap": [
+    "送出與接收音訊是兩條不同的路。",
+    "Connect、Attach、Start、RTP 與播放各回答不同問題。",
+    "單向無聲要沿對應方向逐段找證據。"
+  ],
+  "sources": [
+    {
+      "label": "Ozeki 官方 MediaHandler 教學",
+      "url": "https://www.voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
+    },
+    {
+      "label": "Ozeki 官方撥接與媒體連接教學",
+      "url": "https://www.voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
+    },
+    {
+      "label": "Ozeki 官方音訊裝置概覽",
+      "url": "https://www.voip-sip-sdk.com/p_7307-voip-audio-device-support.html"
+    }
+  ]
+}

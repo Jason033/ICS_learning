@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 610" role="img" aria-labelledby="title desc">
+  <title id="title">Ozeki 教學範例的三層觀察圖</title>
+  <desc id="desc">畫面與應用程式、範例包裝類別、Ozeki SDK、SIP 與 RTP 以及音訊裝置是不同觀察層；SDK 事件回到應用程式。</desc>
+  <rect width="420" height="610" rx="20" fill="#f7faf5"/>
+  <text x="26" y="38" fill="#0c5145" font-size="17" font-weight="700" font-family="Arial, sans-serif">看程式時，先分清每一層</text>
+  <g font-family="Arial, sans-serif" text-anchor="middle">
+    <rect x="24" y="62" width="372" height="78" rx="13" fill="#e2f0e5" stroke="#b7d6c2"/>
+    <text x="210" y="93" fill="#133b35" font-size="17" font-weight="700">畫面／應用程式</text>
+    <text x="210" y="118" fill="#496c61" font-size="13">使用者操作、公司或範例程式</text>
+    <rect x="24" y="177" width="372" height="78" rx="13" fill="#fff" stroke="#cddfd2"/>
+    <text x="210" y="208" fill="#133b35" font-size="17" font-weight="700">自寫的包裝類別</text>
+    <text x="210" y="233" fill="#496c61" font-size="13">先查方法宣告，別當成 SDK API</text>
+    <rect x="24" y="292" width="372" height="78" rx="13" fill="#e2f0e5" stroke="#b7d6c2"/>
+    <text x="210" y="323" fill="#133b35" font-size="17" font-weight="700">Ozeki SDK</text>
+    <text x="210" y="348" fill="#496c61" font-size="13">通話物件、狀態事件、媒體元件</text>
+    <rect x="24" y="407" width="372" height="78" rx="13" fill="#fff" stroke="#cddfd2"/>
+    <text x="210" y="438" fill="#133b35" font-size="17" font-weight="700">外部觀測點</text>
+    <text x="210" y="463" fill="#496c61" font-size="13">SIP／RTP、伺服器、音訊裝置</text>
+  </g>
+  <g stroke="#0d6555" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M210 146v23m0-7-6 7m6-7 6 7"/>
+    <path d="M210 261v23m0-7-6 7m6-7 6 7"/>
+    <path d="M210 376v23m0-7-6 7m6-7 6 7"/>
+  </g>
+  <rect x="24" y="516" width="372" height="64" rx="12" fill="#0d6555"/>
+  <text x="210" y="542" text-anchor="middle" fill="#fff" font-size="15" font-weight="700" font-family="Arial, sans-serif">SDK 事件會回到應用程式</text>
+  <text x="210" y="565" text-anchor="middle" fill="#e2f0e5" font-size="12" font-family="Arial, sans-serif">必須確認來源、通話身分與時間</text>
+</svg>

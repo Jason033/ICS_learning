@@ -1,0 +1,240 @@
+{
+  "intro": "本章用 SIP 註冊做第一個可追查的流程。你會把設定、送出 REGISTER、伺服器回覆和 SDK 狀態事件拆開看；官方範例的具體方法要依實際版本核對，練習紀錄全是虛構。",
+  "plan": [
+    {
+      "label": "先看註冊目的",
+      "minutes": 8
+    },
+    {
+      "label": "核對設定欄位",
+      "minutes": 10
+    },
+    {
+      "label": "追 REGISTER 與回覆",
+      "minutes": 12
+    },
+    {
+      "label": "比較失敗位置",
+      "minutes": 12
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 8
+    }
+  ],
+  "goals": [
+    "能說清楚帳號、認證與伺服器設定各扮演什麼角色。",
+    "能讀出「要求註冊」與「已註冊」之間還缺的證據。",
+    "能根據虛構紀錄縮小註冊失敗的位置。"
+  ],
+  "sections": [
+    {
+      "heading": "註冊是告訴電話系統去哪裡找你",
+      "paragraphs": [
+        "在使用 PBX 帳號的教學情境裡，SIP 用戶端以 REGISTER 告知伺服器目前的可聯繫位置，並按設定進行認證；它常是接收來電的前置步驟。直撥 IP 或不同產品配置可能不需要同樣的註冊步驟，所以先讀系統配置，不要把註冊當所有通話的通則。",
+        "一通電話的 INVITE 和帳號的 REGISTER 是不同 SIP 請求；看到註冊成功也不能證明已撥號、對端已接聽或音訊正常。"
+      ],
+      "flow": [
+        "帳號與伺服器設定",
+        "發出 REGISTER",
+        "伺服器回覆",
+        "狀態事件",
+        "之後的呼叫"
+      ],
+      "note": "本章只解釋官方 SIP 軟體電話範例，不表示公司系統必然使用 PBX、哪個 IP 或哪種認證。"
+    },
+    {
+      "heading": "設定欄位不要混成「一組帳號」",
+      "paragraphs": [
+        "官方 C# 範例可見 displayName、userName、authenticationId、registerPassword、domainHost、domainPort 等欄位。名稱相似但用途不同：顯示名稱不是密碼，認證 ID 也未必等於使用者名稱；實際值由電話系統文件提供。",
+        "若連到不同通訊協定、傳輸方式或位址，還要看實際 SDK／PBX 設定。本教材不提供任何真實伺服器或可用帳密。"
+      ],
+      "table": {
+        "caption": "官方範例的常見欄位",
+        "headers": [
+          "欄位",
+          "教學解讀",
+          "先核對"
+        ],
+        "rows": [
+          [
+            "domainHost／domainPort",
+            "要連的伺服器名稱／Port",
+            "是否為該環境正確的伺服器"
+          ],
+          [
+            "userName",
+            "對外的 SIP 使用者身分",
+            "是否與帳號配置一致"
+          ],
+          [
+            "authenticationId／registerPassword",
+            "認證資料",
+            "是否由授權管理處取得；勿貼日誌"
+          ],
+          [
+            "displayName",
+            "顯示用名稱",
+            "不要當成認證 ID"
+          ],
+          [
+            "registrationRequired",
+            "範例是否要求註冊",
+            "部署模式是否真的需要"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "方法呼叫回來，不代表伺服器同意",
+      "paragraphs": [
+        "舊型官方範例在建立 phone line 後呼叫 RegisterPhoneLine，並透過註冊狀態事件知道後續結果。較新範例以自寫 Softphone 類別包裝註冊；不論哪種寫法，都要把「本機發起」和「收到伺服器回覆／事件」分開。",
+        "SIP 認證情境可能先收到 401 challenge，再帶上認證資訊重送 REGISTER，最後得到 200 OK。不能把所有 401 都直接判成最後失敗；需要看後續是否成功。"
+      ],
+      "table": {
+        "caption": "虛構教學時間線",
+        "headers": [
+          "時間",
+          "觀察",
+          "能支持"
+        ],
+        "rows": [
+          [
+            "00:00.000",
+            "應用程式要求註冊",
+            "本機操作已發出"
+          ],
+          [
+            "00:00.030",
+            "REGISTER 到達擷取點",
+            "本機送出訊號"
+          ],
+          [
+            "00:00.080",
+            "401 Unauthorized challenge",
+            "伺服器要求認證；尚未定論"
+          ],
+          [
+            "00:00.100",
+            "第二筆 REGISTER 帶認證",
+            "用戶端嘗試回答 challenge"
+          ],
+          [
+            "00:00.150",
+            "200 OK 與註冊狀態成功",
+            "此觀測點的註冊流程成功"
+          ]
+        ]
+      },
+      "note": "這是自行編寫的教學紀錄；真實封包順序與回應可能不同，不能用作公司流程證明。",
+      "code": {
+        "title": "舊型官方範例的閱讀順序縮寫；省略參數，不能直接執行",
+        "text": "phone = SoftPhoneFactory.CreateSoftPhone(...);\nline = phone.CreatePhoneLine(account);\nline.RegistrationStateChanged += OnRegistrationChanged;\nphone.RegisterPhoneLine(line);\n// 真正是否註冊成功：看回應與 OnRegistrationChanged"
+      }
+    },
+    {
+      "heading": "失敗時先分四個位置",
+      "paragraphs": [
+        "若 SDK 說註冊失敗，不要只改密碼。先看應用是否真的提出註冊、封包有沒有離開、伺服器是否回應、回應碼與事件是否相符。",
+        "若封包顯示 200 OK 但畫面仍顯示未註冊，要查事件處理、狀態轉發或後續過期／重新註冊；若沒有看到封包，也要確認抓包位置與篩選沒有漏掉。"
+      ],
+      "table": {
+        "caption": "依觀測分段排查",
+        "headers": [
+          "看到什麼",
+          "可先查",
+          "尚不能斷言"
+        ],
+        "rows": [
+          [
+            "沒有 REGISTER",
+            "方法是否呼叫、解析與抓包位置",
+            "不能直接說伺服器壞"
+          ],
+          [
+            "REGISTER 有去無回",
+            "目的位址、傳輸、路徑與伺服器觀測",
+            "不能直接說密碼錯"
+          ],
+          [
+            "401 後無第二筆 REGISTER",
+            "程式是否處理 challenge、帳密設定",
+            "不能把首筆 401 當最終原因"
+          ],
+          [
+            "最終拒絕回應",
+            "回應碼、帳號配置與伺服器 log",
+            "不能猜哪個欄位錯"
+          ],
+          [
+            "200 OK 但 UI 顯示失敗",
+            "SDK 事件、轉發與時間順序",
+            "不能只靠 UI 判伺服器拒絕"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "寫一份可重測的註冊觀察單",
+      "paragraphs": [
+        "在授權測試環境中，固定帳號與伺服器設定，記下開始時間、SDK 事件、SIP 回應與最後畫面。每次只改一個條件，才知道哪個變因造成差異。不要在公開練習檔放真實帳密或 Authorization 原文。"
+      ],
+      "steps": [
+        "記下產品／SDK 版本與範例來源。",
+        "記下發起註冊的方法呼叫時間。",
+        "核對 REGISTER、回應碼與是否有第二次請求。",
+        "核對對應線路的狀態事件與 UI。",
+        "寫出目前知道、仍不知道與下一個證據。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【分工】REGISTER 與 INVITE 差在哪裡？",
+      "answer": "REGISTER 是向電話系統登記目前可聯繫的位置／身分；INVITE 是建立一通通話的請求。"
+    },
+    {
+      "question": "【證據】RegisterPhoneLine 呼叫完成，就能說註冊成功嗎？",
+      "answer": "不能。要看伺服器回覆與對應線路的狀態事件；方法呼叫本身只代表發起。"
+    },
+    {
+      "question": "【401】第一筆 REGISTER 得到 401，一定是密碼錯嗎？",
+      "answer": "不一定。常見流程會先用 401 發出認證 challenge，再看有無帶認證的重送及最後回覆。"
+    },
+    {
+      "question": "【缺包】抓包沒看到 REGISTER，可以直接說 SDK 沒送嗎？",
+      "answer": "不行。先核對抓包網卡、位置、時間與篩選；再看程式方法／SDK 記錄。"
+    },
+    {
+      "question": "【200】SIP 200 OK 已到，但畫面說未註冊，下一步查什麼？",
+      "answer": "查對應線路的事件、事件轉發、過期或重新註冊的時間；不要只看單筆 200 OK 或 UI。"
+    },
+    {
+      "question": "【欄位】displayName 和 authenticationId 可不經核對直接填相同嗎？",
+      "answer": "不可。它們角色不同，值要依電話系統提供的配置核對。"
+    },
+    {
+      "question": "【邊界】註冊成功能證明來電與聲音一定正常嗎？",
+      "answer": "不能。來電路由、通話控制、媒體協商及音訊播放都要另外驗證。"
+    }
+  ],
+  "recap": [
+    "註冊請求、伺服器回覆與 SDK 狀態事件是不同證據。",
+    "初次 401 可能是認證流程的一步，要看後續。",
+    "先定位失敗層級，再調整設定。"
+  ],
+  "sources": [
+    {
+      "label": "Ozeki 官方 SIP 註冊範例",
+      "url": "https://voip-sip-sdk.com/p_7095-register-to-sip-pbx.html"
+    },
+    {
+      "label": "Ozeki 官方較新註冊教學",
+      "url": "https://voip-sip-sdk.com/p_7535-how-to-register-to-a-pbx-using-sip-account.html"
+    },
+    {
+      "label": "Ozeki 官方開發指南",
+      "url": "https://www.voip-sip-sdk.com/p_7332-voip-sdk-developers-guide.html"
+    }
+  ]
+}

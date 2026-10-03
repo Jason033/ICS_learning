@@ -1,0 +1,162 @@
+{
+  "intro": "維護工作需要知道「哪一步真的發生」。本章把 Socket 紀錄寫成可以比對的證據，所有紀錄都來自虛構 Lab-A，不暗示公司系統的日誌欄位。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀範例",
+      "minutes": 14
+    },
+    {
+      "label": "判讀紀錄",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 10
+    }
+  ],
+  "goals": [
+    "能列出一次請求至少要記的關聯資訊。",
+    "能從兩端紀錄找出第一個沒有證據的箭頭。",
+    "能理解封包、Socket log 與業務 log 的證據範圍。"
+  ],
+  "sections": [
+    {
+      "heading": "先給每次連線和請求名字",
+      "paragraphs": [
+        "連線 ID 代表一條 TCP 連線，請求 ID 代表一次業務操作；時間、遠近端位址／Port、階段、bytes 數和結果是基本欄位。",
+        "不要把密碼、token 或全部 payload 原文直接寫入共用 log；真正記哪些欄位應遵守產品與公司規範。"
+      ],
+      "table": {
+        "caption": "虛構 Lab-A 的最小紀錄欄位",
+        "headers": [
+          "欄位",
+          "白話用途",
+          "示例"
+        ],
+        "rows": [
+          [
+            "connection_id",
+            "分清舊連線與重連",
+            "c41"
+          ],
+          [
+            "request_id",
+            "串同一個查詢",
+            "q17"
+          ],
+          [
+            "stage",
+            "說明等在哪一步",
+            "HEADER_READ"
+          ],
+          [
+            "bytes",
+            "辨識部分讀取",
+            "1/2"
+          ],
+          [
+            "elapsed_ms",
+            "計算等待時間",
+            "2000"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "兩端紀錄要對同一筆事",
+      "paragraphs": [
+        "Client log 的 SEND_REQUEST q17 與 Server log 的 PARSE_REQUEST q17 可互相對照，但前提是 ID 真的是協定共用欄位；若沒有共同 ID，就用端點、時間與內容摘要謹慎比對。",
+        "不同主機的時間不一定相同。比對前記錄時區、時間同步狀況及可能誤差；幾毫秒的先後不能隨意斷言。"
+      ]
+    },
+    {
+      "heading": "封包看得到 bytes，不見得看得到業務結果",
+      "paragraphs": [
+        "封包擷取可看到連線封包、載荷與方向，前提是抓在正確位置且資料沒有加密或遺漏；仍不能直接證明應用程式已解析、執行或把結果顯示在畫面。",
+        "程式 log 可說明程式走到哪一步，但紀錄本身也可能缺失或時間不準；兩者應互相補充。"
+      ]
+    },
+    {
+      "heading": "一段只有 Client 的紀錄",
+      "paragraphs": [
+        "10:00:00.000 CONNECT_OK c41；.005 SEND_DONE q17 9 bytes；.100 HEADER_READ q17 1/2；02.100 READ_TIMEOUT q17。這足以證明至少收到一個回覆 byte，仍不知伺服器是否送完。",
+        "下一個有效檢查：查 Server 同一連線是否產生 2-byte 標頭與完整 payload、是否關閉，以及網路觀測點是否看到餘下 bytes。"
+      ],
+      "code": {
+        "title": "Lab-A：同一個請求的部分紀錄",
+        "text": "10:00:00.000 c41 CONNECT_OK\n10:00:00.005 c41 q17 SEND_DONE bytes=9\n10:00:00.100 c41 q17 HEADER_READ bytes=1/2\n10:00:02.100 c41 q17 READ_TIMEOUT"
+      }
+    },
+    {
+      "heading": "若兩端都在，找第一個缺口",
+      "paragraphs": [
+        "若 Server 記 RECV_COMPLETE、PARSE_OK，卻沒有 SEND_RESPONSE，先查回覆產生與送出；若 Server 記 SEND_RESPONSE，Client 缺讀取結果，再看封包及 Client parser。",
+        "這是排查優先順序，不是根因宣判；log 可漏記。每個結論都要附來源與不知道的部分。"
+      ]
+    },
+    {
+      "heading": "寫出外行也能看的結論",
+      "paragraphs": [
+        "不要只寫「Socket timeout」。可寫：「客戶端已連上並送出 9 bytes，收到回覆標頭 1/2 bytes，2 秒後讀取逾時；尚不知道伺服器是否送齊。下一步比對伺服器 q17 的送出紀錄。」",
+        "這種結論能讓後續接手的人知道已知、未知和下一個檢查。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【欄位】為何要記 connection_id 與 request_id？",
+      "answer": "分辨哪條連線、哪次操作；重連或多筆請求時不混淆。"
+    },
+    {
+      "question": "【證據】SEND_DONE 可以證明 Server PARSE_OK 嗎？",
+      "answer": "不能；需伺服器紀錄或其他觀測。"
+    },
+    {
+      "question": "【紀錄】HEADER_READ=1/2 說明什麼？",
+      "answer": "已收到標頭第一個 byte，完整標頭尚未收齊。"
+    },
+    {
+      "question": "【時鐘】兩台主機 log 相差 20 ms 能直接判定先後嗎？",
+      "answer": "不能；先查時間同步與誤差。"
+    },
+    {
+      "question": "【封包】看到 TCP ACK 能證明業務命令完成嗎？",
+      "answer": "不能；ACK 是傳輸層觀測，應用解析與執行仍待確認。"
+    },
+    {
+      "question": "【下一步】Server PARSE_OK 而無 SEND_RESPONSE，優先查哪段？",
+      "answer": "查回覆產生與送出，並確認 log 是否完整。"
+    },
+    {
+      "question": "【隱私】可把 token 全文寫 log 以利除錯嗎？",
+      "answer": "不應如此；依產品規範遮蔽敏感資訊。"
+    },
+    {
+      "question": "【表述】只有 client read timeout，適合直接寫「Server 故障」嗎？",
+      "answer": "不適合；寫明讀取階段與缺少的遠端證據。"
+    }
+  ],
+  "recap": [
+    "以連線、請求、階段串起雙端證據。",
+    "封包與程式紀錄各有觀測範圍。",
+    "結論要說已知、未知與下一個檢查。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：socket 模組與各呼叫的返回值",
+      "url": "https://docs.python.org/3/library/socket.html"
+    },
+    {
+      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
+      "url": "https://docs.python.org/3/howto/sockets.html"
+    },
+    {
+      "label": "Linux man-pages：recv(2) 返回值與旗標",
+      "url": "https://man7.org/linux/man-pages/man2/recv.2.html"
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+{
+  "intro": "最容易讓 Socket 程式出錯的假設，是把一次 send 當一次 recv。本章用 Lab-A 的二位元組長度前綴設計，練習把一串位元組還原成完整訊息。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀範例",
+      "minutes": 14
+    },
+    {
+      "label": "判讀紀錄",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能解釋部分讀取與多則合併讀取。",
+    "能依兩位元組長度前綴讀一則完整訊息。",
+    "能區分 recv 回空、暫時沒有資料與逾時。"
+  ],
+  "sections": [
+    {
+      "heading": "TCP 只有位元組順序，沒有應用訊息格子",
+      "paragraphs": [
+        "假設送出 A 的 9 bytes 和 B 的 10 bytes，接收端可能得到 2＋7＋10 bytes，也可能一次得到 19 bytes。這都不違反 TCP。",
+        "「半包／黏包」是常見俗稱，真正問題是應用程式沒有按自己的格式劃界。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/socket-framing.svg",
+        "alt": "兩次發送的資料可被三次接收；接收端依前綴長度組回完整訊息。",
+        "caption": "TCP 傳位元組；應用層負責界定一則訊息。"
+      }
+    },
+    {
+      "heading": "三種常見劃界方法",
+      "paragraphs": [
+        "固定長度：每則一樣大；分隔符：如換行，內容若可能含分隔符需跳脫；長度前綴：先送長度再送指定數量的內容。連線關閉也可作單次回覆的結束標誌，但不適合持續複用的對話。",
+        "Lab-A 選兩位元組大端序長度，表示後面 payload 有幾個位元組；不是字元個數，範圍上限在教學程式設定為 1024 bytes。"
+      ],
+      "table": {
+        "caption": "本教材的虛構 Lab-A 框架",
+        "headers": [
+          "部分",
+          "位元組",
+          "說明"
+        ],
+        "rows": [
+          [
+            "長度",
+            "00 07",
+            "十六進位 7：後續 payload 長度"
+          ],
+          [
+            "內容",
+            "53 54 41 54 55 53 3F",
+            "ASCII STATUS?，共 7 bytes"
+          ],
+          [
+            "完整請求",
+            "00 07 + 7 bytes",
+            "總共 9 bytes"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "read_exact 要維持「還差多少」",
+      "paragraphs": [
+        "先收滿 2 bytes 的長度，再以相同方式收滿 payload。每次 recv(n) 最多回 n bytes；累加到 n，才能解析該段。",
+        "若中途收到 b\"\"，代表對端已關閉該 TCP 讀取方向；若尚未湊滿承諾長度，應記為不完整訊息，不能默默當成成功。"
+      ],
+      "code": {
+        "title": "示意演算法：正確處理短讀",
+        "text": "def read_exact(conn, count):\n    data = bytearray()\n    while len(data) < count:\n        part = conn.recv(count - len(data))\n        if part == b\"\":\n            raise EOFError(\"框架尚未讀完\")\n        data.extend(part)\n    return bytes(data)"
+      }
+    },
+    {
+      "heading": "兩則相連時不要丟掉後半段",
+      "paragraphs": [
+        "若程式自己用大緩衝一次讀多筆，解析出第一則後要保留多餘位元組，作為下一則開頭。另一種簡單寫法是 read_exact 每次只要求剩餘長度。",
+        "不要以「這次 recv 恰好是一則」寫 parser；它會在不同網路時序下偶發失敗。"
+      ]
+    },
+    {
+      "heading": "逾時不等於訊息結束",
+      "paragraphs": [
+        "等待太久會發生 socket.timeout；它表示在設定的等待時間內沒有讀到所需資料，不能把目前累積的半則訊息當成完整。",
+        "也不要把「暫時沒資料」「逾時」「讀到空位元組」混成同一種狀態。不同狀態決定是否繼續等、結束連線或記錄未完成。"
+      ]
+    },
+    {
+      "heading": "親自觀察分段寫入",
+      "paragraphs": [
+        "TCP 本機腳本將完整請求切成「一個長度位元組」和「剩餘內容」兩次送。伺服器不用猜 recv 分段，仍能用 read_exact 正確讀取。",
+        "作業系統可能合併兩次 send，因此腳本不承諾能看見兩次 recv；教學重點是無論怎麼分段都得到同一訊息。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【觀念】一次 send 對應一次 recv 嗎？",
+      "answer": "不保證；TCP 是串流。"
+    },
+    {
+      "question": "【計算】前綴 00 07，應再讀幾個 payload bytes？",
+      "answer": "7 個；前綴本身不算在這個長度裡。"
+    },
+    {
+      "question": "【短讀】要讀 7 bytes，第一次拿到 3，下一次應最多要求多少？",
+      "answer": "4 bytes，然後繼續直到收滿。"
+    },
+    {
+      "question": "【合併】一次拿到兩則完整框架，第二則怎麼辦？",
+      "answer": "保留並解析第二則，不能丟掉。"
+    },
+    {
+      "question": "【EOF】已讀 3/7 bytes 就收到 b\"\"，可以成功解析嗎？",
+      "answer": "不能；記為框架不完整。"
+    },
+    {
+      "question": "【逾時】3/7 bytes 後逾時，能把 3 bytes 當完整訊息嗎？",
+      "answer": "不能；只能記為未完成，依協定決定後續處理。"
+    },
+    {
+      "question": "【限制】為何需設定最大長度？",
+      "answer": "避免錯誤或惡意前綴使程式無上限等待或配置記憶體。"
+    },
+    {
+      "question": "【字元】長度前綴的 7 是字數嗎？",
+      "answer": "本協定定義為位元組數；多位元組文字的字數可能不同。"
+    }
+  ],
+  "recap": [
+    "把 TCP 視為可任意分段交付的位元組串流。",
+    "先讀框架，再解析業務內容。",
+    "不完整、逾時、EOF 應分開紀錄。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
+      "url": "https://docs.python.org/3/howto/sockets.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 是位元組串流",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+    },
+    {
+      "label": "Python 官方：socket 模組與各呼叫的返回值",
+      "url": "https://docs.python.org/3/library/socket.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 TCP 本機練習",
+      "path": "./assets/labs/socket-tcp-lab.py",
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+    }
+  ]
+}

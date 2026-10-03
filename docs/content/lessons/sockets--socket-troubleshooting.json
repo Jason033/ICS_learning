@@ -1,0 +1,177 @@
+{
+  "intro": "這一章把前七篇放在一起：讀虛構紀錄、找第一個未證實的步驟，再決定下一個檢查。案例不是公司故障；數值只供練習，不是通用性能門檻。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀範例",
+      "minutes": 14
+    },
+    {
+      "label": "判讀紀錄",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 20
+    }
+  ],
+  "goals": [
+    "能依證據把連線、發送、框架、解析與業務結果分開。",
+    "能處理短讀、錯誤長度、逾時與重連情境。",
+    "能寫出有證據和未知範圍的診斷句。"
+  ],
+  "sections": [
+    {
+      "heading": "先畫一條最小證據鏈",
+      "paragraphs": [
+        "Lab-A 的虛構流程：Client CONNECT → SEND 00 07 STATUS? → Server READ_EXACT → PARSE → REPLY 00 08 OK,READY → Client READ_EXACT → DISPLAY。",
+        "每題先標已觀測，再找第一個沒有證據的箭頭；不要因某個 log 欄位叫 success 就推論整條路都成功。"
+      ],
+      "flow": [
+        "連線",
+        "送出",
+        "對端收滿",
+        "解析",
+        "產生回覆",
+        "本端收滿",
+        "顯示"
+      ]
+    },
+    {
+      "heading": "案例 A：被拒絕，尚未開始收送",
+      "paragraphs": [
+        "Client 顯示 connect error: connection refused；Server log 沒有 LISTEN。本次還沒有可讀的業務請求。",
+        "先核對目標 IP／Port、服務是否監聽及觀測位置；不能把它歸因於 STATUS? 格式錯誤。"
+      ]
+    },
+    {
+      "heading": "案例 B：連線成功，標頭只讀到一半",
+      "paragraphs": [
+        "Client CONNECT_OK、SEND_DONE 9 bytes、HEADER_READ 1/2、READ_TIMEOUT。已建立連線且讀到 1 byte，沒有完整回覆。",
+        "下一步核對 Server 的回覆 bytes 與時間；可檢查 parser 是否錯把單次 recv 當 2 bytes。不能用 SEND_DONE 證明對端完整處理。"
+      ]
+    },
+    {
+      "heading": "案例 C：兩則連在一起",
+      "paragraphs": [
+        "Server 一次 recv 看到 00 07 STATUS? 00 07 STATUS? 共 18 bytes，卻只解析第一則、丟掉後 9 bytes。",
+        "這是應用緩衝管理錯誤；依長度解析第一則後保留剩餘 bytes，或逐段 read_exact。不能要求 TCP「每次只給一則」。"
+      ]
+    },
+    {
+      "heading": "案例 D：標頭宣稱超大長度",
+      "paragraphs": [
+        "Server 收到 FF FF，宣稱 65535 bytes，但 Lab-A 最大 1024 bytes。此時尚未讀 payload。",
+        "立即記錄並拒絕不合法框架；不要先配置 65535 bytes 或一直等。這是格式驗證問題，不是網路慢。"
+      ]
+    },
+    {
+      "heading": "案例 E：UDP 送出後沒回覆",
+      "paragraphs": [
+        "Client sendto 回傳 7；等候 2 秒後 timeout；Server 沒有對應紀錄。可能未送達、送到別的端點、Server 沒紀錄或回覆未到。",
+        "先核對雙方 IP／Port、服務監聽與兩端封包觀測；不能由 sendto 返回 7 說 Server 必然收到。"
+      ]
+    },
+    {
+      "heading": "案例 F：切換命令送後斷線",
+      "paragraphs": [
+        "Client 對有副作用的「切換」命令記 SEND_DONE，接著 EOF；Server 執行紀錄缺失。結果未知。",
+        "先查權威狀態或原請求識別碼的執行紀錄，再按產品定義決定是否重試；不要直接用新連線重送。"
+      ]
+    },
+    {
+      "heading": "案例 G：收到回覆仍顯示舊畫面",
+      "paragraphs": [
+        "Client READ_COMPLETE 00 08 OK,READY、PARSE_OK，但 UI 仍顯示 Busy。Socket 層已讀完此回覆，顯示更新是另一個環節。",
+        "下一步查回覆與 UI 狀態映射、事件分派及是否有更新被較舊事件覆蓋；不能倒退宣稱網路一定斷了。"
+      ]
+    },
+    {
+      "heading": "自己跑腳本，對照一份基準",
+      "paragraphs": [
+        "先執行兩個本機腳本取得正常輸出，再逐題比較哪個階段變了。若在本機也失敗，先看 Python 版本、端點是否被政策阻擋和腳本錯誤。",
+        "本機成功是程式範例基準，沒有測真實設備、網路或公司 SDK。整合結果仍要用授權的實際證據驗證。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【A】connect 被拒絕時，優先查協定 payload 嗎？",
+      "answer": "不是；先查位址／Port、監聽與服務狀態。"
+    },
+    {
+      "question": "【B】1/2 標頭後逾時，已知哪兩件事？",
+      "answer": "連線成功且至少讀到一個回覆 byte；完整框架未取得。"
+    },
+    {
+      "question": "【C】18 bytes 含兩則 9-byte 框架，parser 應如何處理？",
+      "answer": "解析第一則後保留剩餘 9 bytes 再解析第二則。"
+    },
+    {
+      "question": "【D】FF FF 的長度超過上限，該怎麼做？",
+      "answer": "在讀 payload 前拒絕並記錄不合法長度。"
+    },
+    {
+      "question": "【E】UDP sendto 返回 7，可證明 Server 收到嗎？",
+      "answer": "不能；需對端或封包證據。"
+    },
+    {
+      "question": "【F】有副作用命令送後 EOF，結果應標什麼？",
+      "answer": "未知；先查權威狀態／請求 ID，避免盲目重送。"
+    },
+    {
+      "question": "【G】PARSE_OK 而畫面仍 Busy，下一個檢查？",
+      "answer": "查 UI 狀態更新路徑與事件時序。"
+    },
+    {
+      "question": "【分層】封包看到 payload，但 Server 沒 PARSE_OK，可能在哪一段？",
+      "answer": "可能在 Socket 接收、框架讀取、解析或紀錄缺失；補對端階段紀錄。"
+    },
+    {
+      "question": "【結論】如何描述 B 而不過度推論？",
+      "answer": "「連線並送出 9 bytes，回覆標頭只收到 1/2，2 秒後讀取逾時；對端是否送齊未知，下一步查 Server 回覆紀錄。」"
+    }
+  ],
+  "recap": [
+    "先找第一個沒有證據的步驟。",
+    "不要把 send、TCP ACK、解析、設備結果當同一件事。",
+    "真實系統需要版本相符的文件和雙端觀測。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：socket 模組與各呼叫的返回值",
+      "url": "https://docs.python.org/3/library/socket.html"
+    },
+    {
+      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
+      "url": "https://docs.python.org/3/howto/sockets.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 是位元組串流",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+    },
+    {
+      "label": "IETF RFC 768：UDP 資料報",
+      "url": "https://www.rfc-editor.org/rfc/rfc768"
+    },
+    {
+      "label": "Python 官方：struct 與 network byte order",
+      "url": "https://docs.python.org/3/library/struct.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 TCP 本機練習",
+      "path": "./assets/labs/socket-tcp-lab.py",
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+    },
+    {
+      "label": "下載 UDP 本機練習",
+      "path": "./assets/labs/socket-udp-lab.py",
+      "description": "標準函式庫；只用 127.0.0.1 的虛構 STATUS?／OK,READY 資料報。"
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "intro": "能讀懂二進位內容，不等於知道每個位元組的意思。接手未知系統時先找正式協定定義；本章只用虛構 Lab-A 練習「長度、欄位、位元組順序」的基本讀法。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀範例",
+      "minutes": 14
+    },
+    {
+      "label": "判讀紀錄",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能算出 00 07 對應的長度與字串 bytes。",
+    "能用明確格式打包／解包二位元組大端整數。",
+    "能指出版本、編碼、最大長度及錯誤處理需要協定明訂。"
+  ],
+  "sections": [
+    {
+      "heading": "先畫欄位地圖，再讀十六進位",
+      "paragraphs": [
+        "Lab-A 的格式只有 2-byte unsigned length 和 payload。前綴 00 07 是大端序整數 7；後面恰好讀 7 bytes 才是完整一則。",
+        "若抓到 00 07 53 54 41，不足 7 bytes，不應把它解釋為完整 STATUS?。"
+      ],
+      "table": {
+        "caption": "Lab-A 請求的逐位元組讀法",
+        "headers": [
+          "Offset",
+          "Hex",
+          "含意"
+        ],
+        "rows": [
+          [
+            "0～1",
+            "00 07",
+            "payload 長度 7"
+          ],
+          [
+            "2～8",
+            "53 54 41 54 55 53 3F",
+            "ASCII STATUS?"
+          ],
+          [
+            "總計",
+            "9 bytes",
+            "2-byte 標頭＋7-byte 內容"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "Big-endian 與 Little-endian",
+      "paragraphs": [
+        "同一個 16-bit 整數 258（十六進位 0x0102），大端是 01 02，小端是 02 01；不約定，兩端可能把長度讀錯。",
+        "Python struct 的 !H 代表 network byte order 的無號 16-bit 整數；C／C++ 在讀網路整數時常見 htons／ntohs 等轉換，仍要依協定定義確認。"
+      ],
+      "code": {
+        "title": "Python 對照：只處理標頭",
+        "text": "import struct\nheader = struct.pack(\"!H\", 7)   # b\"\\x00\\x07\"\nlength = struct.unpack(\"!H\", header)[0]  # 7"
+      }
+    },
+    {
+      "heading": "文字編碼也是協定欄位",
+      "paragraphs": [
+        "ASCII 的 STATUS? 恰好每個字元一 byte；中文在 UTF-8 通常一字多 byte，所以 payload 長度要從 encode 後的 bytes 計算。",
+        "先確定是 ASCII、UTF-8 或完全非文字的欄位；別看到可列印字元就假設整份資料都是文字。"
+      ]
+    },
+    {
+      "heading": "序列化與解析要有邊界檢查",
+      "paragraphs": [
+        "序列化是把欄位轉成約定的 bytes；解析是按同一規則還原。收完標頭後先檢查長度在 1～1024 的教學範圍，再讀 payload，才嘗試 decode。",
+        "不合法長度、未知指令、錯誤編碼應給明確錯誤；不能把它們誤當網路逾時。"
+      ],
+      "flow": [
+        "收滿標頭",
+        "檢查長度",
+        "收滿 payload",
+        "依編碼與版本解析",
+        "產生回覆或錯誤"
+      ]
+    },
+    {
+      "heading": "看一則回覆",
+      "paragraphs": [
+        "OK,READY 有 8 個 ASCII bytes：4F 4B 2C 52 45 41 44 59，因此框架是 00 08 加這 8 bytes。",
+        "即使 parse 成功，也只證明程式讀到這個字串；READY 是否真的映射到設備狀態，仍要看產品定義與狀態來源。"
+      ]
+    },
+    {
+      "heading": "不要猜測未知公司的格式",
+      "paragraphs": [
+        "真實協定可能有同步字、版本、序號、校驗、壓縮、加密或不同的長度計算；Lab-A 並未聲稱能代表它們。",
+        "拿到正式文件時逐欄對照起點、長度、數值範圍、字元編碼、位元組順序與錯誤碼；無文件時保留未知，不對實機試送猜測命令。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【計算】00 07 在 !H 下是多少？",
+      "answer": "7。"
+    },
+    {
+      "question": "【偏移】00 07 後有 7 bytes，整則總長多少？",
+      "answer": "9 bytes。"
+    },
+    {
+      "question": "【字串】53 54 41 54 55 53 3F 是什麼 ASCII？",
+      "answer": "STATUS?。"
+    },
+    {
+      "question": "【順序】整數 258 的大端兩 byte 是？",
+      "answer": "01 02。"
+    },
+    {
+      "question": "【編碼】中文字的「字數」可直接當 UTF-8 byte 長度嗎？",
+      "answer": "不行；應先編碼再取 bytes 長度。"
+    },
+    {
+      "question": "【安全】標頭宣稱 65535 bytes，但上限 1024，該怎麼辦？",
+      "answer": "在配置／讀取前拒絕該框架並記錄不合法長度。"
+    },
+    {
+      "question": "【分層】parse 出 READY 是否證明實體設備已 Ready？",
+      "answer": "不能；還要查回覆的資料來源及產品定義。"
+    },
+    {
+      "question": "【未知】缺少協定文件，可以把 01 當成通用成功碼嗎？",
+      "answer": "不能；需查該系統版本的欄位定義。"
+    }
+  ],
+  "recap": [
+    "Hex 是資料表現方式，欄位意義來自協定。",
+    "位元組順序和編碼必須明確約定。",
+    "先檢查長度與完整性，再解析。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：struct 與 network byte order",
+      "url": "https://docs.python.org/3/library/struct.html"
+    },
+    {
+      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
+      "url": "https://docs.python.org/3/howto/sockets.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 是位元組串流",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 TCP 本機練習",
+      "path": "./assets/labs/socket-tcp-lab.py",
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+    }
+  ]
+}

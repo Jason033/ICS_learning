@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 280" role="img" aria-labelledby="title desc">
+<title id="title">TCP Client 與 Server 的呼叫順序</title><desc id="desc">伺服器先 bind、listen、accept；客戶端 connect；雙方在連線 socket 上收送。</desc>
+<rect width="780" height="280" rx="18" fill="#f3f7fa"/>
+<g font-family="sans-serif" fill="#193246"><text x="88" y="42" font-size="22" font-weight="700">Server</text><text x="555" y="42" font-size="22" font-weight="700">Client</text></g>
+<rect x="45" y="58" width="285" height="60" rx="10" fill="#d9eced"/><text x="65" y="93" font-family="sans-serif" font-size="18" fill="#193246">socket → bind → listen</text>
+<rect x="450" y="58" width="285" height="60" rx="10" fill="#e6e1f4"/><text x="500" y="93" font-family="sans-serif" font-size="18" fill="#193246">socket → connect</text>
+<path d="M450 135H330" stroke="#497382" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="45" y="150" width="285" height="60" rx="10" fill="#d9eced"/><text x="66" y="185" font-family="sans-serif" font-size="17" fill="#193246">accept → 新連線 Socket</text>
+<rect x="450" y="150" width="285" height="60" rx="10" fill="#e6e1f4"/><text x="540" y="185" font-family="sans-serif" font-size="18" fill="#193246">連線 Socket</text>
+<path d="M330 182H450" stroke="#497382" stroke-width="3" marker-end="url(#arrow)"/><path d="M450 199H330" stroke="#497382" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="263" y="250" font-family="sans-serif" font-size="17" fill="#304d5e">雙方在連線 Socket 上 send／recv</text>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#497382"/></marker></defs>
+</svg>

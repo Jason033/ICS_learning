@@ -1,0 +1,173 @@
+{
+  "intro": "TCP 與 UDP 可以都用 Socket API，但交換資料的方式不同。本章延續虛構 Lab-A 的狀態查詢，只比較程式行為，不預設哪個公司服務採用哪一種。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀範例",
+      "minutes": 14
+    },
+    {
+      "label": "判讀紀錄",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 10
+    }
+  ],
+  "goals": [
+    "能依需求選出 TCP 串流或 UDP 資料報的基本讀法。",
+    "能區分 send／recv 與 sendto／recvfrom。",
+    "能指出 UDP 回覆來源與傳送結果的限制。"
+  ],
+  "sections": [
+    {
+      "heading": "同一個 Socket 名稱，兩種傳輸觀念",
+      "paragraphs": [
+        "TCP 的 SOCK_STREAM 交付有序的位元組串流；應用程式要自己分出 STATUS? 與下一則訊息。UDP 的 SOCK_DGRAM 以資料報送收，一次 sendto 發出一個資料報。",
+        "UDP 保留資料報界線，但可能遺失、重複或亂序；不能把「有界線」理解為「可靠送達」。"
+      ],
+      "table": {
+        "caption": "在程式層比較 TCP 與 UDP",
+        "headers": [
+          "項目",
+          "TCP",
+          "UDP"
+        ],
+        "rows": [
+          [
+            "交換單位",
+            "位元組串流",
+            "資料報"
+          ],
+          [
+            "典型發送",
+            "連線後 send／sendall",
+            "sendto 指定目標"
+          ],
+          [
+            "典型接收",
+            "recv 取部分位元組",
+            "recvfrom 取一份資料報及來源"
+          ],
+          [
+            "應用要處理",
+            "框架、逾時、回覆",
+            "逾時、來源、遺失與必要的重試"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "TCP：先建立連線，再收送",
+      "paragraphs": [
+        "Server 依序 socket、bind、listen、accept；Client connect。伺服器收到的 conn 與客戶端 Socket 才是此次對話的收送端點。",
+        "若兩個狀態請求連續送出，對方可能一次 recv 讀到兩則，也可能多次 recv 才拿滿一則。"
+      ]
+    },
+    {
+      "heading": "UDP：指定位址和回覆來源",
+      "paragraphs": [
+        "Server 可 bind 後 recvfrom(max_bytes)，取得 payload 和來源位址；回覆時 sendto(payload, source)。Client 也可 bind 取得固定本機 Port，但簡單請求通常由系統選暫時 Port。",
+        "Client 等回覆時記下目標端點，檢查 recvfrom 的來源是否符合預期。來源地址檢查可避免誤收其他資料報，但不能當作完整的身分驗證。"
+      ],
+      "code": {
+        "title": "概念片段：一個 UDP 請求與回覆",
+        "text": "server_data, client_address = server.recvfrom(1024)\nserver.sendto(b\"OK,READY\", client_address)\nreply, source_address = client.recvfrom(1024)"
+      }
+    },
+    {
+      "heading": "sendto 成功與收到回覆是兩個事件",
+      "paragraphs": [
+        "UDP sendto 回傳送出位元組數，沒有 TCP 式的連線握手；不能由這個返回值推定對方存在或已處理。需要回覆時，應用程式要等待並驗證。",
+        "若等待逾時，只能說本次未在期限內取得匹配回覆，可能是封包沒到、伺服器沒回、回覆沒到或時間太短。"
+      ]
+    },
+    {
+      "heading": "接收緩衝太小的差異",
+      "paragraphs": [
+        "TCP 的 recv 大小限制一次取走多少串流位元組；剩餘位元組仍待後續接收。UDP 的單次接收緩衝若小於資料報，剩餘資料依 API／平台可能被截斷丟棄，不能當下一則拼回。",
+        "因此先約定最大資料報大小，查明所用語言及平台的截斷行為。Lab-A 只有短字串，不示範大型 UDP 資料報。"
+      ]
+    },
+    {
+      "heading": "在本機跑兩種版本",
+      "paragraphs": [
+        "TCP 與 UDP 腳本都在本機交換相同的虛構 STATUS?／OK,READY，對照輸出中的 connected 與 source。UDP 腳本會驗證回覆來源與內容。",
+        "腳本正常只代表本機這次運作；真正服務使用哪種傳輸，要查它的規格與實際紀錄。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【選擇】哪一種 API 自帶資料報邊界？",
+      "answer": "UDP 的資料報；TCP 只有位元組串流。"
+    },
+    {
+      "question": "【TCP】accept 回傳的 conn 可以與 Client 雙向收送嗎？",
+      "answer": "可以。"
+    },
+    {
+      "question": "【UDP】recvfrom 比 recv 多提供什麼？",
+      "answer": "發送方位址，便於確認來源及回覆。"
+    },
+    {
+      "question": "【限制】UDP sendto 回傳 7 能證明 Server 收到了嗎？",
+      "answer": "不能；只反映本端 API 接受的位元組數。"
+    },
+    {
+      "question": "【失敗】UDP 等候逾時能斷言伺服器沒有執行嗎？",
+      "answer": "不能；請求或回覆任一方向都可能沒有被觀測到。"
+    },
+    {
+      "question": "【緩衝】TCP recv 太短與 UDP recvfrom 太短有什麼不同？",
+      "answer": "TCP 剩餘位元組可後續讀；UDP 超出單份緩衝的部分可能被截斷。"
+    },
+    {
+      "question": "【來源】收到 OK,READY 就可忽略來源嗎？",
+      "answer": "不應忽略；至少核對預期端點，正式系統還需依規格處理身分驗證。"
+    },
+    {
+      "question": "【應用】兩則 TCP send 一定對應兩次 recv 嗎？",
+      "answer": "不一定；邊界由應用協定決定。"
+    }
+  ],
+  "recap": [
+    "TCP 是串流，UDP 是資料報。",
+    "回傳送出成功不是遠端已處理的證據。",
+    "UDP 接收要同時記內容、來源和截斷可能。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：socket 模組與各呼叫的返回值",
+      "url": "https://docs.python.org/3/library/socket.html"
+    },
+    {
+      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
+      "url": "https://docs.python.org/3/howto/sockets.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 是位元組串流",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+    },
+    {
+      "label": "IETF RFC 768：UDP 資料報",
+      "url": "https://www.rfc-editor.org/rfc/rfc768"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 TCP 本機練習",
+      "path": "./assets/labs/socket-tcp-lab.py",
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+    },
+    {
+      "label": "下載 UDP 本機練習",
+      "path": "./assets/labs/socket-udp-lab.py",
+      "description": "標準函式庫；只用 127.0.0.1 的虛構 STATUS?／OK,READY 資料報。"
+    }
+  ]
+}

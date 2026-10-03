@@ -82,8 +82,14 @@
     {
       "id": "sockets", "title": "Socket 程式", "icon": "▣", "summary": "理解程式如何送收資料、處理訊息與逾時。",
       "chapters": [
-        {"id": "socket-flow", "title": "Client 與 Server 的收送流程", "summary": "從 bind、connect 到 send／recv。", "status": "planned"},
-        {"id": "message-boundaries", "title": "訊息邊界與緩衝", "summary": "理解資料收到一半時怎麼處理。", "status": "planned"}
+        {"id": "socket-flow", "title": "Client 與 Server 的收送流程", "summary": "看懂建立端點、連線及雙向收送。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "tcp-udp-apis", "title": "TCP 與 UDP 的 Socket 呼叫", "summary": "分清串流、資料報與各自的收送 API。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "message-boundaries", "title": "訊息邊界與緩衝", "summary": "用明確框架處理半包與黏包。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "binary-protocols", "title": "二進位協定與位元組順序", "summary": "逐位元組讀長度、內容及欄位定義。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "timeouts-and-readiness", "title": "阻塞、逾時與可讀寫通知", "summary": "理解等待範圍及 select／poll／epoll。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "disconnect-and-reconnect", "title": "斷線、重試與重連", "summary": "避免把未知結果誤判為未執行。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "logs-and-debugging", "title": "用 Socket 紀錄定位問題", "summary": "沿連線、收送、解析及回應建立證據。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "socket-troubleshooting", "title": "Socket 整合除錯練習", "summary": "讀虛構紀錄，選下一個最有用的檢查。", "minutes": 60, "status": "ready", "contentType": "full"}
       ]
     },
     {

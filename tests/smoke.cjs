@@ -42,7 +42,7 @@ for (const topic of catalog.topics) {
   }
 }
 assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 48);
+assert.equal(readyCount, 56);
 assert.equal(catalog.topics[0].chapters.length, 10);
 for (const chapter of catalog.topics[0].chapters) {
   assert.equal(chapter.contentType, 'full');
@@ -117,6 +117,21 @@ for (const chapter of pttTopic.chapters) {
   pttExerciseCount += lesson.exercises.length;
 }
 assert.equal(pttExerciseCount, 65);
+
+const socketTopic = catalog.topics.find((topic) => topic.id === 'sockets');
+assert.equal(socketTopic.chapters.length, 8);
+assert.equal(socketTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 425);
+let socketExerciseCount = 0;
+for (const chapter of socketTopic.chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `sockets--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
+  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
+  socketExerciseCount += lesson.exercises.length;
+}
+assert.equal(socketExerciseCount, 65);
 
 const elements = new Map();
 function element(selector) {
@@ -264,7 +279,23 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /練習 09/);
 
+  context.location.hash = '#/topic/sockets';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /#\/lesson\/sockets\/socket-flow/);
+  assert.match(element('#main').innerHTML, /#\/lesson\/sockets\/socket-troubleshooting/);
+  context.location.hash = '#/lesson/sockets/socket-flow';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /socket-roles\.svg/);
+  assert.match(element('#main').innerHTML, /socket-tcp-lab\.py/);
   context.location.hash = '#/lesson/sockets/message-boundaries';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /socket-framing\.svg/);
+  assert.match(element('#main').innerHTML, /練習 08/);
+  context.location.hash = '#/lesson/sockets/socket-troubleshooting';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /練習 09/);
+
+  context.location.hash = '#/lesson/voip/audio-path';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這篇教材尚未開放/);
 

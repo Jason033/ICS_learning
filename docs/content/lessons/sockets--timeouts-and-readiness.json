@@ -1,0 +1,152 @@
+{
+  "intro": "Socket 程式常「卡住」在等待：可能等連線、等新客戶、等資料或等緩衝可寫。本章把等待的位置和時間分開，避免把所有逾時都叫網路不通。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀範例",
+      "minutes": 14
+    },
+    {
+      "label": "判讀紀錄",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能區分阻塞、非阻塞與設定逾時。",
+    "能解釋可讀寫通知只表示值得嘗試 I/O。",
+    "能在 log 中辨認 connect、accept、recv 的等待位置。"
+  ],
+  "sections": [
+    {
+      "heading": "阻塞模式：呼叫可能等",
+      "paragraphs": [
+        "一般阻塞 Socket 的 accept 等新連線；recv 等資料或關閉事件；send 也可能等發送緩衝。等待行為還受作業系統錯誤與關閉影響。",
+        "若 UI 主執行緒直接做無期限的網路等待，畫面可能失去回應；實務需有明確的執行模型與停止方式。"
+      ]
+    },
+    {
+      "heading": "逾時模式：哪一次操作超過設定",
+      "paragraphs": [
+        "Python settimeout(2.0) 使相關 Socket 操作在約定期限內未完成時拋出 socket.timeout；各 API 的時間含意需對照語言文件，不能直接把它當整筆業務請求的總時限。",
+        "伺服器 accept 回來的 Socket，逾時模式可能與監聽 Socket 不同；教學腳本會在 conn 上重新設定，避免以為設定會自動一致。"
+      ],
+      "code": {
+        "title": "概念片段：對新連線分別設定讀寫等待",
+        "text": "listener.settimeout(2.0)\nconn, peer = listener.accept()\nconn.settimeout(2.0)\nchunk = conn.recv(1024)"
+      }
+    },
+    {
+      "heading": "非阻塞不是自動快速完成",
+      "paragraphs": [
+        "非阻塞呼叫若當下不能完成，會立即回報「稍後再試」一類狀態；程式要保留未送／未讀資料，並等待下一次機會。",
+        "若用忙迴圈一直重試，可能浪費 CPU；通常配合 select、poll、epoll 或平台事件機制。"
+      ]
+    },
+    {
+      "heading": "select／poll／epoll 是等待通知的工具",
+      "paragraphs": [
+        "select 可同時觀察多個 Socket 的可讀、可寫；poll 和 Linux epoll 則是不同的多路 I/O API。Windows、Linux 提供的細節不同，特別是 Python select 在 Windows 只支援 Socket。",
+        "通知「可讀」也可能表示 EOF；通知「可寫」不表示所有資料都能一次送完。仍須執行 recv／send、檢查返回值並維持狀態。"
+      ],
+      "table": {
+        "caption": "三種通知 API 的入門定位",
+        "headers": [
+          "名稱",
+          "入門理解",
+          "使用前再查"
+        ],
+        "rows": [
+          [
+            "select",
+            "等待一組 Socket 可讀／可寫",
+            "平台支援與數量限制"
+          ],
+          [
+            "poll",
+            "另一種多路等待介面",
+            "作業系統支援"
+          ],
+          [
+            "epoll",
+            "Linux 專用的事件介面",
+            "觸發模式與重新註冊規則"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "一筆請求可能有多個時鐘",
+      "paragraphs": [
+        "connect timeout 管建立連線；read timeout 管某次讀取；業務 deadline 管整個 STATUS? 請求至收到有效回覆。只設某次 recv 逾時，迴圈多次成功讀到少量資料仍可能拖長總時間。",
+        "實作完整期限時常以單調時鐘計算剩餘時間；本教材先要求 log 記錄「哪個階段逾時、已收幾 bytes、總經過時間」。"
+      ]
+    },
+    {
+      "heading": "用紀錄分辨等待位置",
+      "paragraphs": [
+        "例：CONNECT_OK 後、SEND_OK 後、HEADER_READ=1/2 後出現 READ_TIMEOUT，表示連線及部分讀取發生過；不能退回說 TCP 完全沒建立。",
+        "下一步檢查對端是否送齊標頭、是否有協定不一致，以及期限是否合理；缺遠端紀錄時保留多種可能。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【定位】卡在 accept 代表在等什麼？",
+      "answer": "等新的客戶端連線或錯誤／逾時。"
+    },
+    {
+      "question": "【定位】CONNECT_OK 之後 READ_TIMEOUT，能說 connect 失敗嗎？",
+      "answer": "不能；建立連線已成功，後續讀取逾時。"
+    },
+    {
+      "question": "【模式】非阻塞 recv 暫時沒有資料就代表斷線嗎？",
+      "answer": "不代表；應按 API 的 would-block 狀態稍後再試。"
+    },
+    {
+      "question": "【通知】select 告訴 Socket 可讀，能保證有完整一則訊息嗎？",
+      "answer": "不能；可能只有部分資料或 EOF。"
+    },
+    {
+      "question": "【寫入】可寫通知能保證 send 一次送完嗎？",
+      "answer": "不能；仍要檢查實際返回的 byte 數。"
+    },
+    {
+      "question": "【平台】Python select 在 Windows 可監看任意檔案嗎？",
+      "answer": "不能；官方文件指出 Windows 只支援 Socket。"
+    },
+    {
+      "question": "【期限】每次 recv 都設 2 秒，可保證整筆請求 2 秒完成嗎？",
+      "answer": "不保證；要另外設定整筆請求的 deadline。"
+    },
+    {
+      "question": "【紀錄】HEADER_READ=1/2 後逾時，最精確的觀測是？",
+      "answer": "已取得標頭第一個 byte，但期限內未收滿；原因待查。"
+    }
+  ],
+  "recap": [
+    "記錄逾時發生在哪一次等待。",
+    "I/O 通知不替代實際讀寫與框架解析。",
+    "整筆請求期限需獨立考慮。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：socket 模組與各呼叫的返回值",
+      "url": "https://docs.python.org/3/library/socket.html"
+    },
+    {
+      "label": "Python 官方：select 模組與可讀寫通知",
+      "url": "https://docs.python.org/3/library/select.html"
+    },
+    {
+      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
+      "url": "https://docs.python.org/3/howto/sockets.html"
+    }
+  ]
+}

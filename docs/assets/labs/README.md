@@ -1,6 +1,6 @@
 # 教學練習檔
 
-本資料夾放兩種用途不同的檔案：Wireshark 合成封包與 RS-232 主題的軟體回環程式。兩者都不含公司資料，也沒有真實設備的設定。
+本資料夾放三種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環，以及 Socket 本機 TCP／UDP 練習。全部不含公司資料，也沒有真實設備的設定。
 
 ## Wireshark 合成封包
 
@@ -19,3 +19,9 @@
 `serial-loopback.py` 使用 pySerial 的 `loop://`，把虛構的四個位元組 `AA 01 10 11` 回送給同一個程式，分兩次讀回，最後示範逾時回空。它不會開啟 COM Port，也不連任何實體設備；成功只表示這個本機程式的寫入、讀取與逾時運作，不能驗證轉接器、RS-232 電平、接線或設備回覆。
 
 先安裝 Python 和 pySerial，再在下載檔所在資料夾執行 `python3 serial-loopback.py`；Windows 可使用 `py serial-loopback.py`。預期前兩次讀取合併為原本的四個位元組，第三次讀取顯示 `(empty)`。若環境不允許安裝套件，直接閱讀[串列工具與軟體回環章節](../../content/lessons/serial--tools-and-loopback.json)的輸出解說即可。
+
+## Socket 主題的本機 TCP／UDP 練習
+
+`socket-tcp-lab.py` 與 `socket-udp-lab.py` 只使用 Python 標準函式庫，伺服器綁在 `127.0.0.1`，Port 由作業系統自動分配，不連外部網路。兩個腳本都交換虛構的 `STATUS?` 與 `OK,READY`；前者在兩端使用 2-byte 大端序長度前綴、限制內容最多 1024 bytes，並示範分兩次呼叫 `sendall` 後仍應依長度讀取；後者示範 `sendto`／`recvfrom` 和回覆來源檢查。它們不模擬封包遺失或真實設備狀態。
+
+在下載檔所在資料夾執行 `python3 socket-tcp-lab.py` 和 `python3 socket-udp-lab.py`；Windows 可用 `py socket-tcp-lab.py` 和 `py socket-udp-lab.py`。預期都印出請求、回覆和「本機範例通過」。若本機政策禁止啟動回環服務，可直接閱讀對應教材及練習；腳本成功不代表公司系統的 Socket、SDK 或設備也相同。

@@ -1,0 +1,194 @@
+{
+  "intro": "先把 Socket 想成程式的通訊端點：IP／Port 指向哪台主機的哪個服務，程式還要決定誰等待、誰發起、在哪個 Socket 讀寫。本主題以完全虛構的 Lab-A「查詢設備狀態」為例，不代表公司程式。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀範例",
+      "minutes": 14
+    },
+    {
+      "label": "判讀紀錄",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 10
+    }
+  ],
+  "goals": [
+    "能畫出 TCP 伺服器與客戶端的基本呼叫順序。",
+    "能區分監聽 Socket 與 accept 後的連線 Socket。",
+    "能說明 send 成功不等於對方程式已處理。"
+  ],
+  "sections": [
+    {
+      "heading": "端點和角色",
+      "paragraphs": [
+        "伺服器（Server）在指定的本機位址和 Port 等待；客戶端（Client）主動連到該位址。127.0.0.1 是本機回環，示範程式不會碰外部設備。",
+        "同一台電腦可以同時執行兩個角色。Client／Server 描述誰先等待連線，不描述誰只能送或只能收。"
+      ],
+      "flow": [
+        "Server 建立 Socket → bind → listen → accept",
+        "Client 建立 Socket → connect",
+        "雙方用各自的連線 Socket send／recv → close"
+      ],
+      "image": {
+        "src": "./assets/diagrams/socket-roles.svg",
+        "alt": "伺服器先 bind、listen、accept；客戶端 connect；雙方在連線 Socket 上收送。",
+        "caption": "Lab-A 的 TCP 呼叫順序；箭頭不是實際公司架構。"
+      }
+    },
+    {
+      "heading": "伺服器先佔位置，再等來訪者",
+      "paragraphs": [
+        "bind 指定本機位址與 Port；listen 讓 TCP Socket 開始接受連線。accept 等到連線後，回傳一個新的 Socket 和對方位址。",
+        "監聽 Socket 繼續負責等其他連線；這一次客戶端的資料，要從 accept 回來的新 Socket 接收。"
+      ],
+      "table": {
+        "caption": "兩個伺服器端 Socket 不能混用",
+        "headers": [
+          "Socket",
+          "主要用途",
+          "常見錯誤"
+        ],
+        "rows": [
+          [
+            "監聽 Socket",
+            "bind／listen／accept",
+            "在它上面 recv 客戶資料"
+          ],
+          [
+            "連線 Socket",
+            "與這個 Client send／recv",
+            "以為它能接待下一個 Client"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "客戶端的 connect 到底證明什麼",
+      "paragraphs": [
+        "connect 成功表示 TCP 連線建立，不表示應用伺服器已讀到查詢，更不表示狀態已取得。接著要送出請求、讀回完整回覆、解析內容。",
+        "連線失敗要分辨被拒絕、逾時、位址錯誤等現象；單靠例外類型也不能直接推定遠端程序的真實原因。"
+      ]
+    },
+    {
+      "heading": "send、recv 的對象與返回值",
+      "paragraphs": [
+        "Python send 可能只接受部分位元組，必須檢查返回長度並繼續送；sendall 會嘗試全部送完或報錯，但成功也只是本端交給 Socket 流程。",
+        "recv(1024) 的 1024 是「最多」讀 1024 位元組，不是保證拿滿，也不是一則訊息。非空資料表示本端已讀到位元組；接著還要依協定解析。"
+      ],
+      "code": {
+        "title": "概念用程式片段：每次 recv 只取得部分資料",
+        "text": "with socket.socket() as client:\n    client.connect((\"127.0.0.1\", port))\n    client.sendall(request)\n    chunk = client.recv(1024)  # 最多 1024，不保證完整回覆"
+      }
+    },
+    {
+      "heading": "一次虛構狀態查詢的證據階梯",
+      "paragraphs": [
+        "Lab-A：伺服器開始監聽；客戶端連線；客戶端送 STATUS?；伺服器收到並解析；伺服器回 OK,READY；客戶端收到並顯示。每一階都能有不同紀錄。",
+        "若只看到「客戶端送出成功」，下一步應找伺服器收到與解析紀錄；不能宣稱設備已回 Ready。"
+      ],
+      "table": {
+        "caption": "一條請求中各訊號最多能證明什麼",
+        "headers": [
+          "觀測",
+          "能證明",
+          "仍待確認"
+        ],
+        "rows": [
+          [
+            "connect 成功",
+            "TCP 已建立",
+            "請求有沒有送"
+          ],
+          [
+            "sendall 返回",
+            "本端送出流程未報錯",
+            "對方程式有沒有讀"
+          ],
+          [
+            "Server parse=STATUS?",
+            "對方程式已解析",
+            "有沒有產生回覆"
+          ],
+          [
+            "Client response=OK,READY",
+            "此回覆已到客戶端",
+            "來源定義與實際設備狀態"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "本機練習怎麼做",
+      "paragraphs": [
+        "下載 Python 腳本後執行。它先建立只綁 127.0.0.1 的 TCP 伺服器，以兩段 sendall 送出同一個框架；客戶端使用 read_exact 讀到指定長度。Port 由作業系統分配，不需碰外部網路。",
+        "輸出會標示每個步驟；若公司電腦政策不允許跑腳本，就直接閱讀本章紀錄與練習。腳本成功只驗證這台電腦上的模型，不驗證公司產品。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【角色】誰先執行 bind／listen？",
+      "answer": "Server；Client 通常對指定端點呼叫 connect。"
+    },
+    {
+      "question": "【物件】accept 後要在哪個 Socket 上讀取本次 Client 資料？",
+      "answer": "accept 回傳的連線 Socket；原監聽 Socket 繼續接新連線。"
+    },
+    {
+      "question": "【方向】Client 一定只能 send，Server 一定只能 recv 嗎？",
+      "answer": "不是；連線建立後雙方都可收送。"
+    },
+    {
+      "question": "【證據】connect 成功能否證明 STATUS? 已被處理？",
+      "answer": "不能；還沒看到送出、接收與解析。"
+    },
+    {
+      "question": "【返回值】send 回傳 3，但輸入是 7 bytes，該怎麼做？",
+      "answer": "記住已送 3 bytes，對剩餘 4 bytes 繼續送；或使用 sendall 並妥善處理錯誤。"
+    },
+    {
+      "question": "【讀取】recv(1024) 回 5 bytes 是否一定異常？",
+      "answer": "不一定；參數是上限，TCP 可分段交付。"
+    },
+    {
+      "question": "【地址】127.0.0.1 會連到別台設備嗎？",
+      "answer": "不會；它是本機回環位址。"
+    },
+    {
+      "question": "【定位】只有 client sendall 成功而無回覆，第一個該補哪段證據？",
+      "answer": "確認 Server 是否收到完整請求、是否解析及是否產生回覆。"
+    }
+  ],
+  "recap": [
+    "伺服器有監聽 Socket 和每次連線的 Socket。",
+    "connect、sendall、recv 代表不同層級的觀測。",
+    "從請求到應用結果須逐段查證。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：socket 模組與各呼叫的返回值",
+      "url": "https://docs.python.org/3/library/socket.html"
+    },
+    {
+      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
+      "url": "https://docs.python.org/3/howto/sockets.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 是位元組串流",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 TCP 本機練習",
+      "path": "./assets/labs/socket-tcp-lab.py",
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+    }
+  ]
+}

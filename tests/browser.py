@@ -57,7 +57,29 @@ def main():
             }""")
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), f"page overflow: {topic}/{chapter}"
 
+        pilot = next(t for t in catalog["topics"] if t["id"] == "networking")
+        pilot = [c for c in pilot["chapters"] if c.get("contentVersion", 0) >= 3]
+        assert page.locator(".learning-preview li a").count() == len(pilot)
+        for i, chapter in enumerate(pilot):
+            page.locator(f".learning-preview a[href='#/lesson/networking/{chapter['id']}']").click()
+            page.wait_for_function("title => document.querySelector('.lesson-header h1')?.textContent === title", arg=chapter["title"])
+            assert page.locator(".legacy-notice").count() == 0
+            assert page.locator(".lesson-plan").count() == 0
+            check = page.locator(".concept-check details").first
+            check.locator("summary").click()
+            assert check.get_attribute("open") is not None
+            assert check.locator("p").count() >= 1
+            nav = page.locator(".lesson-next")
+            if i + 1 < len(pilot):
+                assert nav.locator("a").last.get_attribute("href") == f"#/lesson/networking/{pilot[i + 1]['id']}"
+            else:
+                assert "本組新版試讀到此" in nav.inner_text()
+                assert nav.locator("a").last.get_attribute("href") == "#/topic/networking"
+            assert page.locator(".lesson-aside a[href='#/lesson/networking/one-conversation']").count() == 0
+            page.goto(base)
+            page.wait_for_selector(".learning-preview")
         lesson("networking", "one-conversation")
+        assert page.locator(".legacy-notice").is_visible()
         page.locator("#complete-button").click()
         assert page.locator("#complete-button").get_attribute("aria-pressed") == "true"
         page.reload()
@@ -98,7 +120,7 @@ def main():
         assert not errors, errors
         print(json.dumps({"browser": "Chromium", "mobile_lessons": count,
                           "widths": [1440, 390], "javascript_errors": errors,
-                          "checks": ["search", "progress persistence", "answer disclosure", "mobile navigation", "overflow", "diagram decoding and original-image links", "unavailable content"]},
+                          "checks": ["search", "progress persistence", "answer disclosure", "mobile navigation", "overflow", "diagram decoding and original-image links", "unavailable content", "teaching preview entry and edition navigation", "inline understanding checks"]},
                          ensure_ascii=False, indent=2))
         browser.close()
 

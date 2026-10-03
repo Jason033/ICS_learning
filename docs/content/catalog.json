@@ -5,8 +5,32 @@
       "id": "networking",
       "title": "電腦網路",
       "icon": "◎",
-      "summary": "把 IP、Port、TCP／UDP 與資料經過的網路接成一張圖。",
+      "summary": "先從兩個程式的對話理解網路，再逐步學習資料、地址與交付規則。",
       "chapters": [
+        {
+          "id": "why-programs-communicate",
+          "title": "兩個程式為什麼需要通訊",
+          "summary": "從一次狀態查詢，認識兩端角色、訊息約定與正常來回。",
+          "status": "ready",
+          "contentType": "teaching-preview",
+          "contentVersion": 3
+        },
+        {
+          "id": "messages-and-bytes",
+          "title": "訊息內容如何表示成資料",
+          "summary": "沿用同一份回覆，逐步理解bit、byte、文字編碼與HEX。",
+          "status": "ready",
+          "contentType": "teaching-preview",
+          "contentVersion": 3
+        },
+        {
+          "id": "a-local-journey",
+          "title": "一次本地通訊經過哪些地方",
+          "summary": "跟著同一次查詢，理解程式、作業系統、網卡與交換器的分工。",
+          "status": "ready",
+          "contentType": "teaching-preview",
+          "contentVersion": 3
+        },
         {
           "id": "one-conversation",
           "title": "一次網路通訊的全貌",

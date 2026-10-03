@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 470" role="img" aria-labelledby="title desc">
+  <title id="title">A電腦內的送出分工</title>
+  <desc id="desc">狀態查詢程式準備請求，作業系統安排網路交付，網卡協助接上網路線。三個框位於同一台A電腦。</desc>
+  <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#155eef"/></marker></defs>
+  <rect width="440" height="470" fill="#fff"/>
+  <g font-family="system-ui, 'Noto Sans CJK TC', sans-serif" text-anchor="middle">
+    <text x="220" y="34" font-size="24" font-weight="700" fill="#183153">先看A電腦內部</text>
+    <rect x="30" y="55" width="380" height="322" rx="18" fill="#f3f7fe" stroke="#97acd0" stroke-width="2"/>
+    <rect x="62" y="78" width="316" height="70" rx="12" fill="#fff" stroke="#155eef" stroke-width="2"/>
+    <text x="220" y="107" font-size="23" font-weight="700" fill="#183153">狀態查詢程式</text>
+    <text x="220" y="132" font-size="18" fill="#3e5475">準備 STATUS? 的資料</text>
+    <path d="M220 151V176" stroke="#155eef" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="62" y="185" width="316" height="70" rx="12" fill="#fff" stroke="#155eef" stroke-width="2"/>
+    <text x="220" y="214" font-size="23" font-weight="700" fill="#183153">作業系統</text>
+    <text x="220" y="239" font-size="18" fill="#3e5475">安排網路交付</text>
+    <path d="M220 258V283" stroke="#155eef" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="62" y="292" width="316" height="65" rx="12" fill="#fff" stroke="#155eef" stroke-width="2"/>
+    <text x="220" y="319" font-size="23" font-weight="700" fill="#183153">網卡</text>
+    <text x="220" y="345" font-size="18" fill="#3e5475">配合送出，接上實際連接</text>
+    <path d="M220 361V408" stroke="#155eef" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="220" y="441" font-size="22" fill="#183153">網路線</text>
+  </g>
+</svg>

@@ -59,12 +59,21 @@ def metrics(topic, chapter, lesson):
         "section_kinds": dict(collections.Counter(s.get("kind", "untyped") for s in sections)),
         "exercise_levels": dict(collections.Counter(q.get("level", "untyped") for q in lesson["exercises"])),
         "sources": len(lesson.get("sources", [])), "resources": len(lesson.get("resources", [])),
-        "study_time": lesson.get("studyTime"), "reading_estimate": reading_estimate(lesson),
+        "study_time": lesson.get("studyTime"), "reading_estimate": reading_estimate(lesson) if lesson.get("contentVersion", 1) < 3 else None,
     }
 
 
 def validate(row, lesson):
     issues = []
+    if row["content_version"] >= 3:
+        # New teaching is checked for usable structure, not the historical quota template.
+        for field in ("intro", "prerequisites", "goals", "sections", "exercises", "recap", "sources"):
+            if not lesson.get(field):
+                issues.append(f"缺少{field}")
+        for section in lesson["sections"]:
+            if not section.get("heading") or not any(section.get(key) for key in ("paragraphs", "image", "code", "table", "steps", "bullets")):
+                issues.append("段落標題或內容缺漏")
+        return issues
     if row["content_version"] != 2:
         issues.append("仍是第一版")
     if row["body"] < 3500:
@@ -116,6 +125,8 @@ def main():
         raise SystemExit("未修改任何檔案；先完成下列結構項目：\n" + "\n".join(failures))
     if args.finalize:
         for path, chapter, lesson, row in pending:
+            if lesson.get("contentVersion", 1) >= 3:
+                continue
             study = lesson["studyTime"]
             study["reading"] = row["reading_estimate"]
             study["basis"] = (
@@ -135,7 +146,7 @@ def main():
         save(catalog_path, catalog)
     if args.output:
         save(args.output, rows)
-    print(f"{len(rows)}篇；第二版{sum(r['content_version'] == 2 for r in rows)}篇；正文總量{sum(r['body'] for r in rows):,}，中位{statistics.median(r['body'] for r in rows):,.0f}字元")
+    print(f"{len(rows)}篇；舊版{sum(r['content_version'] == 2 for r in rows)}篇，新版{sum(r['content_version'] >= 3 for r in rows)}篇；正文總量{sum(r['body'] for r in rows):,}，中位{statistics.median(r['body'] for r in rows):,.0f}字元")
     print(f"結構警戒{len(failures)}篇。數量通過不代表內容已經人工審查。")
     for failure in failures:
         print(failure)

@@ -1,0 +1,68 @@
+{
+  "checked_at_utc": "2026-10-03T16:04:24.408921+00:00",
+  "checks": {
+    "javascript_syntax": {
+      "exit_code": 0,
+      "output": "",
+      "stderr": ""
+    },
+    "site_schema_and_navigation": {
+      "exit_code": 0,
+      "output": "通過：16 個獨立主題、126 篇教材，以及首頁／主題／完整教材／進度／規劃中頁面的互動檢查。",
+      "stderr": ""
+    },
+    "whitespace": {
+      "exit_code": 0,
+      "output": "",
+      "stderr": ""
+    }
+  },
+  "limitations": [
+    "Website and data checks do not prove learner comprehension.",
+    "No new C# execution or company hardware validation in this pilot."
+  ],
+  "svg_text_bounds": [
+    {
+      "file": "networking-intro-bytes-ready.svg",
+      "text_outside_viewbox": []
+    },
+    {
+      "file": "networking-intro-journey-a.svg",
+      "text_outside_viewbox": []
+    },
+    {
+      "file": "networking-intro-journey-roundtrip.svg",
+      "text_outside_viewbox": []
+    },
+    {
+      "file": "networking-intro-programs-roles.svg",
+      "text_outside_viewbox": []
+    },
+    {
+      "file": "networking-intro-programs-sequence.svg",
+      "text_outside_viewbox": []
+    }
+  ],
+  "payloads": {
+    "READY": {
+      "hex": "52 45 41 44 59",
+      "bytes": 5,
+      "encoding": "ascii"
+    },
+    "STATUS?": {
+      "hex": "53 54 41 54 55 53 3f",
+      "bytes": 7,
+      "encoding": "ascii"
+    },
+    "就緒": {
+      "hex": "e5 b0 b1 e7 b7 92",
+      "bytes": 6,
+      "encoding": "utf-8"
+    },
+    "5": {
+      "hex": "35",
+      "bytes": 1,
+      "encoding": "ascii"
+    }
+  }
+}

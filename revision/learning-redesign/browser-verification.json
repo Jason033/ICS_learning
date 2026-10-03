@@ -1,0 +1,31 @@
+{
+  "browser": "Chromium",
+  "mobile_lessons": 126,
+  "widths": [
+    1440,
+    390
+  ],
+  "javascript_errors": [],
+  "checks": [
+    "search",
+    "progress persistence",
+    "answer disclosure",
+    "mobile navigation",
+    "overflow",
+    "diagram decoding and original-image links",
+    "unavailable content",
+    "teaching preview entry and edition navigation",
+    "inline understanding checks"
+  ],
+  "checked_at_utc": "2026-10-03T16:04:21.989101+00:00",
+  "base_url": "http://127.0.0.1:8767/",
+  "scope": "Functional regression of all readable lessons; manual visual reading limited to the three new lessons, diagrams and tables.",
+  "source_sha256": {
+    "docs/app.js": "f7d516bd58839156a1a38f6e607190e55615165f63e51801aa58371ad40da4bb",
+    "docs/styles.css": "383777abff0ffa253c40afbbbdb70fcdadee2f572dca9a06abb68d73461c3ebe",
+    "docs/content/catalog.json": "3adc68489a63e280a553e9969d8387ccbbb8aec920f66aa386fd817f7459f25e",
+    "docs/content/lessons/networking--a-local-journey.json": "588c5c5b7d40dfdfc5c71294a0d645df57635d1bfc61577dc5b1a0982d41020e",
+    "docs/content/lessons/networking--messages-and-bytes.json": "de63fcba25fda61ab8776b01e15ee46f33c65b1cfee252985d53b3476bd4b58a",
+    "docs/content/lessons/networking--why-programs-communicate.json": "bb2f0bcc4d0b811946035fd7459bb350919ebfe61b91ca163c2336d80d431d05"
+  }
+}

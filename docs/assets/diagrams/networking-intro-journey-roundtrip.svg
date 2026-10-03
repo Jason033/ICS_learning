@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 950" role="img" aria-labelledby="title desc">
+  <title id="title">同一次查詢的來回路徑</title>
+  <desc id="desc">請求從A程式往下，經A作業系統、A網卡、交換器、B網卡與B作業系統到B程式。B建立回覆後，回覆沿圖中角色往上到A程式。只有交換器兩旁的兩段連接是網路線。</desc>
+  <defs>
+    <marker id="down" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#155eef"/></marker>
+    <marker id="up" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#008260"/></marker>
+  </defs>
+  <rect width="440" height="950" fill="#fff"/>
+  <g font-family="system-ui, 'Noto Sans CJK TC', sans-serif" text-anchor="middle">
+    <text x="112" y="31" font-size="21" font-weight="700" fill="#155eef">↓ 請求 STATUS?</text>
+    <text x="332" y="31" font-size="21" font-weight="700" fill="#008260">↑ 回覆 READY</text>
+    <rect x="28" y="80" width="384" height="321" rx="18" fill="#f3f7fe" stroke="#97acd0" stroke-width="2"/>
+    <text x="220" y="66" font-size="23" font-weight="700" fill="#183153">A電腦</text>
+    <rect x="59" y="100" width="322" height="64" rx="11" fill="#fff" stroke="#97acd0" stroke-width="2"/>
+    <text x="220" y="127" font-size="22" font-weight="700" fill="#183153">狀態查詢程式</text>
+    <text x="220" y="150" font-size="17" fill="#3e5475">建立請求；理解回覆並顯示</text>
+    <rect x="59" y="204" width="322" height="64" rx="11" fill="#fff" stroke="#97acd0" stroke-width="2"/>
+    <text x="220" y="241" font-size="23" fill="#183153">A的作業系統</text>
+    <rect x="59" y="308" width="322" height="64" rx="11" fill="#fff" stroke="#97acd0" stroke-width="2"/>
+    <text x="220" y="345" font-size="23" fill="#183153">A的網卡</text>
+    <rect x="59" y="454" width="322" height="64" rx="11" fill="#fff6df" stroke="#cba951" stroke-width="2"/>
+    <text x="220" y="481" font-size="23" font-weight="700" fill="#183153">交換器</text>
+    <text x="220" y="504" font-size="17" fill="#3e5475">依交付資訊轉交資料</text>
+    <rect x="28" y="575" width="384" height="321" rx="18" fill="#f0faf6" stroke="#8ebcab" stroke-width="2"/>
+    <text x="220" y="563" font-size="23" font-weight="700" fill="#183153">B電腦</text>
+    <rect x="59" y="600" width="322" height="64" rx="11" fill="#fff" stroke="#8ebcab" stroke-width="2"/>
+    <text x="220" y="637" font-size="23" fill="#183153">B的網卡</text>
+    <rect x="59" y="704" width="322" height="64" rx="11" fill="#fff" stroke="#8ebcab" stroke-width="2"/>
+    <text x="220" y="741" font-size="23" fill="#183153">B的作業系統</text>
+    <rect x="59" y="808" width="322" height="64" rx="11" fill="#fff" stroke="#8ebcab" stroke-width="2"/>
+    <text x="220" y="835" font-size="22" font-weight="700" fill="#183153">狀態提供程式</text>
+    <text x="220" y="858" font-size="17" fill="#3e5475">理解請求；讀狀態並建立回覆</text>
+    <text x="81" y="428" font-size="17" fill="#3e5475">網路線①</text>
+    <text x="81" y="551" font-size="17" fill="#3e5475">網路線②</text>
+    <text x="220" y="930" font-size="18" fill="#3e5475">先跟請求往下，再跟回覆往上</text>
+  </g>
+  <g fill="none" stroke-width="3">
+    <path d="M173 170V193" stroke="#155eef" marker-end="url(#down)"/>
+<path d="M173 274V297" stroke="#155eef" marker-end="url(#down)"/>
+<path d="M173 378V443" stroke="#155eef" marker-end="url(#down)"/>
+<path d="M173 524V589" stroke="#155eef" marker-end="url(#down)"/>
+<path d="M173 670V693" stroke="#155eef" marker-end="url(#down)"/>
+<path d="M173 774V797" stroke="#155eef" marker-end="url(#down)"/>
+    <path d="M267 198V176" stroke="#008260" marker-end="url(#up)"/>
+<path d="M267 302V280" stroke="#008260" marker-end="url(#up)"/>
+<path d="M267 448V384" stroke="#008260" marker-end="url(#up)"/>
+<path d="M267 594V530" stroke="#008260" marker-end="url(#up)"/>
+<path d="M267 698V676" stroke="#008260" marker-end="url(#up)"/>
+<path d="M267 802V780" stroke="#008260" marker-end="url(#up)"/>
+  </g>
+</svg>

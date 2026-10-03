@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="580" viewBox="0 0 360 580" role="img" aria-labelledby="title desc">
+<title id="title">誰需要答案，誰保存答案</title><desc id="desc">小安在 A 電腦使用狀態查詢程式。B 電腦的狀態提供程式保存 READY。A 要取得 B 的資料，才能讓小安在 A 看到結果。</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#376c9b"/></marker></defs>
+<rect width="360" height="580" rx="16" fill="#f4f7fb"/>
+<g font-family="sans-serif" text-anchor="middle" fill="#18334b">
+<text x="180" y="34" font-size="19" font-weight="bold">同一件工作，兩邊合作</text>
+<rect x="35" y="54" width="290" height="74" rx="12" fill="#ffffff" stroke="#879aab"/>
+<text x="180" y="84" font-size="18" font-weight="bold">小安</text><text x="180" y="109" font-size="16">想知道設備是否已準備好</text>
+<path d="M180 135V168" stroke="#376c9b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="20" y="183" width="320" height="134" rx="14" fill="#e8f1ff" stroke="#6b90b8"/>
+<text x="180" y="211" font-size="16">A 電腦</text><text x="180" y="243" font-size="19" font-weight="bold">狀態查詢程式</text>
+<text x="180" y="274" font-size="16">接到操作，發起查詢</text><text x="180" y="299" font-size="16">取得答案後，顯示結果</text>
+<text x="180" y="352" font-size="16">需要向 B 取得答案</text>
+<path d="M180 367V397" stroke="#376c9b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="20" y="411" width="320" height="140" rx="14" fill="#e8f5ed" stroke="#75a58b"/>
+<text x="180" y="439" font-size="16">B 電腦</text><text x="180" y="470" font-size="19" font-weight="bold">狀態提供程式</text>
+<text x="180" y="501" font-size="16">已保存狀態：READY</text><text x="180" y="527" font-size="16">讀取這份資料，準備答案</text>
+</g></svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="790" viewBox="0 0 360 790" role="img" aria-labelledby="title desc">
+<title id="title">一次正常查詢的順序</title><desc id="desc">從上往下：小安按查詢；A 準備 STATUS? 並交給 B；B 認出查詢；B 讀取 READY 並準備回覆；READY 交回 A；A 理解回覆並顯示 READY。</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#667d90"/></marker></defs>
+<rect width="360" height="790" rx="16" fill="#f4f7fb"/>
+<g font-family="sans-serif" text-anchor="middle" fill="#18334b">
+<text x="180" y="34" font-size="19" font-weight="bold">從目的走到看見結果</text>
+<g stroke="#667d90" stroke-width="2" marker-end="url(#arrow)"><path d="M180 140V161"/><path d="M180 260V281"/><path d="M180 380V401"/><path d="M180 500V521"/><path d="M180 620V641"/></g>
+<rect x="20" y="56" width="320" height="84" rx="12" fill="#ffffff" stroke="#879aab"/>
+<text x="180" y="85" font-size="17" font-weight="bold">1 · 小安</text><text x="180" y="116" font-size="17">按下「查詢」</text>
+<rect x="20" y="176" width="320" height="84" rx="12" fill="#e8f1ff" stroke="#6b90b8"/>
+<text x="180" y="205" font-size="17" font-weight="bold">2 · A 的查詢程式</text><text x="180" y="236" font-size="17">準備 STATUS?，交給 B</text>
+<rect x="20" y="296" width="320" height="84" rx="12" fill="#e8f5ed" stroke="#75a58b"/>
+<text x="180" y="325" font-size="17" font-weight="bold">3 · B 的提供程式</text><text x="180" y="356" font-size="17">認出 STATUS? 是查詢要求</text>
+<rect x="20" y="416" width="320" height="84" rx="12" fill="#e8f5ed" stroke="#75a58b"/>
+<text x="180" y="445" font-size="17" font-weight="bold">4 · B 的提供程式</text><text x="180" y="476" font-size="17">讀取狀態，準備回覆 READY</text>
+<rect x="20" y="536" width="320" height="84" rx="12" fill="#e8f5ed" stroke="#75a58b"/>
+<text x="180" y="565" font-size="17" font-weight="bold">5 · B → A</text><text x="180" y="596" font-size="17">把回覆 READY 交回 A</text>
+<rect x="20" y="656" width="320" height="102" rx="12" fill="#e8f1ff" stroke="#6b90b8"/>
+<text x="180" y="685" font-size="17" font-weight="bold">6 · A 的查詢程式</text><text x="180" y="716" font-size="17">依約定理解回覆</text><text x="180" y="744" font-size="17">顯示 READY，讓小安看見</text>
+</g></svg>

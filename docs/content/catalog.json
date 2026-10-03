@@ -67,11 +67,16 @@
       ]
     },
     {
-      "id": "ptt", "title": "PTT 與設備狀態", "icon": "↟", "summary": "分辨按鍵、控制請求、設備發射與聲音送出。",
+      "id": "ptt", "title": "PTT 與設備狀態", "icon": "↟", "summary": "從按鍵、設備回報與音訊時序學會查證發射狀態。",
       "chapters": [
-        {"id": "press-to-tx", "title": "按下 PTT 之後，如何確認真的發射", "summary": "用時間線追查各環節的回報與證據。", "minutes": 20, "status": "ready", "contentType": "sample"},
-        {"id": "state-machine", "title": "Ready、Busy、TX、RX 狀態", "summary": "用狀態圖理解事件與例外。", "status": "planned"},
-        {"id": "interface-box", "title": "介面盒與燈號", "summary": "區分軟體命令與實體輸入輸出。", "status": "planned"}
+        {"id": "press-to-tx", "title": "按下 PTT 之後，如何確認真的發射", "summary": "從按鍵到對端接收，逐段建立證據。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "state-machine", "title": "Ready、Busy、TX、RX 狀態", "summary": "區分狀態來源、轉換與逾時。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "interface-box", "title": "介面盒、COR／COS 與燈號", "summary": "分開看按鍵、PTT 輸出、接收回報與音訊。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "busy-and-grant", "title": "通道忙碌與發話權", "summary": "辨別本地忙碌鎖定與特定系統的 Grant。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "audio-timing", "title": "PTT 與音訊的前後時序", "summary": "分析開頭缺字、尾字被切與時鐘誤差。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "release-and-recovery", "title": "放開、逾時與重連後狀態", "summary": "核對停止發射、舊事件及重新查證。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "observability-and-logs", "title": "把 PTT 紀錄寫成證據", "summary": "對齊按鍵、程式、介面盒、電台與對端。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "ptt-troubleshooting", "title": "PTT 整合除錯練習", "summary": "用六個虛構案例選出下一個檢查。", "minutes": 60, "status": "ready", "contentType": "full"}
       ]
     },
     {

@@ -1,0 +1,196 @@
+{
+  "intro": "「Ready、Busy、TX、RX、Error」看似一串狀態，但真實設備可能把通道忙碌、發射中和故障標成不同欄位。本章建立教學狀態圖，練習用事件和證據讀轉換，不把虛構狀態直接套給公司系統。",
+  "plan": [
+    {
+      "label": "三類狀態",
+      "minutes": 13
+    },
+    {
+      "label": "教學狀態圖",
+      "minutes": 15
+    },
+    {
+      "label": "例外與逾時",
+      "minutes": 12
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能區分設備狀態、通道狀態與畫面顯示狀態。",
+    "能在虛構狀態圖中解釋按下、拒絕、逾時與放開的轉換。",
+    "能指出「狀態卡在 TX」可能是回報、控制或設備問題。"
+  ],
+  "sections": [
+    {
+      "heading": "先問一個狀態「誰說的」",
+      "paragraphs": [
+        "Ready 可能是軟體允許操作，Busy 可能是通道檢出訊號，TX 可能是設備宣告發射中，RX 可能是接收鏈開啟，Error 可能是程式自己的錯誤。這些欄位未必互斥。",
+        "不要把畫面上的單一標籤當成完整設備狀態。記錄來源、更新條件及過期時間；斷線後仍亮的舊 TX 燈尤其容易誤導。"
+      ],
+      "table": {
+        "caption": "同字不同來源",
+        "headers": [
+          "標籤",
+          "可能來源",
+          "應查定義"
+        ],
+        "rows": [
+          [
+            "Ready",
+            "應用程式允許按鍵",
+            "是否代表設備就緒"
+          ],
+          [
+            "Busy",
+            "接收機或政策判定",
+            "是通道忙還是資源忙"
+          ],
+          [
+            "TX",
+            "設備／介面盒／UI",
+            "測到的是哪一層"
+          ],
+          [
+            "Error",
+            "設備或程式",
+            "錯誤碼與時間"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "Box-Lab-B：簡化狀態圖",
+      "paragraphs": [
+        "教學模型從 Idle/Ready 出發，按鍵後進 Requesting；若收到虛構 PERMIT，再進 TX Active；若拒絕則回 Ready 並記原因；放開則 Releasing，收到停止確認後回 Ready。",
+        "這套模型故意有 PERMIT 以練追蹤，但傳統電台不一定有獨立許可。若真實系統只有 PTT 腳位與 TX 指示，請改用其實際事件，不要補造 PERMIT。"
+      ],
+      "flow": [
+        "Ready",
+        "Requesting",
+        "Permitted",
+        "TX Active",
+        "Releasing",
+        "Ready"
+      ],
+      "image": {
+        "src": "./assets/diagrams/ptt-state-flow.svg",
+        "alt": "虛構狀態從 Ready 經 Requesting、Permitted、TX Active、Releasing 回 Ready；拒絕與逾時進查證。",
+        "caption": "教學狀態圖；PERMIT 不是通用電台訊息。"
+      }
+    },
+    {
+      "heading": "Busy 可是限制條件，不一定是主狀態",
+      "paragraphs": [
+        "設備可能仍可接收，但 Busy Channel Lockout 令按 PTT 不能發射；有些系統則因發話權被別人占用而等待。兩者都可能顯示 Busy，來源與處理卻不同。",
+        "在紀錄中分開 channel_busy、floor_busy、local_tx 等欄位比硬塞進一個單選狀態更清楚。實際欄位要按設備文件或程式證據命名。"
+      ],
+      "table": {
+        "caption": "兩種忙碌",
+        "headers": [
+          "觀測",
+          "可能機制",
+          "下一個證據"
+        ],
+        "rows": [
+          [
+            "接收機通道忙",
+            "Busy Channel Lockout",
+            "接收指示及設備設定"
+          ],
+          [
+            "其他人已發話",
+            "發話權控制",
+            "請求／拒絕／排隊事件"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "逾時不是自動轉成「設備沒有發射」",
+      "paragraphs": [
+        "假設 Requesting 等 500 毫秒未收到回報，程式可記 TIMEOUT；它只表示在此期限內沒有看見預期事件，設備可能晚到、回報遺失或狀態本來就沒有該欄。",
+        "若重送會改變實體發射，先查介面規格與去重策略；不能把逾時直接當成可安全重試的證據。"
+      ],
+      "code": {
+        "title": "虛構觀測",
+        "text": "1000 request=TX_REQ id=R7\n1500 app=TIMEOUT id=R7\n設備 TX：未知；介面盒輸出：未知"
+      }
+    },
+    {
+      "heading": "放開後還顯示 TX 的三種可能",
+      "paragraphs": [
+        "一是放開事件沒到程式，二是解除控制沒有到設備，三是設備已停止但 UI 使用舊回報。也可能有文件明定的尾音或延遲，不能一律判故障。",
+        "要同時讀按鍵 UP、TX_END、設備 TX_OFF 及畫面更新時間。先確定哪一層真的仍在 TX，才能決定措施。"
+      ]
+    },
+    {
+      "heading": "狀態要有新鮮度與歸屬",
+      "paragraphs": [
+        "每筆狀態至少標設備、請求 ID、來源時間、接收時間及是否仍有效。若 A 的回報被拿來更新 B 的畫面，就會形成假 Busy／假 TX。",
+        "故障報告可畫兩條時間線：預期事件與實際事件。缺少實際回報時寫未知，不寫「設備拒絕」或「設備壞」。"
+      ],
+      "steps": [
+        "標出狀態的來源與時間。",
+        "把命令與回報對到同一請求。",
+        "區分缺事件、拒絕、延遲與舊畫面。",
+        "只根據觀測更新結論。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【來源】畫面顯示 Ready，能確定設備可發射嗎？",
+      "answer": "不能；先查 Ready 的來源與更新條件。"
+    },
+    {
+      "question": "【Busy】通道 Busy 與別人拿到發話權是一回事嗎？",
+      "answer": "不是；可能來自不同機制，要分開記錄。"
+    },
+    {
+      "question": "【模型】Box-Lab-B 的 PERMIT 是所有電台通用訊息嗎？",
+      "answer": "不是，這是教學假設；實際系統可能沒有。"
+    },
+    {
+      "question": "【逾時】等待回報逾時能證明設備絕對沒有 TX 嗎？",
+      "answer": "不能；可能回報丟失或遲到，仍需設備／介面觀測。"
+    },
+    {
+      "question": "【重試】TX_REQ 逾時可以立即無條件重送嗎？",
+      "answer": "不能；要先看設備與介接規格、去重及可能的實體影響。"
+    },
+    {
+      "question": "【放開】放開後 UI 仍 TX，至少列兩種原因？",
+      "answer": "UP 事件未到、TX_END 未送、設備仍 TX 或 UI 舊狀態，均待查。"
+    },
+    {
+      "question": "【時間】舊的 TX 回報還能當目前狀態嗎？",
+      "answer": "不能；要看時間戳、有效期與是否已斷線。"
+    },
+    {
+      "question": "【結論】沒有 TX_OFF 記錄可直接說設備拒絕停發嗎？",
+      "answer": "不能；先確認本次請求、觀測點及回報通道。"
+    }
+  ],
+  "recap": [
+    "狀態名稱需附來源、時間及有效性。",
+    "通道忙碌與發話權忙碌可同時存在。",
+    "逾時與缺回報屬未知，不能直接代替設備結果。"
+  ],
+  "sources": [
+    {
+      "label": "KENWOOD：電台手冊中的忙碌鎖定與發射計時範例",
+      "url": "https://manual.kenwood.com/en_contents/attachDownload/1000010948"
+    },
+    {
+      "label": "ETSI／3GPP：MCPTT 發話權控制規格（僅供特定系統對照）",
+      "url": "https://www.etsi.org/deliver/etsi_ts/124300_124399/124380/18.06.00_60/ts_124380v180600p.pdf"
+    },
+    {
+      "label": "ITU：數位陸地行動無線電與 PTT 控制",
+      "url": "https://www.itu.int/dms_pub/itu-r/opb/rep/R-REP-M.2014-3-2016-PDF-E.pdf"
+    }
+  ]
+}

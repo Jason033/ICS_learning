@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 570" role="img" aria-labelledby="title desc">
+  <title id="title">介面盒的四類不同訊號</title>
+  <desc id="desc">虛構介面盒有按鍵輸入、送往電台的 PTT 控制輸出、從電台或接收機來的狀態回報、雙向音訊。圖中沒有接腳號或電氣規格。</desc>
+  <rect width="640" height="570" rx="26" fill="#f6f8f4"/>
+  <g font-family="sans-serif" fill="#14342e">
+    <text x="30" y="45" font-size="25" font-weight="700">介面盒裡有四條不同的路</text>
+    <rect x="30" y="77" width="580" height="74" rx="13" fill="#e6e9f7"/>
+    <text x="49" y="108" font-size="20" font-weight="700">按鍵輸入</text>
+    <text x="49" y="136" font-size="16">使用者按鍵 → 介面盒／程式</text>
+    <rect x="30" y="163" width="580" height="74" rx="13" fill="#dcefe7"/>
+    <text x="49" y="194" font-size="20" font-weight="700">PTT 控制輸出</text>
+    <text x="49" y="222" font-size="16">程式／介面盒 → 電台；輸出動作仍待驗證</text>
+    <rect x="30" y="249" width="580" height="74" rx="13" fill="#fff0d9"/>
+    <text x="49" y="280" font-size="20" font-weight="700">狀態回報</text>
+    <text x="49" y="308" font-size="16">設備 TX、接收 COR／COS 等各有來源</text>
+    <rect x="30" y="335" width="580" height="74" rx="13" fill="#f8e7df"/>
+    <text x="49" y="366" font-size="20" font-weight="700">音訊路徑</text>
+    <text x="49" y="394" font-size="16">送出聲音與接收聲音要分方向</text>
+    <text x="320" y="461" text-anchor="middle" font-size="17">一條路成功，不代表其他三條也成功</text>
+    <text x="320" y="497" text-anchor="middle" font-size="16">燈號、極性、電壓與 pinout：查本型號兩端手冊</text>
+  </g>
+  <text x="320" y="545" text-anchor="middle" fill="#52645c" font-size="14" font-family="sans-serif">功能示意，不是接線圖；不可直接用於現場接線</text>
+</svg>

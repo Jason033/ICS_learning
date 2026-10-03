@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 570" role="img" aria-labelledby="title desc">
+  <title id="title">教學用 PTT 狀態轉換</title>
+  <desc id="desc">Ready 經 Requesting、假設性的 Permitted、TX Active、Releasing 回到 Ready。拒絕與逾時需個別查證；實際設備未必有 Permit 訊息。</desc>
+  <rect width="640" height="570" rx="26" fill="#f6f8f4"/>
+  <g font-family="sans-serif" fill="#14342e">
+    <text x="30" y="44" font-size="25" font-weight="700">先畫事件，再替狀態命名</text>
+    <rect x="33" y="72" width="365" height="68" rx="13" fill="#dcefe7"/>
+    <text x="55" y="112" font-size="21" font-weight="700">Ready　可接受操作</text>
+    <text x="216" y="162" text-anchor="middle" font-size="17">↓  按下／送出請求</text>
+    <rect x="33" y="176" width="365" height="68" rx="13" fill="#e6e9f7"/>
+    <text x="55" y="216" font-size="21" font-weight="700">Requesting　等待結果</text>
+    <text x="216" y="265" text-anchor="middle" font-size="17">↓  教學假設：收到 Permit</text>
+    <rect x="33" y="279" width="365" height="68" rx="13" fill="#fff0d9"/>
+    <text x="55" y="319" font-size="21" font-weight="700">Permitted　允許發話</text>
+    <text x="216" y="369" text-anchor="middle" font-size="17">↓  設備回 TX</text>
+    <rect x="33" y="382" width="365" height="68" rx="13" fill="#f8e7df"/>
+    <text x="55" y="422" font-size="21" font-weight="700">TX Active　設備宣告 TX</text>
+    <rect x="425" y="176" width="183" height="171" rx="13" fill="#fff0d9"/>
+    <text x="445" y="214" font-size="19" font-weight="700">拒絕／逾時</text>
+    <text x="445" y="246" font-size="16">不要直接推定</text>
+    <text x="445" y="272" font-size="16">設備沒有發射；</text>
+    <text x="445" y="298" font-size="16">先查觀測來源。</text>
+    <text x="320" y="487" text-anchor="middle" font-size="17">放開 → 解除請求 → 設備停止回報 → 再確認 Ready</text>
+    <text x="320" y="523" text-anchor="middle" font-size="16">Busy 可是另一個限制條件，不一定是單選主狀態</text>
+  </g>
+  <text x="320" y="550" text-anchor="middle" fill="#52645c" font-size="14" font-family="sans-serif">Permitted／Grant 非通用訊息；請依實際設備文件</text>
+</svg>

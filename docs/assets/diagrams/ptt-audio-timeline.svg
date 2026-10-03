@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 475" role="img" aria-labelledby="title desc">
+  <title id="title">同一次 PTT 的設備發射與音訊開始時間</title>
+  <desc id="desc">虛構測試甲和乙都在零毫秒按鍵、九十毫秒設備回 TX。甲在一百二十毫秒送首段音訊；乙在三十毫秒送首段音訊。乙可能有開頭缺字風險，仍需看設備緩衝與對端錄音。</desc>
+  <rect width="640" height="475" rx="26" fill="#f6f8f4"/>
+  <g font-family="sans-serif" fill="#14342e">
+    <text x="30" y="45" font-size="25" font-weight="700">音訊太早，可能落在 TX 之前</text>
+    <rect x="30" y="76" width="580" height="143" rx="15" fill="#dcefe7"/>
+    <text x="50" y="107" font-size="20" font-weight="700">甲：虛構基準</text>
+    <path d="M53 157 H577" stroke="#26766b" stroke-width="4"/>
+    <circle cx="70" cy="157" r="8" fill="#26766b"/>
+    <circle cx="393" cy="157" r="8" fill="#26766b"/>
+    <circle cx="519" cy="157" r="8" fill="#26766b"/>
+    <text x="70" y="190" text-anchor="middle" font-size="16">0 按鍵</text>
+    <text x="393" y="190" text-anchor="middle" font-size="16">90 TX</text>
+    <text x="519" y="190" text-anchor="middle" font-size="16">120 音訊</text>
+    <rect x="30" y="235" width="580" height="143" rx="15" fill="#f8e7df"/>
+    <text x="50" y="266" font-size="20" font-weight="700">乙：虛構異常條件</text>
+    <path d="M53 316 H577" stroke="#a56950" stroke-width="4"/>
+    <circle cx="70" cy="316" r="8" fill="#a56950"/>
+    <circle cx="190" cy="316" r="8" fill="#a56950"/>
+    <circle cx="393" cy="316" r="8" fill="#a56950"/>
+    <text x="70" y="349" text-anchor="middle" font-size="16">0 按鍵</text>
+    <text x="190" y="349" text-anchor="middle" font-size="16">30 音訊</text>
+    <text x="393" y="349" text-anchor="middle" font-size="16">90 TX</text>
+    <text x="320" y="418" text-anchor="middle" font-size="16">乙早 60 ms；是否真的缺字，要看緩衝與對端錄音</text>
+  </g>
+  <text x="320" y="454" text-anchor="middle" fill="#52645c" font-size="14" font-family="sans-serif">毫秒數僅供比較；不是實際設備的時序規格</text>
+</svg>

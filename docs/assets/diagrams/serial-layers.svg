@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560" role="img" aria-labelledby="title desc">
+  <title id="title">串列通訊的四個檢查層次</title>
+  <desc id="desc">由上到下是應用命令、程式與 COM 埠、UART 字元設定、實體電氣與接線；設備回覆必須再循路返回。</desc>
+  <rect width="640" height="560" rx="28" fill="#f6f8f4"/>
+  <text x="34" y="48" font-size="25" font-weight="700" fill="#14342e" font-family="sans-serif">同一筆命令，要過四道檢查</text>
+  <g font-family="sans-serif" fill="#14342e">
+    <rect x="34" y="73" width="572" height="88" rx="14" fill="#dcefe7"/>
+    <text x="55" y="108" font-size="21" font-weight="700">1  設備命令</text>
+    <text x="55" y="137" font-size="17">送什麼、何時算完整？例：STATUS? + CR LF</text>
+    <text x="310" y="181" font-size="25" text-anchor="middle" fill="#56746b">↓</text>
+    <rect x="34" y="193" width="572" height="88" rx="14" fill="#e6e9f7"/>
+    <text x="55" y="228" font-size="21" font-weight="700">2  程式與 COM 埠</text>
+    <text x="55" y="257" font-size="17">選對本機埠；寫入成功只代表交給本機</text>
+    <text x="310" y="301" font-size="25" text-anchor="middle" fill="#56746b">↓</text>
+    <rect x="34" y="313" width="572" height="88" rx="14" fill="#fff0d9"/>
+    <text x="55" y="348" font-size="21" font-weight="700">3  UART 字元設定</text>
+    <text x="55" y="377" font-size="17">雙方核對鮑率、資料位、同位、停止位</text>
+    <text x="310" y="421" font-size="25" text-anchor="middle" fill="#56746b">↓</text>
+    <rect x="34" y="433" width="572" height="88" rx="14" fill="#f8e7df"/>
+    <text x="55" y="468" font-size="21" font-weight="700">4  電氣介面與接線</text>
+    <text x="55" y="497" font-size="17">核對 RS-232 等規格、訊號方向與 pinout</text>
+  </g>
+  <text x="320" y="545" font-size="14" text-anchor="middle" fill="#52645c" font-family="sans-serif">教學分層示意；不代表任何實際設備接法</text>
+</svg>

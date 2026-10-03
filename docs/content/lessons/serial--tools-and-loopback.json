@@ -1,0 +1,177 @@
+{
+  "intro": "這章把前面的判讀帶到工具。你會辨認目前的 COM／tty 裝置、設定十六進位觀察、做不接硬體的 pySerial loop:// 軟體回環，並建立可對時的 TX／RX 紀錄。回環只驗證程式讀寫，不驗證 RS-232 電氣、線材或設備。",
+  "plan": [
+    {
+      "label": "找裝置與設定",
+      "minutes": 10
+    },
+    {
+      "label": "做軟體回環",
+      "minutes": 12
+    },
+    {
+      "label": "讀 TX／RX 紀錄",
+      "minutes": 10
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 13
+    }
+  ],
+  "goals": [
+    "能辨認本機裝置與轉接器，而不是只背固定 COM 號。",
+    "能執行或讀懂無硬體 loop:// 練習並解釋其限制。",
+    "能整理包含時間、方向、HEX、設定與觀測點的紀錄。"
+  ],
+  "sections": [
+    {
+      "heading": "先確認這次到底開到哪個埠",
+      "paragraphs": [
+        "Windows 的裝置管理員可用來確認轉接器目前的埠名稱與裝置狀態；Linux 常見裝置名稱有 /dev/ttyUSB0、/dev/ttyACM0 等，但名稱會因裝置、驅動和插入順序改變。pySerial 也提供列埠工具，清單可能不完整，不能只憑名稱認定外側電氣規格。",
+        "測試紀錄應同時寫時間、電腦、裝置辨識資訊與當次埠名；在不同系統或重新插拔後重新核對。"
+      ],
+      "code": {
+        "title": "選做：列出本機可見串列埠；不會對設備送命令",
+        "text": "Windows（已安裝 Python 與 pySerial）：py -m serial.tools.list_ports\nLinux：python3 -m serial.tools.list_ports\n輸出只代表系統列舉，仍需核對轉接器型號。"
+      },
+      "note": "列舉結果可能不完整；若設備已被其他程式佔用，也可能無法開啟。"
+    },
+    {
+      "heading": "實體設備測試先固定條件",
+      "paragraphs": [
+        "若有授權的測試設備，先讀手冊確認外側介面、pinout、串列參數與安全條件，再選終端程式。一次只讓一個程式開埠，先以十六進位觀察，避免工具默默附加 CR／LF 或轉換文字編碼。",
+        "不要在未核對電氣規格的情況下做實體接線或 loopback。教材不提供未知設備的 pin 號和通用接線步驟。"
+      ],
+      "steps": [
+        "確認設備型號、轉接器型號及當次埠名。",
+        "核對介面與接線條件，再設定鮑率、8N1 等參數和流量控制。",
+        "確認終端程式實際送出的是哪幾個 HEX 位元組。",
+        "記錄 TX、RX 時間與方向；不要只貼一張「有亂碼」截圖。"
+      ]
+    },
+    {
+      "heading": "軟體回環：在電腦裡自己送給自己",
+      "paragraphs": [
+        "本站提供可下載的 Python 小程式，它使用 pySerial 的 loop://，將寫入的虛構二進位請求 AA 01 10 11 回送給自己。程式分兩次各讀 2 bytes，接著再讀 1 byte，展示 timeout 回空。它不連實體線材或設備。",
+        "先在自己的測試電腦安裝 Python 與 pySerial；如已有 pySerial 可直接執行。此程式只需一般本機環境，不需公司帳號或設備。"
+      ],
+      "code": {
+        "title": "執行方式；先下載本章練習檔",
+        "text": "Windows：py -m pip install pyserial\nWindows：py serial-loopback.py\nLinux／macOS：python3 -m pip install pyserial\nLinux／macOS：python3 serial-loopback.py\n預期：read 1=AA 01；read 2=10 11；逾時後 (empty)"
+      },
+      "note": "安裝方式可能受你電腦的 Python 管理政策影響；不要為了練習在受管制的公司電腦自行安裝套件。"
+    },
+    {
+      "heading": "回環成功與實體成功之間還隔著什麼",
+      "paragraphs": [
+        "loop:// 回顯能幫你確認程式對位元組、分段讀取與 timeout 的基本處理；不能測 USB 轉接器外側、RS-232 電平、DTE/DCE 接線、控制線、設備的命令解析或動作。",
+        "若軟體回環也失敗，先修正程式或環境；若回環成功而設備不回覆，下一步才沿實體介面、串列參數與協定內容查。"
+      ],
+      "table": {
+        "caption": "測試覆蓋範圍",
+        "headers": [
+          "測試",
+          "能支持",
+          "不能支持"
+        ],
+        "rows": [
+          [
+            "loop:// 軟體回環",
+            "本機程式寫入／讀取和逾時基本行為",
+            "真實線材或設備正常"
+          ],
+          [
+            "串列埠可開",
+            "作業系統讓程式取得埠",
+            "設備已收到資料"
+          ],
+          [
+            "TX／RX 原始紀錄",
+            "該觀測點看到的位元組",
+            "設備實際完成動作"
+          ],
+          [
+            "設備狀態回報",
+            "符合該設備協定的狀態",
+            "所有硬體功能都正常"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "把日誌寫成別人也能看懂的證據",
+      "paragraphs": [
+        "一份有用的 TX／RX 紀錄至少保留時間與時區、哪個程式／埠、串列設定、方向、原始 HEX、可讀解碼、預期長度與 timeout 條件。若只有「send OK」或一串沒有方向的 HEX，無法排除接錯埠或讀取不完整。",
+        "避免公開貼真實設備位址、控制命令、公司通訊內容與未授權手冊。以下模板用教學代號，所有值都可安全替換為虛構資料。"
+      ],
+      "code": {
+        "title": "自製虛構紀錄模板",
+        "text": "test=Lab-A port=COM8 settings=9600,8,N,1 flow=none\n12:00:00.000 TX 53 54 41 54 55 53 3F 0D 0A  | STATUS?\\r\\n\n12:00:00.085 RX 4F 4B 2C 52 45 41 44 59 0D 0A | OK,READY\\r\\n\n觀測點：本機程式日誌；不是設備內部證據。"
+      },
+      "note": "轉成可讀文字前先保留原始 HEX；二進位資料不應硬解成文字。"
+    },
+    {
+      "heading": "選下一個檢查，不一次改三個變因",
+      "paragraphs": [
+        "先拿一次正常基準與一次異常紀錄，比對轉接器、埠名、參數、命令、時間與回覆。一次只調整有證據支持的條件，否則即使好了也不知道原因。",
+        "若需要實體量測、接線或修改設備設定，應依授權與該設備正式文件進行；本網站提供的是判讀與紀錄方法。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【列埠】列出 COM8 就能證明它外側是 RS-232 嗎？",
+      "answer": "不能。列埠只說明作業系統可見裝置；需核對轉接器型號及電氣規格。"
+    },
+    {
+      "question": "【回環】loop:// 讀到 AA 01 10 11，是設備回覆嗎？",
+      "answer": "不是。它是本機軟體把自己寫的資料回顯。"
+    },
+    {
+      "question": "【分段】回環第一次讀 AA 01、第二次讀 10 11，第一段能被判成完整框架嗎？",
+      "answer": "不能。按虛構協定還需 CMD 與 CHK，應累積後驗證。"
+    },
+    {
+      "question": "【逾時】回環最後 read(1) 讀到空 bytes，代表實體設備逾時嗎？",
+      "answer": "不代表。程式根本沒有連實體設備；它只示範本地讀取逾時。"
+    },
+    {
+      "question": "【觀測】終端畫面顯示 STATUS?，為何還要記 HEX？",
+      "answer": "終端可能暗中附加或轉換 CR/LF、文字編碼；HEX 才能核對實際位元組。"
+    },
+    {
+      "question": "【日誌】只寫「COM8 send OK」缺哪三類關鍵資訊？",
+      "answer": "缺串列設定、實際 TX HEX、觀測到的 RX 或 timeout 時間；也應記裝置身分與觀測點。"
+    },
+    {
+      "question": "【比較】一口氣改轉接器、鮑率和命令，測通後能知道原因嗎？",
+      "answer": "很難。應一次改一個有證據支持的變因，與基準紀錄比較。"
+    }
+  ],
+  "recap": [
+    "列埠與開埠只是本機證據。",
+    "loop:// 可練程式讀寫，不會驗證實體 RS-232 或設備。",
+    "紀錄時間、方向、HEX、設定與觀測點，才能定位。"
+  ],
+  "sources": [
+    {
+      "label": "pySerial：loop:// 與 URL handlers",
+      "url": "https://pyserial.readthedocs.io/en/latest/url_handlers.html"
+    },
+    {
+      "label": "pySerial：列埠與基本使用",
+      "url": "https://pyserial.readthedocs.io/en/latest/shortintro.html"
+    },
+    {
+      "label": "Microsoft：裝置管理員",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載：無硬體軟體回環練習（Python）",
+      "path": "./assets/labs/serial-loopback.py",
+      "description": "需自行安裝 pySerial；只回顯程式自己送出的虛構資料，不會連公司設備。"
+    }
+  ]
+}

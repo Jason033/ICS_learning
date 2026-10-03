@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 470" role="img" aria-labelledby="title desc">
+  <title id="title">相同 RSSI，不同雜訊與封包結果</title>
+  <desc id="desc">虛構測試甲與乙的 RSSI 同為負六十五 dBm。甲雜訊負九十五 dBm，簡化 SNR 三十 dB，100 包零失敗；乙雜訊負七十 dBm，簡化 SNR 五 dB，100 包八失敗。</desc>
+  <rect width="640" height="470" rx="26" fill="#f6f8f4"/>
+  <g font-family="sans-serif" fill="#14342e">
+    <text x="28" y="48" font-size="25" font-weight="700">強度相同，不代表品質相同</text>
+    <rect x="28" y="80" width="283" height="293" rx="16" fill="#dcefe7"/>
+    <text x="48" y="119" font-size="22" font-weight="700">測試甲：基準</text>
+    <text x="48" y="168" font-size="19">RSSI  −65 dBm</text>
+    <text x="48" y="204" font-size="19">雜訊  −95 dBm</text>
+    <path d="M48 221 H288" stroke="#1f7568" stroke-width="2"/>
+    <text x="48" y="262" font-size="20" font-weight="700">簡化 SNR  30 dB</text>
+    <text x="48" y="308" font-size="20" font-weight="700">失敗  0 / 100 包</text>
+    <rect x="329" y="80" width="283" height="293" rx="16" fill="#f8e7df"/>
+    <text x="349" y="119" font-size="22" font-weight="700">測試乙：異常</text>
+    <text x="349" y="168" font-size="19">RSSI  −65 dBm</text>
+    <text x="349" y="204" font-size="19">雜訊  −70 dBm</text>
+    <path d="M349 221 H589" stroke="#a56950" stroke-width="2"/>
+    <text x="349" y="262" font-size="20" font-weight="700">簡化 SNR  5 dB</text>
+    <text x="349" y="308" font-size="20" font-weight="700">失敗  8 / 100 包</text>
+    <text x="320" y="411" font-size="17" text-anchor="middle">先確認同一接收機、測點、頻寬與時間窗</text>
+  </g>
+  <text x="320" y="444" font-size="14" text-anchor="middle" fill="#52645c" font-family="sans-serif">數字皆為虛構；不足以單獨認定干擾或天線故障</text>
+</svg>

@@ -1,0 +1,234 @@
+{
+  "intro": "UART 能把位元組送到另一端，卻不知道一筆設備訊息在哪裡結束。本章分開讀文字終止符與虛構二進位框架，練習十六進位、長度、校驗、分段讀取和 timeout；不要把一次 read 的結果當成完整回覆。",
+  "plan": [
+    {
+      "label": "讀文字邊界",
+      "minutes": 10
+    },
+    {
+      "label": "拆二進位框架",
+      "minutes": 12
+    },
+    {
+      "label": "比較分段讀取與逾時",
+      "minutes": 12
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 16
+    }
+  ],
+  "goals": [
+    "能分清 UART 字元框架與應用訊息框架。",
+    "能解讀虛構文字與二進位命令的長度和校驗。",
+    "能處理回覆分批抵達、沒有終止符與逾時的情境。"
+  ],
+  "sections": [
+    {
+      "heading": "UART 停止位元不是命令結束符",
+      "paragraphs": [
+        "8N1 的停止位元只結束一個 UART 字元；設備命令可能是 8 個、20 個或更多位元組。若程式要知道整筆回覆結束，必須依設備協定找 CR LF、固定長度、長度欄、特殊結束符或其他規則。",
+        "請先拿到設備的命令文件再選讀取策略。不能因為終端機預設按 Enter 送出換行，就認定設備也要求換行。"
+      ],
+      "table": {
+        "caption": "兩種不同的「邊界」",
+        "headers": [
+          "邊界",
+          "範圍",
+          "例子"
+        ],
+        "rows": [
+          [
+            "UART 字元邊界",
+            "一個資料字元／位元組",
+            "8N1 的開始與停止位元"
+          ],
+          [
+            "設備訊息邊界",
+            "一整筆命令或回覆",
+            "CR LF、固定長度、LEN 欄"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "文字協定：看實際位元組，不只看畫面字串",
+      "paragraphs": [
+        "虛構 Device-Lab-A 要求 ASCII 的 STATUS? 後接 CR LF。ASCII 的 CR 是 0D、LF 是 0A；十六進位完整命令為 53 54 41 54 55 53 3F 0D 0A。若只送 STATUS? 的可見文字，設備可能一直等結束符。",
+        "有些工具把按 Enter 轉成 CR、LF 或 CR LF；還可能顯示不可見字元。比對原始十六進位可以避免「畫面看起來一樣」的誤判。"
+      ],
+      "code": {
+        "title": "自製教學命令，非實際設備規格",
+        "text": "文字：STATUS? + CR LF\nHEX：53 54 41 54 55 53 3F 0D 0A\n回覆文字：OK,READY + CR LF\n若只送：53 54 41 54 55 53 3F\n→ 缺少 0D 0A，設備可能繼續等待"
+      },
+      "note": "文字編碼與結束符號都必須按設備手冊；不是每台串列設備都使用 ASCII 或 CR LF。"
+    },
+    {
+      "heading": "二進位協定：先宣告規則再算答案",
+      "paragraphs": [
+        "另一台虛構 Device-Lab-B 使用教學框架：AA 是固定開頭；LEN 計算 CMD 與 DATA 的位元組數；最後 CHK 是 LEN、CMD 和所有 DATA 位元組逐個 XOR。這是為練習設計的規則，不是任何廠商標準。",
+        "查狀態的請求沒有 DATA，LEN=01、CMD=10，所以 CHK=01 XOR 10=11，完整框架是 AA 01 10 11。回覆有一個狀態資料 01，LEN=02、CMD=90，CHK=02 XOR 90 XOR 01=93，完整框架為 AA 02 90 01 93。"
+      ],
+      "table": {
+        "caption": "虛構 Device-Lab-B 二進位框架",
+        "headers": [
+          "欄位",
+          "長度",
+          "本例用途"
+        ],
+        "rows": [
+          [
+            "AA",
+            "1 byte",
+            "固定起始標記"
+          ],
+          [
+            "LEN",
+            "1 byte",
+            "CMD + DATA 的位元組數"
+          ],
+          [
+            "CMD",
+            "1 byte",
+            "10=查詢；90=回覆（僅本例）"
+          ],
+          [
+            "DATA",
+            "0 或更多",
+            "回覆 01=READY（僅本例）"
+          ],
+          [
+            "CHK",
+            "1 byte",
+            "LEN、CMD、DATA 的 XOR"
+          ]
+        ]
+      },
+      "code": {
+        "title": "虛構請求與回覆；十六進位位元組",
+        "text": "TX: AA 01 10 11       # 01 XOR 10 = 11\nRX: AA 02 90 01 93    # 02 XOR 90 XOR 01 = 93"
+      },
+      "note": "XOR 只能偵測部分錯誤；不應把本例的演算法套到未確認的設備。"
+    },
+    {
+      "heading": "一次 read 不保證拿到完整訊息",
+      "paragraphs": [
+        "串列埠 API 的 read(size) 在設定 timeout 時可能回傳少於 size 個位元組；資料也可能分批進入緩衝。假設這次想讀 5 bytes，第一次只拿到 AA 02 90，下一次才拿到 01 93；不能把第一段直接判成設備回覆長度錯。",
+        "應按協定累積位元組：先辨認起始標記和 LEN，再等到 CMD、DATA、CHK 都齊全才驗證；超過明確的交易 deadline 才記 timeout。還要定義最大長度，以免壞資料讓程式一直等。"
+      ],
+      "table": {
+        "caption": "虛構分段到達",
+        "headers": [
+          "讀取時間",
+          "本次取得",
+          "累積狀態"
+        ],
+        "rows": [
+          [
+            "0 ms",
+            "AA 02 90",
+            "知道預期總長 5 bytes，尚缺 2"
+          ],
+          [
+            "20 ms",
+            "01 93",
+            "共 5 bytes，可驗證 CHK"
+          ],
+          [
+            "200 ms",
+            "沒有新資料",
+            "對這筆交易已無影響"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "逾時要問：等第一個位元組，還是等整筆回覆？",
+      "paragraphs": [
+        "「讀取 timeout」可能是單次 read 等待時間；「交易 deadline」則是從送命令到收到完整回覆的總等待界線；某些系統還會設定字元之間的最大空檔。這些值不應混成一個「設備反應時間」。",
+        "決定 timeout 前要量測或查文件：命令送完要多久、設備處理多久、回覆多長、流量控制與轉接器延遲多少。只看到單次 read 回空，未必表示整筆交易永遠沒有回覆。"
+      ],
+      "table": {
+        "caption": "三種等待條件",
+        "headers": [
+          "等待什麼",
+          "可能觀察",
+          "如何記錄"
+        ],
+        "rows": [
+          [
+            "首 byte",
+            "請求後一直沒有 RX",
+            "起算時間與觀測點"
+          ],
+          [
+            "整筆訊息",
+            "有前半段但缺後半段",
+            "已收位元組與預期長度"
+          ],
+          [
+            "字元間空檔",
+            "兩段間隔異常長",
+            "每段時間與設備文件要求"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "重試可能讓動作執行兩次",
+      "paragraphs": [
+        "如果回覆遺失，但設備其實已執行「啟動馬達」之類的命令，程式自動重送可能重複執行。是否可以重試要依命令語意、序號和設備文件；STATUS? 這種查詢與實際動作命令不能一視同仁。",
+        "練習時寫出「已知設備收到嗎」「已知動作執行嗎」「回覆只是沒進程式嗎」，再決定是否重試。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【邊界】8N1 的停止位元能讓程式知道 STATUS? 命令結束嗎？",
+      "answer": "不能。停止位元只結束單個 UART 字元；命令需要設備協定的邊界，例如 CR LF 或長度欄。"
+    },
+    {
+      "question": "【文字】STATUS? 加 CR LF 的最後兩個十六進位位元組是什麼？",
+      "answer": "0D 0A；若少了它，採 CR LF 結束的教學設備可能繼續等待。"
+    },
+    {
+      "question": "【二進位】AA 01 10 11 的 LEN=01 表示什麼？",
+      "answer": "CMD + DATA 共 1 byte；本例只有 CMD 10，沒有 DATA。"
+    },
+    {
+      "question": "【校驗】AA 02 90 01 93 的 CHK 如何算？",
+      "answer": "02 XOR 90 XOR 01 = 93，依本教材虛構規則；不是通用 RS-232 校驗法。"
+    },
+    {
+      "question": "【分段】預期 5 bytes，第一次 read 得 AA 02 90，能立刻寫設備回覆格式錯嗎？",
+      "answer": "不能。可能只是尚未收齊；按 LEN 累積，等到完整或交易 deadline 再判斷。"
+    },
+    {
+      "question": "【逾時】單次 read 在 200 ms 回空，等於設備永遠不會回覆嗎？",
+      "answer": "不等於。要看這次 read 的起算、完整交易 deadline、抓包或硬體觀測與設備處理條件。"
+    },
+    {
+      "question": "【重試】動作命令沒有回覆，可以無條件自動重送嗎？",
+      "answer": "不行。可能設備已執行但回覆遺失；先按設備協定確認重試是否安全。"
+    }
+  ],
+  "recap": [
+    "UART 字元邊界與設備訊息邊界不同。",
+    "原始 HEX、LEN、CHK 與接收時間要一起記錄。",
+    "分段讀取和逾時不等於設備一定錯；重試更要考慮命令語意。"
+  ],
+  "sources": [
+    {
+      "label": "pySerial：read、read_until 與 timeout",
+      "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
+    },
+    {
+      "label": "Analog Devices：UART 字元結構",
+      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
+    },
+    {
+      "label": "NI：串列通訊參數",
+      "url": "https://www.ni.com/docs/es-ES/bundle/labview/page/serial-port-communication.html"
+    }
+  ]
+}

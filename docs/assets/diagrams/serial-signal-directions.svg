@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 470" role="img" aria-labelledby="title desc">
+  <title id="title">兩端訊號方向核對示意</title>
+  <desc id="desc">本機端與設備端各自標示 TX、RX 及訊號參考；名稱以各端自己的角度命名。實際線號與接法應查兩份手冊。</desc>
+  <rect width="640" height="470" rx="28" fill="#f6f8f4"/>
+  <text x="32" y="45" font-size="24" font-weight="700" fill="#14342e" font-family="sans-serif">先問「由誰送、由誰收」</text>
+  <g font-family="sans-serif" fill="#14342e">
+    <rect x="32" y="85" width="230" height="260" rx="18" fill="#dcefe7"/>
+    <text x="54" y="125" font-size="22" font-weight="700">本機端</text>
+    <text x="54" y="165" font-size="18">TX：本機送出</text>
+    <text x="54" y="235" font-size="18">RX：本機接收</text>
+    <text x="54" y="305" font-size="18">訊號參考</text>
+    <rect x="378" y="85" width="230" height="260" rx="18" fill="#e6e9f7"/>
+    <text x="400" y="125" font-size="22" font-weight="700">設備端</text>
+    <text x="400" y="165" font-size="18">RX：設備接收</text>
+    <text x="400" y="235" font-size="18">TX：設備送出</text>
+    <text x="400" y="305" font-size="18">訊號參考</text>
+    <path d="M276 155 H361" stroke="#1f7568" stroke-width="5" fill="none"/>
+    <path d="M360 155 l-15 -9 v18 z" fill="#1f7568"/>
+    <path d="M364 225 H279" stroke="#5859a6" stroke-width="5" fill="none"/>
+    <path d="M280 225 l15 -9 v18 z" fill="#5859a6"/>
+    <path d="M278 295 H362" stroke="#777" stroke-width="4" stroke-dasharray="8 7" fill="none"/>
+    <text x="320" y="382" font-size="17" text-anchor="middle">TX／RX 是相對於各端命名</text>
+    <text x="320" y="413" font-size="17" text-anchor="middle">DTE／DCE、控制線與 pin 號須查手冊</text>
+  </g>
+  <text x="320" y="446" font-size="14" text-anchor="middle" fill="#52645c" font-family="sans-serif">方向概念圖；不可當作未知設備的接線圖</text>
+</svg>

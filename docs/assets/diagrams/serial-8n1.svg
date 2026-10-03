@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 375" role="img" aria-labelledby="title desc">
+  <title id="title">一個 8N1 UART 字元的十個位元時間</title>
+  <desc id="desc">依序為一個起始位元、八個資料位元 D0 到 D7、沒有同位位元、一個停止位元；圖中方格不是特定位元值或真實波形。</desc>
+  <rect width="760" height="375" rx="28" fill="#f6f8f4"/>
+  <text x="28" y="48" font-size="25" font-weight="700" fill="#14342e" font-family="sans-serif">8N1：每字元共 10 個位元時間</text>
+  <g font-family="sans-serif" font-size="17" text-anchor="middle" fill="#14342e">
+    <rect x="28" y="93" width="64" height="78" rx="8" fill="#f8e7df"/>
+    <text x="60" y="128">起始</text><text x="60" y="153">1</text>
+    <rect x="98" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="130" y="139">D0</text>
+    <rect x="168" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="200" y="139">D1</text>
+    <rect x="238" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="270" y="139">D2</text>
+    <rect x="308" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="340" y="139">D3</text>
+    <rect x="378" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="410" y="139">D4</text>
+    <rect x="448" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="480" y="139">D5</text>
+    <rect x="518" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="550" y="139">D6</text>
+    <rect x="588" y="93" width="64" height="78" rx="8" fill="#dcefe7"/><text x="620" y="139">D7</text>
+    <rect x="658" y="93" width="74" height="78" rx="8" fill="#e6e9f7"/><text x="695" y="128">停止</text><text x="695" y="153">1</text>
+    <text x="380" y="219" font-size="20" font-weight="700">1 起始 + 8 資料 + 0 同位 + 1 停止 = 10</text>
+    <text x="380" y="266" font-size="17">9600 baud 時，單字元傳送時間約 10 ÷ 9600 秒</text>
+    <text x="380" y="297" font-size="17">約 1.04 毫秒；尚未算設備處理或等待回覆</text>
+  </g>
+  <text x="380" y="347" font-size="14" text-anchor="middle" fill="#52645c" font-family="sans-serif">色塊示意字元欄位；不是實際電壓波形，也未畫閒置狀態</text>
+</svg>

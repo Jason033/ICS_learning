@@ -25,7 +25,7 @@ for (const topic of catalog.topics) {
       for (const field of ['intro', 'goals', 'sections', 'exercises', 'recap']) assert(lesson[field]?.length, `${file} 缺少 ${field}`);
       for (const source of lesson.sources || []) assert.match(source.url, /^https:\/\//);
       for (const resource of lesson.resources || []) {
-        assert.match(resource.path, /^\.\/assets\/labs\/[a-z0-9-]+\.pcap$/);
+        assert.match(resource.path, /^\.\/assets\/labs\/[a-z0-9-]+\.(?:pcap|py)$/);
         assert(fs.existsSync(path.join(docs, resource.path.slice(2))), `${file} 缺少練習檔 ${resource.path}`);
       }
       for (const section of lesson.sections) {
@@ -42,7 +42,7 @@ for (const topic of catalog.topics) {
   }
 }
 assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 28);
+assert.equal(readyCount, 41);
 assert.equal(catalog.topics[0].chapters.length, 10);
 for (const chapter of catalog.topics[0].chapters) {
   assert.equal(chapter.contentType, 'full');
@@ -72,6 +72,36 @@ for (const chapter of catalog.topics[2].chapters) {
   assert(lesson.sources.length >= 2, `${chapter.id} 缺少官方來源`);
   for (const source of lesson.sources) assert.match(source.url, /^https:\/\/(?:www\.)?voip-sip-sdk\.com\//);
 }
+
+const serialTopic = catalog.topics.find((topic) => topic.id === 'serial');
+assert.equal(serialTopic.chapters.length, 7);
+assert.equal(serialTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 330);
+let serialExerciseCount = 0;
+for (const chapter of serialTopic.chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `serial--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 5, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 7, `${chapter.id} 練習不足`);
+  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
+  serialExerciseCount += lesson.exercises.length;
+}
+assert.equal(serialExerciseCount, 50);
+
+const radioTopic = catalog.topics.find((topic) => topic.id === 'radio');
+assert.equal(radioTopic.chapters.length, 8);
+assert.equal(radioTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 420);
+let radioExerciseCount = 0;
+for (const chapter of radioTopic.chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `radio--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
+  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
+  radioExerciseCount += lesson.exercises.length;
+}
+assert.equal(radioExerciseCount, 65);
 
 const elements = new Map();
 function element(selector) {
@@ -170,7 +200,38 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   context.location.hash = '#/lesson/ozeki/evidence-troubleshooting';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /練習 08/);
-  context.location.hash = '#/lesson/serial/frame-and-timing';
+
+  context.location.hash = '#/topic/serial';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /#\/lesson\/serial\/electrical-and-wiring/);
+  assert.match(element('#main').innerHTML, /#\/lesson\/serial\/serial-troubleshooting/);
+  context.location.hash = '#/lesson/serial/serial-layers';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /serial-layers\.svg/);
+  assert.match(element('#main').innerHTML, /練習 07/);
+  context.location.hash = '#/lesson/serial/tools-and-loopback';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /serial-loopback\.py/);
+  context.location.hash = '#/lesson/serial/serial-troubleshooting';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /練習 08/);
+
+  context.location.hash = '#/topic/radio';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /#\/lesson\/radio\/parameters/);
+  assert.match(element('#main').innerHTML, /#\/lesson\/radio\/radio-troubleshooting/);
+  context.location.hash = '#/lesson/radio/tx-rx-path';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /radio-path\.svg/);
+  assert.match(element('#main').innerHTML, /練習 08/);
+  context.location.hash = '#/lesson/radio/rssi-snr';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /radio-quality\.svg/);
+  context.location.hash = '#/lesson/radio/radio-troubleshooting';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /練習 09/);
+
+  context.location.hash = '#/lesson/ptt/state-machine';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這篇教材尚未開放/);
 

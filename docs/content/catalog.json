@@ -42,19 +42,28 @@
       ]
     },
     {
-      "id": "serial", "title": "RS-232 與設備介面", "icon": "⇄", "summary": "讀懂串列設定、收送紀錄與無回應問題。",
+      "id": "serial", "title": "RS-232 與設備介面", "icon": "⇄", "summary": "從電氣介面、UART 設定到命令、回覆與除錯。",
       "chapters": [
-        {"id": "serial-layers", "title": "RS-232、串列設定與命令是三件事", "summary": "從接線、參數、命令與回覆分段檢查。", "minutes": 20, "status": "ready", "contentType": "sample"},
-        {"id": "frame-and-timing", "title": "資料格式與逾時", "summary": "認識邊界、校驗與等待回覆。", "status": "planned"},
-        {"id": "other-interfaces", "title": "RS-422、RS-485 與其他介面", "summary": "辨認設備文件中的不同介面。", "status": "planned"}
+        {"id": "serial-layers", "title": "RS-232、串列設定與命令是三件事", "summary": "從埠、字元、電氣介面與設備命令分層看。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "electrical-and-wiring", "title": "電氣規格、接線與控制線", "summary": "依設備文件核對訊號方向，不靠插頭外形猜接法。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "uart-settings", "title": "UART 參數與字元傳送", "summary": "看懂 8N1、鮑率、同位檢查與流量控制。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "frame-and-timing", "title": "資料格式、檢查碼與逾時", "summary": "拆解訊息邊界、HEX 位元組、校驗與等待回覆。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "tools-and-loopback", "title": "串列工具與軟體回環", "summary": "用本機模擬讀取、逾時並建立 TX／RX 紀錄。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "other-interfaces", "title": "RS-422、RS-485 與其他介面", "summary": "辨認多種設備介面的用途與限制。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "serial-troubleshooting", "title": "串列通訊整合除錯", "summary": "用五個虛構案例逐段排查故障。", "minutes": 55, "status": "ready", "contentType": "full"}
       ]
     },
     {
-      "id": "radio", "title": "無線電通訊", "icon": "◉", "summary": "從軟體維護角度認識發射、接收與常見參數。",
+      "id": "radio", "title": "無線電通訊", "icon": "◉", "summary": "從收發路徑、頻率與調變，學到品質指標與故障判讀。",
       "chapters": [
-        {"id": "tx-rx-path", "title": "發射與接收：聲音走過哪些環節", "summary": "先建立 TX／RX 圖像，再學會讀觀測值。", "minutes": 20, "status": "ready", "contentType": "sample"},
-        {"id": "rssi-snr", "title": "RSSI、SNR 與品質", "summary": "分清訊號強弱與訊號品質。", "status": "planned"},
-        {"id": "parameters", "title": "頻率、通道與功率", "summary": "讀懂設備規格上的基本欄位。", "status": "planned"}
+        {"id": "tx-rx-path", "title": "發射與接收：聲音走過哪些環節", "summary": "分開看控制、音訊與射頻證據。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "parameters", "title": "頻率、通道、頻寬與波長", "summary": "讀懂設備設定，分清通道號與實際頻率。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "modulation-and-coding", "title": "調變、解調與數位符號", "summary": "認識 AM、FM、FSK、PSK、QAM 與 OFDM。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "rf-chain-and-antenna", "title": "功率、dB、天線與 VSWR", "summary": "把功率、饋線損失和對端品質分開。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "rssi-snr", "title": "RSSI、SNR 與接收品質", "summary": "區分強度、雜訊、錯誤率、靈敏度與靜噪。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "duplex-and-repeater", "title": "收發方向、中繼台與基地台", "summary": "辨認上行、下行與輪流或同時收發。", "minutes": 45, "status": "ready", "contentType": "full"},
+        {"id": "measurements-and-logs", "title": "射頻觀測與可比較的紀錄", "summary": "固定測點、時間窗與儀器設定再比較。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "radio-troubleshooting", "title": "無線電通訊整合除錯", "summary": "用六個虛構案例練習從證據選下一步。", "minutes": 60, "status": "ready", "contentType": "full"}
       ]
     },
     {

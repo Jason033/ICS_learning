@@ -1,0 +1,213 @@
+{
+  "intro": "發射功率不是接收品質的唯一開關。這章從 dB、dBm、dBi、饋線損失與天線方向建立最小量化直覺，再認識 VSWR 只回答匹配與反射的一部分。",
+  "plan": [
+    {
+      "label": "三種 dB 單位",
+      "minutes": 14
+    },
+    {
+      "label": "鏈路中的增益損失",
+      "minutes": 13
+    },
+    {
+      "label": "天線與反射",
+      "minutes": 13
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 10
+    }
+  ],
+  "goals": [
+    "能區分 dB 比值、dBm 絕對功率與 dBi 天線增益。",
+    "能做最基本的功率加減與兩端觀測比較。",
+    "能說明 VSWR、發射功率與實際接收品質不能互相替代。"
+  ],
+  "sections": [
+    {
+      "heading": "dB 是比值；dBm 是相對 1 mW 的功率",
+      "paragraphs": [
+        "0 dBm = 1 mW，30 dBm = 1000 mW = 1 W。同一條功率路徑增加 3 dB 約是功率加倍，減少 3 dB 約是功率減半。",
+        "dB 本身不能說明絕對功率；比較兩個 dBm 值時，還要確認觀測點、頻寬、儀器校準與時間一致。"
+      ],
+      "table": {
+        "caption": "最小換算表",
+        "headers": [
+          "數值",
+          "白話意思",
+          "注意"
+        ],
+        "rows": [
+          [
+            "0 dBm",
+            "1 mW",
+            "絕對功率"
+          ],
+          [
+            "30 dBm",
+            "1 W",
+            "絕對功率"
+          ],
+          [
+            "+3 dB",
+            "功率約 2 倍",
+            "只是比值"
+          ],
+          [
+            "−3 dB",
+            "功率約 1/2",
+            "只是比值"
+          ]
+        ]
+      },
+      "code": {
+        "title": "僅供計算練習",
+        "text": "例：20 dBm 經 −3 dB 損失 → 約 17 dBm\n這不是任何設備的安全功率設定。"
+      }
+    },
+    {
+      "heading": "dBi 是天線方向增益，並非產生能量",
+      "paragraphs": [
+        "dBi 以理想各向同性天線作參考，描述某方向相對集中程度。更高 dBi 不表示每個方向都更強，也不自動改善障礙、干擾或極化不合。",
+        "天線高度、指向、極化、饋線與接頭都可能影響有效路徑。發射端與接收端的天線條件要分開記錄。"
+      ]
+    },
+    {
+      "heading": "用簡化鏈路帳本避免只盯發射機",
+      "paragraphs": [
+        "教學帳本：發射機端口 20 dBm，饋線損失 3 dB，到天線端口約 17 dBm；若假設目標方向天線增益 6 dBi，概念上的等效輻射功率約 23 dBm EIRP。這不是接收功率，尚需傳播損失與接收端條件。",
+        "真實 EIRP、合法限制與量測依當地授權和正式規範。不要拿這張教學帳本設定實體設備。"
+      ],
+      "table": {
+        "caption": "虛構鏈路帳本",
+        "headers": [
+          "位置或因素",
+          "值",
+          "如何理解"
+        ],
+        "rows": [
+          [
+            "發射機端口",
+            "20 dBm",
+            "此觀測點的功率"
+          ],
+          [
+            "饋線",
+            "−3 dB",
+            "路徑損失"
+          ],
+          [
+            "天線方向",
+            "+6 dBi",
+            "目標方向增益"
+          ],
+          [
+            "概念 EIRP",
+            "約 23 dBm",
+            "非對端接收功率"
+          ]
+        ]
+      },
+      "note": "天線與負載相關操作只能在授權、合規與設備允許的條件下做。"
+    },
+    {
+      "heading": "VSWR 反映匹配與反射，不是通話品質分數",
+      "paragraphs": [
+        "VSWR（電壓駐波比）與反射有關，常用來判斷射頻端口、饋線與負載的匹配情況。偏高可能提示天線、接頭、饋線或量測條件問題，但不能單憑一個值定位哪個元件。",
+        "正常 VSWR 也不能保證天線方向對、接收機可解碼或遠端有音訊；與對端 RSSI／SNR、封包或錄音共同看。"
+      ],
+      "table": {
+        "caption": "兩種觀測不可互換",
+        "headers": [
+          "觀測",
+          "主要關注",
+          "還缺少"
+        ],
+        "rows": [
+          [
+            "VSWR",
+            "本端 RF 匹配／反射",
+            "對端接收與音訊"
+          ],
+          [
+            "TX 功率",
+            "本端某點功率",
+            "饋線、天線及空中路徑"
+          ],
+          [
+            "對端 SNR",
+            "該觀測點訊號對雜訊",
+            "應用內容是否正確"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "Radio-Lab-D：功率沒變，對端變差",
+      "paragraphs": [
+        "假設本端 TX 功率紀錄仍為 20 dBm，對端 RSSI 下降、SNR 也下降。可能是饋線、接頭、天線方向、遮蔽或接收端條件變化，不能直接說發射機壞。",
+        "固定距離、時間與對端設備，再比較已授權的參考條件；若要測 RF 端口，先確認合適負載、量測設備與安全程序。"
+      ]
+    },
+    {
+      "heading": "把觀測位置寫在單位旁",
+      "paragraphs": [
+        "同為 dBm，發射端口、天線口、接收端口與接收機 RSSI 各是不同位置。把它們放在同一欄卻不寫位置，會讓數字看似可比較，實際無法推理。",
+        "記錄格式至少包含設備、測點、單位、頻率／通道、時間、儀器或設備內部數值來源，以及當時負載條件。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【單位】dB 與 dBm 哪個是絕對功率？",
+      "answer": "dBm 是以 1 mW 為參考的絕對功率；dB 是比值。"
+    },
+    {
+      "question": "【換算】0 dBm 與 30 dBm 各約多少？",
+      "answer": "1 mW 與 1 W。"
+    },
+    {
+      "question": "【功率】20 dBm 經 −3 dB 饋線損失，天線口約多少？",
+      "answer": "約 17 dBm，僅是簡化計算。"
+    },
+    {
+      "question": "【dBi】天線 +6 dBi 表示各方向都放大 6 dB 嗎？",
+      "answer": "不是。它描述相對理想各向同性天線在特定方向的增益。"
+    },
+    {
+      "question": "【EIRP】20 − 3 + 6 約多少 dBm？",
+      "answer": "約 23 dBm 的概念 EIRP；不是對端接收功率。"
+    },
+    {
+      "question": "【VSWR】VSWR 正常就表示對端一定聽得到嗎？",
+      "answer": "不能。它主要反映本端匹配／反射，對端還受傳播、接收與音訊影響。"
+    },
+    {
+      "question": "【定位】TX 功率不變而對端變差，只能是接收機壞嗎？",
+      "answer": "不能。饋線、天線、路徑、干擾與對端設定都仍需核對。"
+    },
+    {
+      "question": "【紀錄】兩個 dBm 數字比較前先記什麼？",
+      "answer": "觀測點、頻率／頻寬、時間、儀器或數值來源與測試條件。"
+    }
+  ],
+  "recap": [
+    "dB、dBm、dBi 回答不同問題。",
+    "發射端功率不等於對端接收功率。",
+    "VSWR、RSSI、SNR 要放回各自觀測點解讀。"
+  ],
+  "sources": [
+    {
+      "label": "Analog Devices：dB、dBm、dBi 說明",
+      "url": "https://www.analog.com/media/en/technical-documentation/application-notes/hardware_integration_application_notes.pdf"
+    },
+    {
+      "label": "Rohde & Schwarz：VSWR 與反射",
+      "url": "https://www.co.rohde-schwarz.com/us/products/test-and-measurement/essentials-test-equipment/spectrum-analyzers/voltage-standing-wave-ratio-vswr-and-return-loss_258140.html"
+    },
+    {
+      "label": "Analog Devices：接收器靈敏度與雜訊",
+      "url": "https://www.analog.com/en/resources/technical-articles/system-noisefigure-analysis-for-modern-radio-receivers.html"
+    }
+  ]
+}

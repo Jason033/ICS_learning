@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 600" role="img" aria-labelledby="title desc">
+  <title id="title">從說話到聽見的三種證據路徑</title>
+  <desc id="desc">控制請求與狀態、聲音資料、射頻傳播分開。發射端到接收端依序是音訊輸入、調變與發射、天線、空中路徑、接收與解調、音訊輸出。</desc>
+  <rect width="640" height="600" rx="26" fill="#f6f8f4"/>
+  <g font-family="sans-serif" fill="#14342e">
+    <text x="32" y="46" font-size="25" font-weight="700">「有 TX」只是其中一段證據</text>
+    <rect x="31" y="72" width="578" height="84" rx="13" fill="#e6e9f7"/>
+    <text x="51" y="104" font-size="20" font-weight="700">控制：送出 TX 請求 → 設備回報狀態</text>
+    <text x="51" y="134" font-size="17">這一列不直接證明對端可聽</text>
+    <rect x="31" y="172" width="578" height="108" rx="13" fill="#dcefe7"/>
+    <text x="51" y="204" font-size="20" font-weight="700">音訊：麥克風 → TX 處理</text>
+    <text x="51" y="235" font-size="17">對端 RX 處理 → 喇叭／錄音</text>
+    <text x="51" y="263" font-size="15">輸入計數與實際播放，要在各自位置查</text>
+    <rect x="31" y="296" width="578" height="208" rx="13" fill="#fff0d9"/>
+    <text x="51" y="329" font-size="20" font-weight="700">射頻：天線與空中路徑</text>
+    <rect x="51" y="351" width="225" height="78" rx="9" fill="#ffffff"/>
+    <text x="164" y="382" font-size="18" text-anchor="middle">本端發射鏈</text>
+    <text x="164" y="408" font-size="15" text-anchor="middle">調變、功率、天線</text>
+    <path d="M286 390 H342" stroke="#26766b" stroke-width="5"/>
+    <path d="M339 390 l-12 -8 v16 z" fill="#26766b"/>
+    <rect x="352" y="351" width="236" height="78" rx="9" fill="#ffffff"/>
+    <text x="470" y="382" font-size="18" text-anchor="middle">對端接收鏈</text>
+    <text x="470" y="408" font-size="15" text-anchor="middle">強度、品質、解調</text>
+    <text x="320" y="475" font-size="16" text-anchor="middle">中間還受環境、干擾與設定影響</text>
+    <text x="320" y="548" font-size="18" text-anchor="middle">每一段都要在對應位置找證據</text>
+  </g>
+  <text x="320" y="579" font-size="14" text-anchor="middle" fill="#52645c" font-family="sans-serif">自製教學模型；不是實際公司設備拓撲</text>
+</svg>

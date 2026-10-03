@@ -9,7 +9,7 @@ function escapeHtml(value) {
 }
 
 function safeAsset(value) {
-  return /^\.\/assets\/[a-z0-9/-]+\.(?:pcap|pcapng|svg|png)$/.test(value || '') ? value : '#';
+  return /^\.\/assets\/[a-z0-9/-]+\.(?:pcap|pcapng|svg|png|py)$/.test(value || '') ? value : '#';
 }
 
 function safeLink(value) {

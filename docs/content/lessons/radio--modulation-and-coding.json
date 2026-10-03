@@ -1,0 +1,217 @@
+{
+  "intro": "頻率對了卻無法通話，可能因為兩端「如何把資訊放上載波」不同。本章用圖像化分類認識類比 AM／FM、數位 FSK／PSK／QAM 與 OFDM，不要求先會解複雜公式。",
+  "plan": [
+    {
+      "label": "調變基本圖像",
+      "minutes": 14
+    },
+    {
+      "label": "類比與數位",
+      "minutes": 16
+    },
+    {
+      "label": "數位鏈其餘條件",
+      "minutes": 10
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能說明調變與解調的分工。",
+    "能區分類比調變、數位符號映射及 OFDM 多載波結構。",
+    "能列出「有 RF 能量、無法解碼」的候選原因與證據。"
+  ],
+  "sections": [
+    {
+      "heading": "資訊要搭上載波，接收端才取回",
+      "paragraphs": [
+        "發射端把資訊映射到載波的某種可控變化，稱為調變；接收端根據相容的規則解調。看見某個中心頻率有能量，只表示那裡有訊號，不能保證內容可讀。",
+        "例如把聲音放在幅度變化可得到 AM；放在頻率變化可得到 FM。這是入門圖像；實際系統還會有濾波、同步與更多處理。"
+      ],
+      "flow": [
+        "語音/資料",
+        "調變",
+        "RF 訊號",
+        "接收解調",
+        "還原內容"
+      ]
+    },
+    {
+      "heading": "類比 AM 與 FM：改變哪個量",
+      "paragraphs": [
+        "AM 主要讓載波幅度跟著訊息變；FM 主要讓瞬時頻率跟著訊息變。兩端必須使用相容的方式、頻寬與接收設定。",
+        "「類比」指資訊連續變化的表達；不等於完全沒有數位控制。不要從外觀或設備名稱猜調變方式。"
+      ],
+      "table": {
+        "caption": "先看變化欄位",
+        "headers": [
+          "方式",
+          "主要變化",
+          "觀測前提"
+        ],
+        "rows": [
+          [
+            "AM",
+            "幅度",
+            "核對調變方式與頻寬"
+          ],
+          [
+            "FM",
+            "瞬時頻率",
+            "核對頻偏與接收設定"
+          ]
+        ]
+      },
+      "note": "這是概念分類，不指定任何實際電台設定。"
+    },
+    {
+      "heading": "數位 FSK、PSK、QPSK 與 QAM",
+      "paragraphs": [
+        "數位資料先成為符號。FSK 以不同頻率狀態代表符號；PSK 以相位狀態代表符號；QPSK 是四個相位狀態的常見形式；QAM 結合幅度與相位狀態。",
+        "相同中心頻率不代表兩端能互通：符號速率、同步、映射、編碼、協定都可能不同。不要把 4 個相位狀態直接理解成「通話品質一定更好」。"
+      ],
+      "table": {
+        "caption": "不同數位映射",
+        "headers": [
+          "名稱",
+          "主要用什麼區分符號",
+          "本章先記住"
+        ],
+        "rows": [
+          [
+            "FSK",
+            "頻率狀態",
+            "接收端要能分辨頻率差"
+          ],
+          [
+            "PSK/QPSK",
+            "相位狀態",
+            "需相位與時間同步"
+          ],
+          [
+            "QAM",
+            "幅度與相位",
+            "對訊號品質與線性度有要求"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "OFDM 是多個子載波一起承載資料",
+      "paragraphs": [
+        "OFDM 將資料安排到多個互相正交的子載波；各子載波上仍可用 PSK 或 QAM 等映射。把 OFDM 與 QAM 當成互斥的兩種選項，會誤讀設備規格。",
+        "子載波安排、循環字首、同步和通道估計會影響接收；這裡只建立架構，詳細數學留給 DSP／SDR 主題。"
+      ],
+      "flow": [
+        "資料位元",
+        "分配到多個子載波",
+        "各自映射符號",
+        "合成發射"
+      ]
+    },
+    {
+      "heading": "數位鏈還有編碼、同步與語音格式",
+      "paragraphs": [
+        "解調只把 RF 變回符號或位元，之後可能還要錯誤更正、封包校驗、解密／權限檢查和語音解碼。若某一步不合，RSSI 仍可能正常。",
+        "測試報告應分成「偵測到能量」「鎖定同步」「位元／封包可解」「語音可播放」四層，記下各層是否有儀表或 log 支持。"
+      ],
+      "table": {
+        "caption": "數位接收階梯",
+        "headers": [
+          "階段",
+          "可見指標例",
+          "不能直接宣告"
+        ],
+        "rows": [
+          [
+            "RF 能量",
+            "RSSI",
+            "可解碼"
+          ],
+          [
+            "同步",
+            "sync/lock",
+            "內容正確"
+          ],
+          [
+            "封包",
+            "CRC/BER/PER",
+            "聲音播放"
+          ],
+          [
+            "音訊",
+            "解碼與輸出",
+            "對端完全正常"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "Radio-Lab-C：有訊號卻顯示 sync fail",
+      "paragraphs": [
+        "虛構紀錄同時顯示 RSSI 上升與 sync fail。這不能只說「天線沒問題」，也不能立刻歸咎天線；可能是調變／速率不符、雜訊、干擾或同步條件。",
+        "下一步比較雙方模式與頻寬，再看 SNR、頻譜或已知模式的對照樣本；如果設備文件定義了 sync fail，按文件精確解讀。"
+      ],
+      "code": {
+        "title": "虛構教學 log",
+        "text": "10:00:01 RSSI=-68 dBm（觀測點：接收機 A）\n10:00:01 sync=FAIL\nBER / 音訊：無可用數值"
+      },
+      "note": "RSSI=-68 dBm 是教學數字，不能跨設備直接套用好壞門檻。"
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【分工】調變與解調各在哪一端？",
+      "answer": "發射端調變，接收端按相容規則解調。"
+    },
+    {
+      "question": "【AM/FM】AM 主要改幅度還是瞬時頻率？",
+      "answer": "幅度；FM 主要改瞬時頻率。"
+    },
+    {
+      "question": "【FSK】FSK 用什麼差異代表符號？",
+      "answer": "不同頻率狀態。"
+    },
+    {
+      "question": "【QPSK】QPSK 是哪種 PSK 入門例？",
+      "answer": "四個相位狀態的相位鍵控。"
+    },
+    {
+      "question": "【QAM】QAM 只用相位嗎？",
+      "answer": "不是，還結合幅度狀態。"
+    },
+    {
+      "question": "【OFDM】OFDM 與 QAM 可一起使用嗎？",
+      "answer": "可以。OFDM 是多子載波安排，子載波可使用 QAM 等符號映射。"
+    },
+    {
+      "question": "【證據】RSSI 上升但 sync fail，可以宣告語音已到嗎？",
+      "answer": "不能。只看到能量，還沒證明同步、封包與音訊。"
+    },
+    {
+      "question": "【下一步】sync fail 先查哪兩種資料？",
+      "answer": "核對雙方調變／速率／頻寬設定，再看 SNR、頻譜或已知可用基準。"
+    }
+  ],
+  "recap": [
+    "RF 能量與可解內容是兩層證據。",
+    "FSK、PSK、QAM 描述符號映射；OFDM 描述多子載波結構。",
+    "數位接收通常還需同步、校驗與音訊還原。"
+  ],
+  "sources": [
+    {
+      "label": "NI：常見 RF 名詞",
+      "url": "https://www.ni.com/en/shop/data-acquisition/measurement-fundamentals/glossary-for-rf-common-terminology.html"
+    },
+    {
+      "label": "NI：通訊系統入門實驗",
+      "url": "https://education.ni.com/teach/resources/16/introductory-communications-systems"
+    },
+    {
+      "label": "Analog Devices：接收器的 BER 與靈敏度",
+      "url": "https://www.analog.com/en/resources/technical-articles/introduction-to-gsm-and-gsm-mobile-rf-transceiver-derivation.html"
+    }
+  ]
+}

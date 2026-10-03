@@ -1,228 +1,280 @@
 {
-  "intro": "註冊只是讓電話系統知道你在哪裡。本章把撥號、來電、接聽、結束和通話狀態事件放到同一條可追查時間線，練習辨認「程式要求」「SDK 回報」「SIP 封包」各代表哪一步。",
-  "plan": [
-    {
-      "label": "追撥出流程",
-      "minutes": 10
-    },
-    {
-      "label": "追來電與事件",
-      "minutes": 12
-    },
-    {
-      "label": "對照 SIP 與狀態",
-      "minutes": 10
-    },
-    {
-      "label": "處理多通及控制操作",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 8
-    }
+  "contentVersion": 2,
+  "intro": "一通電話會經過建立物件、發出請求、振鈴、接聽、媒體就緒與結束。這些階段分散在方法、事件及SIP交易中。本章建立可追蹤的通話模型，從單通流程走到連續兩通與來電，學會判斷晚到事件、錯物件及結束不完整。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
   ],
+  "studyTime": {
+    "reading": [
+      15,
+      25
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 calls 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能在官方範例找出建立通話物件、來電事件與狀態事件。",
-    "能區分撥號、響鈴、接聽、通話中與結束的證據。",
-    "能在多通電話或重複事件中核對正確的通話物件。"
+    "說明通話物件的狀態與可接受命令，避免把方法返回當接通。",
+    "讀出來電、撥出、接聽、拒絕和掛斷的事件鏈。",
+    "在連續或多通案例中保存物件身分，驗證舊事件不影響新通。"
   ],
   "sections": [
     {
-      "heading": "每一通都要有自己的身分",
+      "heading": "一通電話是一個有歷史的控制物件",
+      "kind": "concept",
       "paragraphs": [
-        "官方撥接教學用 IPhoneCall 代表單次通話；軟體電話可建立撥出通話物件，也可由 IncomingCall 事件收到來電物件。事件處理前先確認是哪一通，否則兩通同時存在時可能把 A 的狀態顯示在 B 的畫面。",
-        "應用程式的 Call-ID、SDK 通話物件參照與 SIP Call-ID 未必是同一個欄位；若要跨日誌與封包對照，必須找實際轉換與關聯證據。"
-      ],
-      "table": {
-        "caption": "辨認一通電話",
-        "headers": [
-          "觀測來源",
-          "可用來關聯的資訊",
-          "注意"
-        ],
-        "rows": [
-          [
-            "應用程式",
-            "自訂的本機通話代號、物件參照",
-            "需查程式如何產生"
-          ],
-          [
-            "SDK 回呼",
-            "回呼來源物件與狀態參數",
-            "需查該版本事件簽章"
-          ],
-          [
-            "SIP 封包",
-            "Call-ID、CSeq、From／To",
-            "不可把不同請求的 200 OK 混用"
-          ],
-          [
-            "人員描述",
-            "時間、方向、被叫對象",
-            "描述可能不精確，需交叉核對"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "撥出：方法、事件、封包依序核對",
-      "paragraphs": [
-        "官方範例先建立通話物件、訂閱它的 CallStateChanged，再提出撥號；實際建立與啟動方法要依版本核對。應用程式收到狀態事件後，也要檢查 SIP INVITE 是否真的送出、對端是否回應。",
-        "某些狀態名稱如 Answered、InCall 出現在官方範例，但不保證不同版本或不同設定的事件時序完全一樣。應記實際順序，尤其不能用單一「撥號函式回傳」推論對方已接。"
-      ],
-      "flow": [
-        "建立通話物件",
-        "訂閱狀態事件",
-        "提出撥號",
-        "觀察 INVITE 與回覆",
-        "更新畫面"
-      ],
-      "note": "此處的「依序」是閱讀與檢查步驟，不是保證事件和封包必然以同樣次序被不同紀錄器記下。"
-    },
-    {
-      "heading": "來電：先辨認物件，再決定接聽或拒絕",
-      "paragraphs": [
-        "官方撥接教學以軟體電話的 IncomingCall 事件收到來電，再對該通話物件訂閱狀態變化。處理來電時先記來源、對應線路和通話物件；接聽動作與真正接通仍要分開。",
-        "若來電事件到達後對端取消，畫面上舊的「接聽」按鈕可能已不適用；應按該通話目前狀態處理，而不是照舊動作直接送出命令。"
-      ],
-      "steps": [
-        "找到 IncomingCall 訂閱與 handler。",
-        "確認 handler 接收的通話物件與帳號／線路。",
-        "找接聽或拒絕操作的呼叫點。",
-        "核對後續狀態事件、SIP 回覆與結束清理。"
+        "撥號不是直接把字串2001傳到網路就完成。程式需要指定線路、目的地與通話配置，建立一個保存本次流程的物件，再發出開始命令。它會等待伺服器和遠端的回應，可能進入振鈴、接通或錯誤。IPhoneCall提供這次呼叫的控制入口與狀態，過去通話已經結束，不應該再被當作下一通的可重用狀態容器。",
+        "通話狀態之所以重要，是因為每個操作有前提。未接來的電話可接受或拒絕；已接通電話可結束；正在撥出的電話取消和已建立dialog的結束，在SIP層不是同一種流程。SDK可能用一個HangUp入口處理不同階段，但應用仍需知道當前物件與階段，才能解釋抓包為甚麼出現CANCEL或BYE，而不是看到非BYE就認為沒有掛斷。",
+        "建立業務模型時先寫不變條件：同一個單通槽位最多擁有一個當前物件；每個事件應用到它所屬通話；一次結束之後不再把晚到Active恢復為活動；媒體只能附著到允許承載音訊的正確物件。不變條件不是廠商enum，而是應用正確性的規則。瞭解這些規則後，讀switch才能知道哪些分支漏了，哪些重復通知必須無害。"
       ]
     },
     {
-      "heading": "把 SDK 狀態與 SIP 訊號放在相鄰欄，不畫等號",
+      "heading": "撥出流程：先建立觀察能力，再啟動呼叫",
+      "kind": "mechanism",
       "paragraphs": [
-        "在簡化 SIP 例子裡，INVITE 發起呼叫，180 Ringing 是信令回覆，200 OK 與 ACK 可支持建立流程。SDK 的 Answered 或 InCall 是本機物件的觀察；兩種資料可互相核對，但名稱不能直接一對一翻譯。",
-        "例如「200 OK」可能回的是 INVITE，也可能回的是 BYE；須看 CSeq。沒有 RTP 時，SIP 建立成功也不等於有聲音。"
+        "核對Ozeki通話教學，撥出使用core.CreateCallObject(line, number)，訂閱call.CallStateChanged，然後call.Start。你必須先保存局部目標與會話記錄再Start，因為狀態可能很快到達。若先Start再訂閱，少量測試也許正常，但快響應可能遺漏最初變化；加等待並沒有建立可靠的順序。",
+        "局部變量也有作用。程式若在handler里一直使用全域call，用戶建立下一通後這個變量已經改指C2，C1晚到事件會操作C2。應該在事件入口確定發佈者／會話身分，再將其帶到後續處理。保存Call-ID有助與SIP關聯，但SDK物件ID和網路Call-ID是不同標識，需要明確映射；SIP dialog完整身分還包含local/remote tag。",
+        "最簡單的單通程式可以在忙時拒絕新建立操作，但規則要在同一同步範圍檢查和佔用槽位。只把按鈕Disable不能避免SDK來電和另一入口競爭。先寫清“單通還是多通”的業務政策，再決定是否每通獨立session或共用音訊資源，避免把demo里一個call欄位當作所有系統設計。"
       ],
-      "table": {
-        "caption": "虛構撥出時間線",
-        "headers": [
-          "時間",
-          "本機／封包觀察",
-          "目前結論"
-        ],
-        "rows": [
-          [
-            "10:00:00.000",
-            "使用者按撥號；建立通話物件 C1",
-            "只有本機操作"
-          ],
-          [
-            "10:00:00.030",
-            "擷取到 INVITE，Call-ID demo-1@example.invalid",
-            "已看到信令發出"
-          ],
-          [
-            "10:00:00.120",
-            "180 Ringing",
-            "對端信令回應響鈴"
-          ],
-          [
-            "10:00:01.100",
-            "200 OK (INVITE)；本機 Answered",
-            "呼叫控制在觀測點完成"
-          ],
-          [
-            "10:00:01.130",
-            "ACK；尚未檢查 RTP",
-            "還不能宣稱可聽見聲音"
-          ]
-        ]
-      },
-      "note": "時間線為自製教學資料，不是公司紀錄，也不要求你的 SDK 產生完全相同的事件。"
+      "code": {
+        "title": "核對的官方撥出成員；閱讀用，需實際SDK宣告",
+        "text": "IPhoneCall target = core.CreateCallObject(line, \"2001\");\ntarget.CallStateChanged += OnCallState;\ntarget.Start();"
+      }
     },
     {
-      "heading": "掛斷、保持與轉接也要追對象與回覆",
+      "heading": "事件狀態和SIP訊息為什麼不能一對一硬套",
+      "kind": "concept",
       "paragraphs": [
-        "官方通話控制教學示範 Hold、Unhold、Transfer、HangUp 等操作；這些只是該教學的功能範圍。實際產品版本是否有相同方法、是否啟用、是否經 PBX 支援，仍要查文件與專案。",
-        "掛斷前確認操作對象是哪一通；按下掛斷後還要核對通話結束事件及對應 SIP 流程。已建立的通話常見 BYE，仍在建立中的取消流程可能不同；不能把所有掛斷都寫成 BYE。保持或轉接也不能只靠畫面按鈕推論對端已執行。"
+        "SIP INVITE請求開始建立會話，100與180等暫時回應表示處理中與振鈴，成功最終回應及ACK屬於建立流程。SDK還可能結合本地裝置、用戶操作、媒體以及錯誤形成自己的CallState。一個SDK事件可以總結多項內部操作，一個SIP訊息也不一定馬上反映成UI狀態，所以“180一定等於所有版本Ringing”的規則不可靠。",
+        "官方教學分別處理Answered、InCall及IsCallEnded。Answered用於首次接聽後的媒體附著；InCall可能在保持恢復時再次出現。這說明事件可能重復代表恢復到可通話階段，而不是“只會發生一次”。應用應把媒體建立寫成有狀態的操作，避免每次InCall都Connect相同邊或重復訂閱。保持的媒體方向則需要SDP及SDK契約共同理解。",
+        "狀態轉換表能讓你讀複雜程式：列當前狀態、輸入事件、條件、動作、下一狀態和需要驗證的輸出。例如“活動+結束事件→停止／解除本通媒體、解除訂閱→結束”；“已結束+活動晚到→只記錄、不復活”。表是應用設計，不是將SDK全部狀態刪成五個名字；保留原始狀態和錯誤，才能解釋未知分支。"
       ],
       "table": {
-        "caption": "控制操作的檢查方法",
+        "caption": "單通Lab應用模型，非Ozeki enum",
         "headers": [
-          "操作",
-          "先看",
-          "再看"
+          "目前",
+          "輸入",
+          "動作／結果"
         ],
         "rows": [
           [
-            "掛斷",
-            "命令送到哪個 IPhoneCall",
-            "結束事件與該通當下階段的 SIP 流程"
+            "Created",
+            "Start",
+            "Dialing，等待通知"
           ],
           [
-            "保持／恢復",
-            "目前通話是否支持、方法簽章",
-            "狀態與媒體方向是否變"
+            "Created/振鈴中的入站",
+            "Answer",
+            "模型Active；真實需後續事件"
           ],
           [
-            "轉接",
-            "目標與作用的通話是否正確",
-            "伺服器／對端回報及轉接後結果"
+            "Dialing",
+            "遠端接聽",
+            "Active，綁定本通媒體"
+          ],
+          [
+            "Active",
+            "HangUp/Ended",
+            "清理本通，Ended"
+          ],
+          [
+            "Ended",
+            "晚到Active",
+            "不恢復，保存紀錄"
           ]
         ]
       }
     },
     {
-      "heading": "一通與多通的差別：不要只存一個全域 call",
+      "heading": "來電：核心通知你一個已存在的通話物件",
+      "kind": "concept",
       "paragraphs": [
-        "官方另有多通話範例。若應用只用一個變數存「目前通話」，第二通來電可能覆蓋第一通的參照；是否會發生需看實際程式，不可直接宣稱公司有這個錯誤。",
-        "學習時先畫表：本機代號、SDK 物件、線路、方向、目前狀態、最後事件時間。狀態事件只更新對應那一列。這個做法有助於檢查誤關閉或誤接聽。"
+        "來電不是你再CreateCallObject給自己撥一通。ISoftPhone.IncomingCall的官方參考宣告是EventHandler<VoIPEventArgs<IPhoneCall>>，參數內含代表來電的IPhoneCall。應把這個物件交給自己的會話處理器，先訂閱它的狀態，再根據政策Answer或Reject。若你另建出站call來替代，原始入站INVITE就沒有被正確接受。",
+        "接聽按鈕需要知道它對應哪通來電，不能只看incomingCall布林和全域call。第一通正在振鈴時第二通來到，布林無法保存兩個物件；單通應用應明確拒絕或保留排隊政策，多通應用應給各自handler。若呼叫已遠端取消，用戶再按接聽，應用需避免對終止物件繼續命令，並合理呈現“已結束”。",
+        "Answer方法是本端接受意圖，SDK後續狀態與網路響應才告訴你處理結果。Reject與HangUp也需按階段使用；不能把拒絕一通來電解釋成釋放整個phone line。官方網頁有不同代接聽寫法，本章採用已經核對的p_7537中的Answer/HangUp，以真實專案類型宣告確認相容。這個約束只有在API接縫處需要檢查，不影響上述物件機制。"
+      ]
+    },
+    {
+      "heading": "例題一：從Call事件重建正常撥出",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入是已存在L1、C2新物件、會話handler先訂閱，然後Start發Dialing，再注入Active，最後HangUp發Ended。LabSession收到Active時將雙向媒體附到C2並啓動；Ended時清理並解除訂閱。逐步狀態為Created→Dialing→Active→Ended，媒體可用性為false→false→true→false，結束後handler數量為0。",
+        "這裡的Lab同步發事件，讓每一個中間值可重現；真實SDK會經歷異步網路和更多狀態。因此你應把例題映射為“哪個方法觸發意圖、哪個事件確認階段”，不把同步時序當保證。正常路徑的回歸產物需包含物件ID、狀態、媒體目標和清理次數；只保存結束後的PASS無法區分中間曾綁錯通話。",
+        "若把session建立移到Start後，Dialing可能漏接；若在Active前就附媒體，在某些產品可能只是緩衝或被拒絕，需按實際契約判斷。應用應有明確啓動點，而不是把StartCall、StartDevices和StartPlayback全部叫Start，讓維護者猜每個Start到底控制甚麼。"
+      ],
+      "code": {
+        "title": "完整Lab通話控制；使用已驗證的LabSession",
+        "text": "var line = new LabLine(\"L1\");\nvar call = new LabCall(\"C2\", line);\nusing var session = new LabSession(call); // 已訂閱\ncall.Start(); // Dialing\nConsole.WriteLine(session.Media.Tx(\"C2\")); // False\ncall.Emit(LabCallState.Active); // 測試注入遠端接聽\nConsole.WriteLine(session.Media.Tx(\"C2\")); // True\nConsole.WriteLine(session.Media.Rx(\"C2\")); // True\ncall.HangUp();\nConsole.WriteLine(call.HandlerCount); // 0\nConsole.WriteLine(session.Media.Disposed); // True"
+      }
+    },
+    {
+      "heading": "例題二：C1結束晚到，為何C2從畫面消失？",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入是當前顯示C2，舊C1的Ended事件晚到。錯誤handler只看Ended就把displayed設none，沒有核對事件身分；所以它清掉了仍活動的C2。修正先判斷e.CallId==displayed再更新當前槽位。C1仍應清理自己的session，但不能以C1事件清C2。事件處理和全域顯示更新必須拆成不同責任。",
+        "下面代碼先重現錯誤，再守衛。兩次舊C1結束後，第一次displayed=none，第二次仍C2。這個結果不是“把舊事件丟棄一切”：舊C1自己的媒體和handler仍需清理，保留結束紀錄也有助查異常。重點是根據歸屬限制影響範圍。如果只有displayed字串卻沒有session歸屬，難以證明資源清理正確。",
+        "在多線程中，檢查displayed與寫入必須納入同一同步政策。若在if檢查後另一線程切到C3，原更新仍可能清錯。可把所有會話狀態轉移串行送進控制佇列，或用適當鎖保護應用狀態；不要拿鎖包住可能阻塞或回呼重入的SDK外部操作。此處先學歸屬邏輯，再到並行主題理解原子性。"
+      ],
+      "code": {
+        "title": "完整舊事件推導；對應calls情境",
+        "text": "var line = new LabLine(\"L1\");\nvar oldCall = new LabCall(\"C1\", line);\nstring displayed = \"C2\";\nAction<LabCallEvent> bad = e => { if(e.State == LabCallState.Ended) displayed = \"none\"; };\noldCall.Changed += bad;\noldCall.HangUp(); // displayed變none\noldCall.Changed -= bad;\ndisplayed = \"C2\";\nAction<LabCallEvent> good = e => { if(e.CallId == displayed && e.State == LabCallState.Ended) displayed = \"none\"; };\noldCall.Changed += good;\noldCall.HangUp(); // displayed仍C2\noldCall.Changed -= good;"
+      }
+    },
+    {
+      "heading": "結束是一段流程，不只是把call設成null",
+      "kind": "concept",
+      "paragraphs": [
+        "使用者按掛斷、遠端掛斷、撥號拒絕、應用取消和錯誤終止，都可能結束這通。SDK可能用不同狀態表達，官方例子用e.State.IsCallEnded()歸納終態。你的包裝需要處理所有實際支持的終態，不是只處理Completed就漏掉Rejected/Error。HangUp發出後也不能馬上宣稱遠端已完成，應保留“結束請求中”與終態觀測的區別。",
+        "終態清理涉及自己擁有的資源：本通事件訂閱、本通音訊sender/receiver附著、會話記錄和UI槽位。設備是全局還是每通的，由設計決定；多通共享喇叭時，結束C1不能無條件Stop所有通話。通話物件本身是否由SDK或應用負責釋放，需看真實類型契約，不可把所有引用都Dispose一遍。",
+        "清理入口也可能重疊：用戶結束、SDK終態、超時或應用關閉都調用同一個清理。它應當重復調用無害，且只影響該通。單純call=null沒有解除訂閱，單純停止設備沒有解除附著，單純Dispose媒體也沒有更新UI；把它們看成不同動作，才不會在第二通碰到舊回呼和已釋放裝置。"
+      ]
+    },
+    {
+      "heading": "保持、恢復和轉接：狀態再進入的工程後果",
+      "kind": "concept",
+      "paragraphs": [
+        "保持是暫時改變會話的媒體或控制狀態，不是結束物件再建新通。官方控制教學使用Hold、Unhold、Transfer等方法，但各自的SIP交涉與支持條件不同。恢復後InCall可以再次出現；如果你的handler把每次InCall當首次接通，可能重復Connect、重復Start播放器或覆蓋計時起點。",
+        "應用應分別保存“本次會話已經建立媒體路由”和“設備當前是否啓用”。保持可按政策暫停裝置，恢復只重啓已存在的連接；會話真終止才解除本通路由。轉接又可能帶另一個目的地與結果，Transfer方法返回不保證第三方已接通，更不能立即將所有物件設為結束而丟掉失敗恢復能力。",
+        "維護這些功能先畫事件序列和所有權，不要只抄switch里的方法。測試應該覆蓋持有→恢復→再次保持→結束，以及轉接拒絕後原通話是否仍可使用。即使公司現在只用撥號，理解重復進入狀態能幫助你找出“第一通好、第二通聲音重復”的機制，而不是把所有異常當音訊編碼問題。"
+      ]
+    },
+    {
+      "heading": "追碼實作：一個正常流程加一個污染流程",
+      "kind": "lab",
+      "paragraphs": [
+        "執行calls情境，在bad、guarded及LabSession.OnState設斷點。先逐行寫displayed與各call.State，再觀察媒體Attach所用ID。改變guarded為不比較CallId，舊事件檢查應失敗；恢復後把LabSession.OnState的身份判斷去掉，再思考若錯路由通知會影響哪個session。所有變因都須在執行前預測結果。",
+        "第二任務執行lifecycle，比較C1結束和C2建立的先後，確認每通均新建session。加入一通incoming=true的LabCall，先建立session再Answer，驗證Lab禁止對incoming調用Start。故障後恢復，重跑all，不只回歸你剛改的calls。驗收產物是轉移表、兩條事件時間線及何者擁有每份媒體。",
+        "這套Lab不生成SIP包、沒有真實Ringing計時；未模擬的狀態應該如實列出。要遷移到SDK，使用同樣的狀態/身份紀錄，再針對當前版本支持的Answered、InCall與結束狀態填映射。你通過基礎模型理解物件和事件，才能把真實代碼的額外分支放到正確位置。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：來電看得到，接聽卻沒建立",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "案例同樣是來電UI出現，按接聽後仍振鈴。候選甲是UI顯示C6但按鈕使用全域call=C5，Answer操作舊物件；候選乙是確實Answer C6，但遠端在按鈕之前已取消，handler沒把終態傳到UI。先不猜媒體codec，先記錄IncomingCall物件、按鈕目標、方法例外與SDK狀態。",
+        "補證後，甲記錄Answer target=C5、incoming C6仍未處理；修按鈕和session綁定，以所選C6調用，避免重建call代替incoming物件。乙記錄C6終態先於Answer，修終態路由與按鈕准入，及時顯示已經結束。若Answer C6有執行且SDK未終止，才繼續查信令最終響應和錯誤。兩案的下一證據必須不同，才能稱得上診斷。",
+        "驗收甲需兩通重疊來電或單通拒絕政策、選擇不同物件、舊call結束晚到；驗收乙需來電取消、剛接聽即遠端結束與快速重復按鍵。結果同時檢查真實目標與畫面狀態，保證沒有隱藏活動物件。這個案例教你把“按了沒成功”轉化成目標與時序問題，而不是一律重撥。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【撥出】撥號方法已呼叫，對端必然響鈴嗎？",
-      "answer": "不必然。先看通話物件事件與 SIP INVITE／回覆，再查對端；方法呼叫只證明本機嘗試。"
+      "question": "【基礎】CreateCallObject、Start、CallStateChanged分別是甚麼？",
+      "level": "foundation",
+      "answer": [
+        "建立物件提供本次呼叫的狀態與控制容器；Start請求啓動流程；事件報告後續變化。",
+        "三者不是同一時刻，也不保證Start返回就接通。",
+        "追物件歸屬和事件輸入，再根據契約判當前階段。"
+      ]
     },
     {
-      "question": "【來電】IncomingCall 到達後，為何還要核對該通話的目前狀態？",
-      "answer": "來電可能已取消或結束；應對正確物件及當下狀態操作，避免處理過期畫面。"
+      "question": "【基礎】IncomingCall收到e.Item後，為甚麼不能另建outgoing物件再Answer？",
+      "level": "foundation",
+      "answer": [
+        "e.Item就是該入站呼叫對應物件，另建的是不同操作與身份。",
+        "應保存此物件，訂閱其狀態，再按政策接受或拒絕。",
+        "驗證按鈕目標就是來電物件，網路回應也配同一呼叫。"
+      ]
     },
     {
-      "question": "【200 OK】看到一筆 200 OK 就能說呼叫接通嗎？",
-      "answer": "不能。先看 CSeq 對應 INVITE、REGISTER 或 BYE；同樣的回應碼對不同請求意義不同。"
+      "question": "【基礎】InCall第二次出現，必然是第二通電話嗎？",
+      "level": "foundation",
+      "answer": [
+        "不是；保持恢復等流程可以使同一物件再次進入可通話狀態。",
+        "用call身分、狀態歷史和API契約確認，不用事件次數猜電話數量。",
+        "媒體創建需區分首次與恢復，驗收不會重復接線。"
+      ]
     },
     {
-      "question": "【狀態】Answered 和 InCall 可以當成所有 Ozeki 版本固定的事件順序嗎？",
-      "answer": "不可以。它們出現在官方教學範例，但實際版本與配置要看其文件和紀錄。"
+      "question": "【應用】displayed=C9，C8 Ended，C9 Active。全局OnEnded設current=null會怎樣？",
+      "level": "application",
+      "answer": [
+        "C8事件是舊通，當前槽位屬於C9。",
+        "無身份條件清空會讓C9消失或失去可控制參照。",
+        "清理C8自身session，同時只在C8仍為當前時清槽；回歸舊結束與新建立交錯。"
+      ]
     },
     {
-      "question": "【關聯】SDK 物件參照與 SIP Call-ID 可直接當同一個值嗎？",
-      "answer": "不可。須找程式是否記錄映射，或用時間、方向、線路與 SIP 欄位交叉核對。"
+      "question": "【應用】時序00 incoming C3、10 remote ended C3、20 UI Answer C3。應修哪兩段？",
+      "level": "application",
+      "answer": [
+        "終態必須使C3不再可接受，並傳到UI撤銷接聽動作。",
+        "按鈕執行時也需檢查所屬物件與當前准入，不能相信20ms前的顯示。",
+        "驗證取消先到與按鈕先到兩種次序，均無隱藏活動通。"
+      ]
     },
     {
-      "question": "【控制】按下 Hold 後畫面變成「保持中」，還需什麼證據？",
-      "answer": "查方法對象、SDK 狀態事件與 SIP／SDP 或對端回報；畫面變化不保證保持成功。"
+      "question": "【應用】C5 InCall→LocalHeld→InCall，handler每次new播放器並Connect。提出設計修正。",
+      "level": "application",
+      "answer": [
+        "同一通狀態再進入，不是另建媒體資源的充分理由。",
+        "為session記錄路由建立與設備啓用狀態，恢復僅按契約重新Start已擁有設備。",
+        "回歸兩次保持恢復與結束，確認只有一組路由、播放器位置符合業務、清理一次。"
+      ]
     },
     {
-      "question": "【多通】第二通來電時，最重要的第一個識別動作是什麼？",
-      "answer": "為每通分別記錄本機代號、SDK 通話物件與事件；避免把第二通的事件寫到第一通。"
+      "question": "【診斷】Answer C7已記、網路200也確認、UI仍振鈴；另案Answer目標C6。下一證據如何不同？",
+      "level": "diagnosis",
+      "answer": [
+        "第一案操作目標正確且有信令成功，查C7事件、包裝轉發與UI狀態覆蓋。",
+        "第二案先修按鈕物件歸屬，C7尚未被正確接受，不能用C6事件驗收。",
+        "各自修有限範圍後做來電取消與舊事件回歸，同時核對C7是否活動。"
+      ]
+    },
+    {
+      "question": "【診斷】結束只處理Completed，拒絕後第二次撥號被current!=null擋住。修正和驗證。",
+      "level": "diagnosis",
+      "answer": [
+        "Rejected等終態未清理，遺留參照使下一次入口返回。",
+        "按當前SDK的終態集合處理共享清理入口，確認清理歸屬本通且可重復調用。",
+        "回歸拒絕、取消、錯誤、遠端結束和正常結束；每次均能新建下一通且無舊訂閱。"
+      ]
     }
   ],
   "recap": [
-    "一通通話要用可核對的身分串起操作、事件與 SIP。",
-    "來電與撥出都要在正確的通話物件上處理。",
-    "控制操作的按鈕、SDK 狀態與對端結果不能畫等號。"
+    "通話物件保存一次歷史；命令、事件和網路結果需按身份對齊。",
+    "來電使用通知帶來的物件，單通槽位與多通session要有明確政策。",
+    "終態、重復進入與晚到事件決定長期正確性，不能只驗第一通。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 calls，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
+    }
   ],
   "sources": [
     {
-      "label": "Ozeki 官方撥接電話教學",
-      "url": "https://www.voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
+      "label": "Ozeki：Start/Answer/HangUp與CallState",
+      "url": "https://voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
     },
     {
-      "label": "Ozeki 官方通話控制教學",
-      "url": "https://www.voip-sip-sdk.com/p_7539-how-to-control-calls-using-sip-messages.html"
+      "label": "Ozeki：Hold/Unhold/Transfer控制流程",
+      "url": "https://voip-sip-sdk.com/p_7539-how-to-control-calls-using-sip-messages.html"
     },
     {
-      "label": "Ozeki 官方多通話說明",
-      "url": "https://www.voip-sip-sdk.com/p_7359-voip-multiple-calls.html"
+      "label": "Ozeki：IncomingCall實際事件宣告",
+      "url": "https://voip-sip-sdk.com/doc/html/7e045b12-18d6-48b7-8951-3dff3b61b2a6.htm"
+    },
+    {
+      "label": "RFC3261 §9取消、§13建立、§15結束",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261.html#section-13"
+    },
+    {
+      "label": "Ozeki：獨立多通處理器",
+      "url": "https://voip-sip-sdk.com/p_7542-how-to-handle-more-than-one-call-in-the-same-time.html"
     }
   ]
 }

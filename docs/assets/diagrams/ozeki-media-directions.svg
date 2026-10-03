@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="600" viewBox="0 0 1080 600" role="img" aria-labelledby="title desc">
+<title id="title">兩條完整音訊路徑：接線、附著、工作各不同</title><desc id="desc">發送是麥克風到sender再附著通話；接收是通話附著receiver再接喇叭。兩個方向分別需要有效路由、正確通話與裝置啟用。</desc>
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3z" fill="#356b58"/></marker></defs><rect width="1080" height="600" rx="18" fill="#f7faf6"/>
+<g font-family="sans-serif" fill="#203f35"><text x="32" y="45" font-size="25" font-weight="bold">接通之外，聲音還要走完兩條有方向的路</text>
+<text x="32" y="98" font-size="21" font-weight="bold">我說給對方聽</text>
+<rect x="32" y="128" width="190" height="110" rx="12" fill="#dfeee3" stroke="#94b39d"/><text x="52" y="162" font-size="20">麥克風</text><text x="52" y="195" font-size="16">取得有格式的樣本</text><text x="52" y="222" font-size="16">Start啟用來源</text>
+<rect x="324" y="128" width="235" height="110" rx="12" fill="#fff" stroke="#94b39d"/><text x="343" y="166" font-size="18">PhoneCallAudioSender</text><text x="343" y="198" font-size="16">接受本端資料</text>
+<rect x="684" y="128" width="156" height="310" rx="12" fill="#e7ebf9" stroke="#98a5c0"/><text x="706" y="190" font-size="22">本通C2</text><text x="706" y="224" font-size="16">通話／媒體</text><text x="706" y="264" font-size="16">協商</text><text x="706" y="298" font-size="16">編碼／解碼</text><text x="706" y="332" font-size="16">RTP收發</text>
+<rect x="924" y="128" width="124" height="310" rx="12" fill="#dfeee3" stroke="#94b39d"/><text x="942" y="275" font-size="20">對端</text>
+<path d="M222 182 H316 M559 182 H677 M840 182 H916" stroke="#356b58" stroke-width="3" fill="none" marker-end="url(#a)"/><text x="237" y="152" font-size="16">Connect</text><text x="574" y="152" font-size="16">Attach C2</text>
+<text x="32" y="294" font-size="21" font-weight="bold">我聽對方說</text>
+<rect x="32" y="328" width="190" height="110" rx="12" fill="#dfeee3" stroke="#94b39d"/><text x="52" y="362" font-size="20">喇叭</text><text x="52" y="395" font-size="16">輸出可聽聲音</text><text x="52" y="422" font-size="16">Start啟用輸出</text>
+<rect x="324" y="328" width="235" height="110" rx="12" fill="#fff" stroke="#94b39d"/><text x="336" y="366" font-size="18">PhoneCallAudioReceiver</text><text x="343" y="398" font-size="16">提供收到的音訊</text>
+<path d="M324 383 H229 M684 383 H566 M924 383 H847" stroke="#356b58" stroke-width="3" fill="none" marker-end="url(#a)"/><text x="237" y="358" font-size="16">Connect</text><text x="574" y="358" font-size="16">Attach C2</text>
+<rect x="32" y="482" width="1016" height="85" rx="10" fill="#f6eddc"/><text x="52" y="513" font-size="18">每個方向分別查：來源是否有內容 → 邊方向正確 → 附著本通 → 傳輸／輸出。</text><text x="52" y="544" font-size="17">Connect、AttachToCall、Start不同；圖是教學抽象，不表示SDK所有內部模組。</text>
+</g></svg>

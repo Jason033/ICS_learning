@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">同一個本地逾時，三種遠端結果</title>
+  <desc id="desc">固定教學時間：零毫秒送出，一百毫秒本地等待到期。A在八十毫秒完成、一百二十毫秒回報；B仍在處理；C沒有收到請求。單靠本地逾時無法區分。</desc>
+  <rect width="960" height="420" rx="18" fill="#f3f7fa"/>
+  <g font-family="sans-serif" fill="#193246">
+    <text x="28" y="43" font-size="24" font-weight="700">100 ms 的本地 timeout，不能決定遠端發生了什麼</text>
+    <text x="28" y="71" font-size="15">原創模型：同一請求 R17、固定且一致的邏輯時間，不是跨主機時鐘量測。</text>
+    <path d="M190 105H865" stroke="#718c9a" stroke-width="2"/>
+    <g font-size="15"><text x="184" y="97">0</text><text x="270" y="97">20</text><text x="527" y="97">80</text><text x="607" y="97">100</text><text x="698" y="97">120 ms</text></g>
+    <path d="M624 112V345" stroke="#be6750" stroke-width="3" stroke-dasharray="7 5"/>
+    <g font-size="17" font-weight="700"><text x="28" y="164">世界 A</text><text x="28" y="244">世界 B</text><text x="28" y="324">世界 C</text></g>
+    <path d="M190 158H710" stroke="#479689" stroke-width="4"/>
+    <g fill="#146457"><circle cx="190" cy="158" r="6"/><circle cx="277" cy="158" r="6"/><circle cx="537" cy="158" r="6"/><circle cx="710" cy="158" r="6"/></g>
+    <g font-size="15"><text x="166" y="187">送出</text><text x="253" y="143">收到</text><text x="498" y="187">遠端完成</text><text x="682" y="143">本地收到回報</text></g>
+    <path d="M190 238H856" stroke="#8097b1" stroke-width="4"/>
+    <g fill="#536f91"><circle cx="190" cy="238" r="6"/><circle cx="277" cy="238" r="6"/></g>
+    <g font-size="15"><text x="253" y="223">收到</text><text x="715" y="267">仍處理中，300 ms 才完成</text></g>
+    <path d="M190 318H277" stroke="#b67864" stroke-width="4"/>
+    <path d="M268 309L286 327M286 309L268 327" stroke="#b67864" stroke-width="3"/>
+    <text x="308" y="324" font-size="15">沒有送達，遠端沒有 R17</text>
+    <rect x="28" y="364" width="904" height="36" rx="8" fill="#e5ecef"/>
+    <text x="46" y="388" font-size="17">到 100 ms，三個世界都可記錄 timeout；需要同 ID 的遠端紀錄才能繼續區分。</text>
+  </g>
+</svg>

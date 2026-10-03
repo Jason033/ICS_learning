@@ -1,200 +1,273 @@
 {
-  "intro": "同一個 Ozeki 功能在官方文件裡可能出現不同寫法。本章教你先確定「手上的產品、套件、版本與範例來源」，再查方法宣告、事件與參數；不知道實際版本時，先不照抄網路程式碼。",
-  "plan": [
-    {
-      "label": "收集版本證據",
-      "minutes": 10
-    },
-    {
-      "label": "比較兩種官方寫法",
-      "minutes": 10
-    },
-    {
-      "label": "查宣告與參照",
-      "minutes": 10
-    },
-    {
-      "label": "練習核對表",
-      "minutes": 10
-    },
-    {
-      "label": "回顧",
-      "minutes": 5
-    }
+  "contentVersion": 2,
+  "intro": "維護現有程式時，「最新版文件」常不是最重要的文件。你需要把產品、實際載入的組件、專案目標、型別宣告與範例來源接起來，才能解釋為什麼同名事件有不同參數、同樣原始碼在另一台機器失敗。這章建立可操作的版本與契約模型。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
   ],
+  "studyTime": {
+    "reading": [
+      14,
+      24
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 version 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能蒐集不含密碼的版本線索並確認專案真正參照的組件。",
-    "能分開看教學文章、範例自寫類別與 SDK API 參考。",
-    "能建立一張方法／事件核對表，避免把不同版本混用。"
+    "辨認原始碼、組件、SDK、執行環境和範例版本的不同。",
+    "用完整型別和方法宣告對照文件，解釋編譯錯誤與執行錯誤。",
+    "建立可重現的依賴清單，避免用更新全部套件掩蓋問題。"
   ],
   "sections": [
     {
-      "heading": "先回答「到底用的是哪一份 Ozeki」",
+      "heading": "原始碼如何變成能執行的程式",
+      "kind": "concept",
       "paragraphs": [
-        "同一台電腦可能有安裝程式、專案套件、建置輸出中的 DLL，執行時卻載入另一份檔案。要維護系統，先找「專案編譯參照」與「執行時載入」兩個證據，不能只看網站上的最新下載版號。",
-        "本教材不知道你的實際產品或版本，也不假設公司使用的就是 Ozeki VoIP SIP SDK；若後續看到不同 Ozeki 產品，需先重新對上文件。"
+        "C# 編譯器先讀專案目標、原始碼與參考組件，檢查型別和成員是否存在，再產生應用程式組件。編譯時看到的方法宣告，必須和你寫的參數及事件處理器相容；因此「註冊功能一樣」不足以讓另一版方法直接替換。執行時 CLR 載入組件並執行方法，還可能載入底層音訊或其他原生元件。建置成功只通過第一道關卡，並未測到裝置、網路、認證和執行中的資源使用。",
+        "專案裡的 Reference 常指本機 DLL 路徑；PackageReference 指套件名稱和版本，套件可能含多種目標框架的組件。專案設定的 net48、net10.0 或 Windows 專用目標會影響可用 API 和選用資產。舊公司專案使用 .NET Framework，不代表將 TargetFramework 改成 .NET 10 就完成升級：UI、原生相依、組件載入與廠商支援都要逐項驗證。",
+        "維護時先回答兩個不同問題：編譯器參考哪份組件？執行程式真正載入哪份組件？輸出資料夾有舊 DLL、部署腳本複製錯檔、測試工具啟動另一個 EXE，都可能讓兩者不同。若只在原始碼搜尋版本而沒有查執行檔位置，你可能一直修改正確程式卻測另一份程式，形成「修正完全沒效果」的假象。"
+      ]
+    },
+    {
+      "heading": "版本不是一個數字，而是一組身分",
+      "kind": "concept",
+      "paragraphs": [
+        "SDK 產品名稱、套件版本、AssemblyVersion、檔案版本、資訊版本和目標框架不是同一件事。AssemblyVersion 是組件身分的一部分；FileVersion 可用於識別建置檔案；InformationalVersion 可能包含產品版本或提交資訊。廠商可在某些更新保持 AssemblyVersion，因此兩個檔案有相同版本號仍不代表內容相同。精確識別還要記實際路徑與檔案雜湊。",
+        "例如部署清單寫 VoIPSDK.dll 11.2.4.290，但程式載入 C:/temp/VoIPSDK.dll，而預期是 C:/app/VoIPSDK.dll。即使版本相同，來源已不符合清單。雜湊不同時，下一步是查部署檔案與來源；雜湊相同時，再查設定、架構、音訊裝置及運行環境。這個順序把「版本問題」拆成可驗證的假說，而不是把任何錯誤都歸咎於 SDK。",
+        "紀錄也要說明量到的是誰。對包裝 LabController 執行 typeof(LabController).Assembly，得到的是你自己的應用程式組件，不會變成 SDK 版本。要量 SDK，必須選 SDK 中確定存在的型別，例如當前專案實際參考的 ISoftPhone；若使用介面來自另一個組件，也要如實記錄。型別身分包含命名空間與組件，單看名稱很容易混淆。"
+      ]
+    },
+    {
+      "heading": "官方網站有不同年代，先辨認範例的範圍",
+      "kind": "concept",
+      "paragraphs": [
+        "本次核對的官方註冊教學使用 RegistrationStateChanged 和 RegistrationStateChangedArgs 的 e.State；較早的註冊頁及桌面教學可見 PhoneLineStateChanged 或 VoIPEventArgs<PhoneLineState> 的 e.Item。官方 IncomingCall 參考頁明列組件 VoIPSDK.dll、版本 11.2.4.290。這些是具體頁面提供的線索，不能把網站今日首頁的產品資訊當作所有歷史範例都已遷移。",
+        "另一個差異在接聽：較早的接聽頁文字提 Accept，後續通話教學程式使用 Answer；多通教學又可見 ICall，而其他教學是 IPhoneCall。讀者應看完整方法宣告、下載範例和手上組件，而不是把同義英文硬替換。維護用法必須能回答這個方法在哪個型別、參數為何、可於何狀態呼叫，以及錯誤怎麼回報。",
+        "這不表示網路文件沒用。文件提供操作意圖和可搜尋的成員；Object Browser／Go To Definition 提供目前專案的型別宣告；實際測試提供行為。三者有衝突時，先保存衝突再釐清。不要為了讓一頁範例編譯而把帳號、媒體與 UI 相關程式全部改名，否則你不知道修好的是哪個不相容點。"
       ],
       "table": {
-        "caption": "可安全記錄的版本線索",
+        "caption": "已核對的具體頁面差異",
         "headers": [
-          "位置",
-          "要看什麼",
-          "用途"
+          "頁面",
+          "看到的形式",
+          "維護含義"
         ],
         "rows": [
           [
-            "專案檔／套件鎖定檔",
-            "套件名稱、版本、目標框架",
-            "知道編譯時參照"
+            "註冊教學 p_7535",
+            "RegistrationStateChanged，e.State",
+            "核對line實際事件宣告"
           ],
           [
-            "參照組件內容",
-            "Assembly 名稱、版本、檔案路徑",
-            "知道使用哪份 DLL"
+            "舊桌面教學 p_7272",
+            "VoIPEventArgs，e.Item",
+            "handler參數不能直接混用"
           ],
           [
-            "執行程序資訊",
-            "實際載入模組的路徑／版本",
-            "排除部署後載入不同版"
+            "IncomingCall API參考",
+            "VoIPSDK.dll 11.2.4.290",
+            "可作特定組件文件線索"
           ],
           [
-            "官方範例原始碼",
-            "範例日期、類別與命名空間",
-            "判斷是否適用"
+            "接聽頁 p_7092／通話頁 p_7537",
+            "文字Accept／程式Answer",
+            "以當前型別宣告確認可用方法"
           ]
         ]
-      },
-      "note": "對外分享時只保留必要的產品與版本資訊；移除路徑中的人名、帳號、授權金鑰與伺服器資料。"
-    },
-    {
-      "heading": "兩份官方範例可能長得不一樣",
-      "paragraphs": [
-        "一份官方 C# 註冊頁面以 ISoftPhone、IPhoneLine 為介面，使用 SoftPhoneFactory.CreateSoftPhone、CreatePhoneLine、RegisterPhoneLine。另一份較新的教學頁面把示例整理成 Program.cs 與自寫的 Softphone.cs，再呼叫範例類別的 Register。這是兩種「範例組織方式」的對照，不代表 SDK 只有這兩種版本，也不表示 Register 一定是 SDK 方法。"
-      ],
-      "table": {
-        "caption": "別把範例入口當 SDK 規格",
-        "headers": [
-          "看到的寫法",
-          "先問哪個問題",
-          "查證位置"
-        ],
-        "rows": [
-          [
-            "SoftPhoneFactory.CreateSoftPhone",
-            "Factory 所屬組件是否在專案參照中？",
-            "移至定義／API 參考"
-          ],
-          [
-            "Softphone.Register",
-            "Softphone 是 SDK 型別還是範例自己寫的 class？",
-            "Softphone.cs 的 class 宣告"
-          ],
-          [
-            "RegistrationStateChanged",
-            "事件屬於哪個物件、參數型別是什麼？",
-            "宣告與實際 += 處"
-          ],
-          [
-            "PhoneLineStateChanged",
-            "是否為另一個封裝層轉發的事件？",
-            "事件宣告與 handler"
-          ]
-        ]
-      },
-      "note": "不要把網頁發布日期當成你公司部署版本的證據。"
-    },
-    {
-      "heading": "查一個方法的完整順序",
-      "paragraphs": [
-        "在可讀的原始碼中，先查呼叫物件的宣告型別，再用 IDE 移至定義。若定義在公司或範例專案，就繼續往內追；若在 Ozeki 組件，才對照該版本 API 參考中的參數、回傳、事件與例外。",
-        "如果只有 DLL 而沒有原始碼，仍可用 IDE 物件瀏覽器或組件中繼資料看公開成員；不要把反編譯看到的實作猜測寫成官方保證。"
-      ],
-      "steps": [
-        "記下呼叫位置：檔名、類別、方法與行號。",
-        "查左側物件的宣告型別和命名空間。",
-        "移至定義，判斷是公司程式、範例自寫還是 SDK。",
-        "核對參數／回傳／事件簽章，記錄版本證據。",
-        "再讀對應範例，看建立、呼叫、事件與清理的完整生命週期。"
-      ],
-      "code": {
-        "title": "自製方法核對表；不要貼真實帳密",
-        "text": "功能：註冊／撥號／接聽／掛斷／音訊連接\n專案參照的產品與版本：________\n呼叫方法：________；宣告在：________\n回傳值代表：________；非同步事件：________\n失敗資訊從哪來：________；清理方式：________\n仍需向實際系統確認：________"
       }
     },
     {
-      "heading": "事件名稱相同，也要核對「誰發出」",
+      "heading": "完整簽章教你判斷「可以呼叫」的條件",
+      "kind": "concept",
       "paragraphs": [
-        "事件可能在 SDK 的電話線路物件上，也可能在範例的 Softphone 包裝類別上。看到 += 只說明訂閱；必須查事件宣告與回呼參數，才知道狀態由哪裡來。",
-        "不要把範例的「PhoneLineStateChanged」與 SDK 的「RegistrationStateChanged」硬湊成所有版本的同義詞；它們可能是轉發關係，也可能是不同範例設計。"
-      ],
-      "flow": [
-        "事件發出物件",
-        "範例或公司 handler",
-        "狀態轉換",
-        "畫面或日誌"
-      ],
-      "note": "事件何時發生、在何執行緒發生、是否重複，都需以實際版本文件及實測確認。"
+        "一個方法宣告包含所在型別、方法名稱、參數型別、回傳型別與存取限制；多載代表同名有不同參數組合。CreateSoftPhone 的兩個整數版本和帶本機 IP 的版本，不應只看參數數目猜各數字用途。官方註冊教學的兩個數字是媒體使用的埠範圍；SIPAccount 的 DomainPort 是伺服器端口。兩者都叫 port，卻位於不同角色與層次。",
+        "事件宣告還多一層委託型別。EventHandler<RegistrationStateChangedArgs> 要求 handler 具有相容的 sender 和事件參數；使用 VoIPEventArgs<PhoneLineState> 的 handler 未必能接上它。編譯器抱怨參數不相容時，先比較事件委託與 handler 簽章；不要只把 e.Item 改成 e.State，而保留錯的參數型別。也不要用 dynamic 略過編譯檢查，讓錯誤延後到真實通話才發生。",
+        "事件名稱若來自外層包裝，簽章可能是包裝作者設計的另一種型別。你需要追包裝何處訂閱內層事件、何處將 e.State 轉換為自訂 enum，以及何處重新發出通知。這條轉換鏈可能漏掉錯誤或終止狀態；所以版本核對不只是名詞比較，也是在驗證狀態資訊有沒有在層與層之間丟失。"
+      ]
     },
     {
-      "heading": "安全的動手練習：只做文件與程式閱讀",
+      "heading": "例題一：相同版本，為什麼修正只在本機有效？",
+      "kind": "worked-example",
       "paragraphs": [
-        "本章不要求接入公司 PBX，也不需要帳密。可使用官方示例頁面，在瀏覽器與 IDE 中標出 class、using／namespace、建立物件、事件訂閱及清理位置。若自己的專案不可外傳，只在本機記錄「行號與角色」，不要把原始碼上傳到公開網站。"
+        "案例輸入是建置清單指 C:/app/VoIPSDK.dll，AssemblyVersion 11.2.4.290，測試程式實際載入 C:/temp/VoIPSDK.dll，版本也是 11.2.4.290。LabManifest 用虛構資料示範比較：先比版本結果 true，再比路徑結果 false，因此版本一致不足以證明正確部署。修正應檢查啟動目標、複製規則與輸出目錄，讓觀測身分符合清單。",
+        "若實際路徑已一致仍不工作，再比較雜湊與應用 EXE 提交、設定和程式架構，不能無限循環複製 DLL。案例結論是目前有部署來源差異，並非直接證明SDK內容損壞。修正後要在正式測試啓動方式下重印加載資訊；從Visual Studio啓動正常而服務啓動仍錯，表示測試尚未覆蓋真正的啓動路徑。"
       ],
-      "steps": [
-        "在舊型註冊範例標出 ISoftPhone、IPhoneLine 與 RegisterPhoneLine。",
-        "在較新範例找到 Softphone.cs 的 Register 宣告，標成「範例自寫」。",
-        "各選一個事件，指出宣告物件、訂閱處與處理處。",
-        "寫出尚待確認的產品、版本與部署 DLL。"
+      "code": {
+        "title": "完整 LabManifest 比較；對應 version 情境",
+        "text": "var expected = new LabManifest(\"App\", \"11.2.4.290\", \"net48\", \"x86\", \"C:/app/VoIPSDK.dll\");\nvar observed = expected with { Path = \"C:/temp/VoIPSDK.dll\" };\nConsole.WriteLine(expected.AssemblyVersion == observed.AssemblyVersion); // True\nConsole.WriteLine(expected.Path == observed.Path); // False\nConsole.WriteLine(expected == observed); // False\nobserved = expected;\nConsole.WriteLine(expected == observed); // True\n// 虛構清單，不會載入 Ozeki DLL。"
+      }
+    },
+    {
+      "heading": "例題二：一行事件處理器要追兩個宣告",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入是編譯錯誤：不能把 OnLine 的方法群組轉為事件所需委託。假設 Object Browser 顯示 Changed 的型別為 Action<LabRegistrationEvent>，但你寫的是 OnLine(object sender, EventArgs e)。Action<T> 只帶一個參數，兩參數 handler 不相容。先對照委託，就能知道改哪個宣告；用 lambda 轉接可以，但必須確保保留 line ID、狀態和錯誤資料。",
+        "修正為 OnLine(LabRegistrationEvent e) 後，先訂閱再 Register(200)，會輸出 L1 Registered。這個方法是自製 Lab 事件的正確用法，不是 Ozeki handler 簽章。真實項目若事件是 EventHandler<RegistrationStateChangedArgs>，就需要兩參數且用該型別。例題的工程能力是「從發布者宣告推導接收者」，而不是背一組在所有SDK都通用的handler。"
+      ],
+      "code": {
+        "title": "可放入 Lab 專案的完整方法形態",
+        "text": "static void ReadLineEvent()\n{\n    var line = new LabLine(\"L1\");\n    line.Changed += OnLine;\n    line.Register(200);\n}\nstatic void OnLine(LabRegistrationEvent e)\n{\n    Console.WriteLine($\"{e.LineId} {e.State} {e.SipStatus}\");\n}\n// LabLine.Changed 的宣告是 Action<LabRegistrationEvent>，不是SDK事件。"
+      }
+    },
+    {
+      "heading": "讀取真實專案的組件資訊，和反射的使用邊界",
+      "kind": "code-reading",
+      "paragraphs": [
+        "這段是 .NET 的診斷程式概念：在已經參考 Ozeki 的應用中，選 ISoftPhone 型別取得 Assembly，再印 FullName 與 Location。程式會量目前型別所屬組件，不會自動替你找「最新 SDK」。已安裝SDK不在本練習範圍，所以這個片段只供未來在授權專案內追讀；可跑的 version 情境只比較虛構清單。",
+        "Assembly.Location 在一般 DLL 部署常可取得檔案位置，但單一檔案發布或特殊載入方式可能是空字串。此時應記載部署模式及組件完整身分，不能拿空位置當未載入。雜湊應由部署檔案產生並保存，不要在每次音訊事件中讀大檔案。診斷資料屬啟動與版本記錄，不該讓回呼的即時處理變慢。",
+        "反射也能列出事件和方法，適合核對簽章；但看到方法存在不能證明可在任意狀態呼叫。Hold 出現在API並不意味來電振鈴階段就能用，Dispose 存在也不意味你是owner。文件的行為契約與程式的狀態模型仍須合併理解。維護清單應至少有每個關鍵操作的前置狀態、事件結果、終止處理和試驗項目。"
+      ],
+      "code": {
+        "title": "需已參考實際 Ozeki 的閱讀片段，未於 SDK 編譯",
+        "text": "var sdkAssembly = typeof(ISoftPhone).Assembly;\nConsole.WriteLine(sdkAssembly.FullName);\nConsole.WriteLine(sdkAssembly.Location);\nConsole.WriteLine(typeof(ISoftPhone).FullName);\nforeach (var evt in typeof(ISoftPhone).GetEvents())\n    Console.WriteLine($\"{evt.Name}: {evt.EventHandlerType}\");"
+      }
+    },
+    {
+      "heading": "CPU 架構、設定與授權也是可比較的相依",
+      "kind": "concept",
+      "paragraphs": [
+        "x86 與 x64 是程式架構，不是帳號類型。純受控程式可能 AnyCPU，但它所依賴的原生元件未必同時提供兩種架構。BadImageFormatException 可以提示格式或架構不相容，但也需看錯誤檔案和載入鏈；不能只看到名稱就斷言所有 DLL 都要換 x86。最小驗證是記程式位元、失敗元件與可重現的啟動步驟，對照既有正常環境。",
+        "設定也是程式輸入。相同 EXE、DLL 和版本，若 PBX Host、Transport、裝置選擇或帳號不同，行為仍不同。不要把登入密碼貼到公開紀錄；保留去識別的欄位名稱、設定來源和是否一致即可。授權或試用行為需核對目前產品與授權文件，歷史網頁的次數限制可能不同，不能隨便把第二通失敗解釋成試用限制。",
+        "完整依賴清單的價值是控制比較。基準機成功、問題機失敗時，一次比較一項：檔案身分、目標框架、架構、設定、裝置、網路路徑。改全部項目可能碰巧恢復，卻無法教你未來如何維護，也很難回滾到可說明的狀態。保留清單能讓下一位維護者理解“哪些條件相同、哪些已被驗證”。"
+      ]
+    },
+    {
+      "heading": "追碼實作：把文件差異變成版本閱讀卡",
+      "kind": "lab",
+      "paragraphs": [
+        "先在 Lab 專案執行 version，於 manifest 建立與比較設斷點，預測三個比較的結果。把 observed 的路徑恢復、把 Arch 改成 x64，重新列出匹配與不匹配欄位；不要刪除斷言，應讓它呈現你刻意加入的差異。復原後 all 應全部通過。這練習讓你看見“版本相同”和“環境相同”是不同命題。",
+        "第二部分不需要 SDK：開啟本章來源中的註冊教學、IncomingCall API頁與舊桌面教學，記下每個事件的所在型別、名稱、參數與頁面版本線索。選兩份不同寫法，不把它們混成可編譯程式，而是寫“要到現有專案查何宣告”。驗收產物是一張能使別人復核的卡：專案參考來源、實際載入來源、目前宣告、文件地址、預期行為與未測項目。",
+        "若未來取得公司專案，先做唯讀檢查再提出修改：查 csproj、packages.lock.json（若有）、實際組件與啟動路徑。不要先升級，再回頭尋找正常基準。長期維護的第一個完整結果是能夠重現原版本，而不是強迫所有專案採用最新環境。"
+      ]
+    },
+    {
+      "heading": "同一個「事件沒更新」，兩種不相容問題",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀是註冊事件在新機器沒更新畫面。原因甲是拿舊 handler 的 VoIPEventArgs<PhoneLineState> 去訂新事件，建置其實失敗，測試人仍執行上一次成功的EXE。原因乙是建置成功，但包裝只轉發 RegistrationSucceeded，漏掉 Error，失敗時畫面不變。兩者看似相同，第一個是產物與型別不相容，第二個是資訊轉換缺漏。",
+        "先記EXE版本與啓動路徑，並確認最新建置退出碼。若發現編譯失敗，修handler與事件的型別配對，清楚指出為何 e.State 或 e.Item 應使用哪個；驗收清單包括執行產物為此次建置。若內層事件已到達、外層沒發送，畫出轉換表，補上必要狀態並保留原始錯誤。驗收至少模擬成功、拒絕與終止，而不是只試一次成功註冊。",
+        "有限修正需說明影響範圍。改包裝轉換不應同時換PBX或更新SDK；改組件參照也應先完成原行為回歸。對中級維護工作而言，能把“新版壞了”拆成可定位、可重跑的依賴與契約差異，才是比背方法名更重要的能力。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【版本】只知道電腦安裝最新版 Ozeki，就可認定程式跑最新版嗎？",
-      "answer": "不行。專案可能參照舊套件，部署輸出或執行時又載入不同 DLL；至少核對專案參照與實際載入。"
+      "question": "【基礎】套件版號、AssemblyVersion、DLL路徑各回答什麼問題？",
+      "level": "foundation",
+      "answer": [
+        "套件版號描述取得哪個交付套件，AssemblyVersion描述型別所屬組件的身分線索，路徑描述執行時來源。",
+        "三者可以不一致；同版號不保證相同檔案，相同檔名不保證相同版本。",
+        "建立清單並補檔案雜湊及目標框架，才能比較實際產物。"
+      ]
     },
     {
-      "question": "【分類】官方頁面的 Softphone.Register 必然是 SDK 方法嗎？",
-      "answer": "不必然。先查 Softphone 類別宣告；較新官方教學裡有範例自己寫的 Softphone.cs，Register 可能是範例包裝入口。"
+      "question": "【基礎】為何 typeof(MyWrapper).Assembly 不能當作 Ozeki 版本？",
+      "level": "foundation",
+      "answer": [
+        "MyWrapper由自己的專案編譯，所以Assembly是包裝的組件。",
+        "SDK型別必須由目前實際參考的組件提供，選該型別才能觀察它的Assembly。",
+        "記FullName、Location與部署模式；Location空值也不能直接推未載入。"
+      ]
     },
     {
-      "question": "【查法】看到 RegisterPhoneLine 時，第一步是複製程式碼還是查左側物件型別？",
-      "answer": "先查物件型別、命名空間、定義與版本，再讀方法參數與事件；照抄不同版本程式碼容易失敗。"
+      "question": "【基礎】官方範例同時有 Softphone.Register 與 ISoftPhone.RegisterPhoneLine，維護者如何配對？",
+      "level": "foundation",
+      "answer": [
+        "先追Softphone的class宣告，辨認它是範例包裝。",
+        "再進Register內容，找到建帳號、線路、訂閱與內層RegisterPhoneLine呼叫。",
+        "把外層意圖與內層實際操作分開記，避免在SDK介面搜尋不存在的包裝方法。"
+      ]
     },
     {
-      "question": "【事件】兩篇文章都寫 StateChanged，就能視為同一事件嗎？",
-      "answer": "不能。要看事件宣告在哪個物件、參數型別和範例是否轉發。"
+      "question": "【應用】預期與實際DLL版本都12.0.1，但SHA256不同，實際路徑又正確。先做什麼？",
+      "level": "application",
+      "answer": [
+        "版本與路徑相同仍不能保證文件內容相同；雜湊差異是可驗證的部署證據。",
+        "比較構建來源、複製腳本和基準文件；先保留故障產物，不盲目覆蓋全部組件。",
+        "替換為已確認的產物後，驗證實際hash並跑註冊、撥號和第二通回歸。"
+      ]
     },
     {
-      "question": "【部署】專案檔與執行中 DLL 版本不一致，哪個更能代表現場行為？",
-      "answer": "執行中實際載入的 DLL 更直接代表現場行為；但也要保留專案參照，才能追查部署差異。"
+      "question": "【應用】事件Action<LabCallEvent>卻接 OnState(object,EventArgs)。改e.Item就能修嗎？",
+      "level": "application",
+      "answer": [
+        "事件需要一參數委託，handler有兩參數，首先是不相容的簽章。",
+        "修改為OnState(LabCallEvent e)或明確轉接，並保留CallId和State。",
+        "建置通過後模擬一條事件，確認不是只把編譯錯誤移到執行時。"
+      ]
     },
     {
-      "question": "【保密】做版本核對表時可以公開貼 SIP 密碼與序號嗎？",
-      "answer": "不行。只記產品、版本、必要路徑或行號；帳密、授權金鑰與未授權原始碼應留在允許的環境。"
+      "question": "【應用】開發機x64成功、服務程式x86出現原生DLL加載失敗，SDK版本相同。有哪些下一項資料？",
+      "level": "application",
+      "answer": [
+        "先取得程式架構、錯誤指向的原生文件、加載路徑和部署目標。",
+        "比較基準架構與原生依賴支持範圍；同SDK版本不能排除部署缺文件或位元不匹配。",
+        "只修已確認的依賴/架構組合，再用服務啓動方式驗證，不能用IDE啓動替代。"
+      ]
     },
     {
-      "question": "【未知】手上沒有公司原始碼也沒有版本，教材可寫成什麼？",
-      "answer": "可教官方範例的讀法與待核對清單，但不能聲稱某方法必然存在於公司版本或描述實際呼叫鏈。"
+      "question": "【診斷】SDK收到RegState.Error，包裝紀錄沒有事件，UI仍舊成功。如何修與驗收？",
+      "level": "diagnosis",
+      "answer": [
+        "內層已收到Error，說明觀察斷點在包裝轉發而非註冊入口。",
+        "檢查轉換switch是否遺漏Error，新增適當失敗/過期狀態，記錄原始錯誤與line歸屬。",
+        "測試成功→失敗→重註冊，以及UI晚到成功事件，確保舊成功不能蓋當前失敗。"
+      ]
+    },
+    {
+      "question": "【診斷】Go To Definition顯示新簽章，運行紀錄仍舊e.Item格式，build失敗但程式正常啓動。首要原因？",
+      "level": "diagnosis",
+      "answer": [
+        "這些資料支持正在執行舊產物，不支持“新SDK仍發舊事件”的結論。",
+        "先確認建置退出碼和啓動EXE位置，再修編譯不相容並部署新產物。",
+        "驗收同時比對啓動版本、事件簽章對應處理器與註冊狀態回歸；留下可復現命令。"
+      ]
     }
   ],
   "recap": [
-    "先確認編譯參照與實際載入版本。",
-    "範例自己的 Softphone 類別和 SDK 型別要分開。",
-    "每個方法都核對宣告、簽章、事件和清理方式。"
+    "用實際產物身分配對文件，不把網站的所有年代當成一版。",
+    "簽章決定可接哪種 handler；行為契約決定何時可呼叫。",
+    "最小依賴比較和清楚回歸，比一次升級全部更能建立維護能力。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 version，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
+    }
   ],
   "sources": [
     {
-      "label": "Ozeki 官方 SDK 首頁與 API 文件入口",
-      "url": "https://www.voip-sip-sdk.com/"
-    },
-    {
-      "label": "Ozeki 官方舊型註冊範例",
-      "url": "https://voip-sip-sdk.com/p_7095-register-to-sip-pbx.html"
-    },
-    {
-      "label": "Ozeki 官方較新註冊教學",
+      "label": "Ozeki：註冊與事件宣告的教學",
       "url": "https://voip-sip-sdk.com/p_7535-how-to-register-to-a-pbx-using-sip-account.html"
+    },
+    {
+      "label": "Ozeki：IncomingCall 參考頁，明列11.2.4.290",
+      "url": "https://voip-sip-sdk.com/doc/html/7e045b12-18d6-48b7-8951-3dff3b61b2a6.htm"
+    },
+    {
+      "label": "Ozeki：舊桌面範例 e.Item",
+      "url": "https://voip-sip-sdk.com/p_7272-voip-softphone-development.html"
+    },
+    {
+      "label": "Microsoft：Assembly.Location 的部署限制",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.reflection.assembly.location"
+    },
+    {
+      "label": "Ozeki：接聽頁需與當前宣告配對",
+      "url": "https://voip-sip-sdk.com/p_7092-how-to-accept-incoming-call-using-csharp.html"
     }
   ]
 }

@@ -1,157 +1,277 @@
 {
-  "intro": "整合系統可能同時有「要求設備做事」和「讓聲音流動」兩條線。就算在同一個 SDK 或物件裡，它們仍需要不同證據。這篇以 DemoCtrl-A 的虛構狀態查詢和教學音訊路徑比較，不推測公司 ICS／RCS 的接法。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "整合程式可以在同一個DLL裡控制設備又處理聲音，但這不代表兩者是一條路。本章從命令與音訊資料的本質差異開始，建立有方向、有單位、有時序的邊界圖，再推導“控制成功仍無聲”“開始少一段”“第二通影響第一通”的機制。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      15,
+      24
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 boundaries 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能區分控制請求、設備狀態與音訊資料。",
-    "能在單向無聲時選對要查的方向。",
-    "能知道介面盒、Ozeki 或 PTT 名稱不能代替實際拓撲證據。"
+    "分開控制、狀態、音訊與射頻觀測，不把一個成功訊息當整體成功。",
+    "按來源→路由→附著/設備→輸出描繪兩條聲流。",
+    "根據證據定位邊界失配，並把修正限制在已確認的層。"
   ],
   "sections": [
     {
-      "heading": "控制和音訊先畫兩條線",
+      "heading": "命令是離散意圖，音訊是持續有時序的資料",
+      "kind": "concept",
       "paragraphs": [
-        "控制線可能是 View→Controller→Adapter→外部設備，再由回覆或事件返回；音訊線可能是輸入裝置→編碼→網路／設備→解碼→輸出裝置。",
-        "兩條線會互相影響，但一條成功不保證另一條成功。真實產品的介面盒、音訊裝置和 API 依賴要用原始碼、ICD 和觀測確認。"
-      ],
-      "flow": [
-        "控制：操作 → 命令 → 回覆／狀態",
-        "音訊：輸入 → 處理 → 傳輸 → 輸出"
+        "控制命令通常表達一次意圖：開始、停止、設定等級、查詢狀態。它需要參數、目標、身份、准入和結果。音訊是連續變化的樣本，必須保留格式、時間與播放節奏。兩者都可用byte傳，但“傳的是byte”不使它們有同樣語義。SetLevel命令成功不表示麥克風樣本存在；音訊不斷流也不表示PTT控制真正切到TX。",
+        "在整合程式里，一個SDK可能同時提供控制API和媒體API。方法名稱同屬同一個class不證明生命週期、線程或物理通道相同；一個可走串口控制，另一個走本地裝置／IP媒體，具體要查實現。將它們畫成不同資料線，之後用明確的設備/通話關係連接，才不會為了讓圖簡單而丟掉故障位置。",
+        "長期維護要問哪項成功的含義：命令已入隊、設備已接受、設備狀態已改變、音訊數據已產生、遠端已收到、最後人聽到。這些是不同觀測點。完整成功可以由多項驗收組成，但不能用一個控制狀態自動推出其餘結果。這個基礎區分讓你知道應先查哪一方向，而不是見無聲就亂改網路。"
       ]
     },
     {
-      "heading": "設備 Ready 不是音訊可聽",
+      "heading": "聲音的基本資料需要格式與單位",
+      "kind": "concept",
       "paragraphs": [
-        "虛構 DemoCtrl-A 回 READY，只表示此模型宣告一種設備狀態；它沒有定義麥克風、喇叭、Codec、RTP 或 PTT。",
-        "如果畫面顯示「已準備」但無聲，下一步應沿實際音訊方向找資料量、媒體封包、解碼與輸出裝置，而不是反覆查同一個 READY。"
+        "採集裝置把聲音變成樣本；取樣率給每秒時間點，位深/格式給每樣本表示，聲道數給每時間點幾個通道。PCM是未壓縮樣本的一種表示，codec是編碼/解碼規則，媒體封包再承載編碼後數據。控制字段Value=60百分比不是一個音訊樣本值，音量控制也不等同實際聲音峰值。",
+        "例如8kHz、16-bit、mono每20ms有160個樣本、320byte、每秒50塊；24kHz同格式每20ms有480樣本、960byte。若把320byte以另一取樣率解讀，時長與音高可能不對。資料範圍、位元組序與聲道交錯也要由接口說明，不能僅因buffer.Length大於0就認為格式正確。",
+        "緩衝區的所有權也重要。有些回呼給暫借陣列，回呼返回後SDK會重用；如果把參照直接放到稍後處理的佇列，內容可能已被下一塊覆蓋。需要按契約及時消費、複製或使用明確轉移所有權的記憶體。byte[]變量指派不會複製內容，複製又增加成本，不能一概認為“不複製比較快”就正確。驗收用不同可識別區塊檢查資料不會互相覆蓋。",
+        "區塊持續率與內容質量不同。靜音樣本也持續產生區塊，錯誤虛擬設備可能有數據卻全零，輸入削波也可能有高計數。觀察需分存在、格式、內容/幅度與時序。若公司SDK不公開內部樣本，可以用授權錄音、裝置回環或現成統計補證；不是自行偽造frames字段而稱已量到。"
+      ]
+    },
+    {
+      "heading": "兩個方向需要兩組條件，不能用一個audioReady",
+      "kind": "concept",
+      "paragraphs": [
+        "本端發往對方的路是來源→處理/路由→發送端/設備輸入→傳輸→對端輸出；本端聽對方是遠端來源→傳輸→接收/解碼→路由→本端輸出。source/target名稱取決於本端角色，sender不表示“對方發送”。單向問題先寫誰聽不到誰，再沿那個方向查，不籠統說“聲音有問題”。",
+        "在C#媒體SDK中，Connect表示元件資料邊，Attach表示關聯某通話/設備，Start表示來源/設備工作。三個條件相互獨立；同一adapter控制目標D1，而媒體附到D2，會出現控制正確、聲音錯端。若設計沒有Attach這種API，也仍有等價關聯，例如選裝置、選socket或路由配置，需按真實機制找。",
+        "控制和聲音之間可能有guard：發話請求獲准、設備TX準備、媒體路由完成才能放音。哪一個觀測可證明哪個條件，需寫清。設備Ready可能只表示接受指令，不代表採集和輸出都啓用；通話InCall可證明業務階段，也不保證兩條本機邊。用每方向狀態與身份解釋，才能定位缺的條件。"
       ],
       "table": {
-        "caption": "兩種不同的結果",
+        "caption": "教學邊界，名稱不代表真實SDK字段",
         "headers": [
-          "觀測",
-          "最多支持",
-          "仍需證據"
+          "路徑",
+          "所需事實",
+          "不能代替它的證據"
         ],
         "rows": [
           [
-            "Accepted(q17)",
-            "命令被接受處理",
-            "設備結果"
+            "控制",
+            "命令目標/接受/完成",
+            "音訊有包"
           ],
           [
-            "StatusReport READY",
-            "此模型回報 READY",
-            "音訊是否存在"
+            "發音",
+            "來源有內容、送對目標",
+            "UI顯示Ready"
           ],
           [
-            "RTP 出現在抓包點",
-            "媒體在該點可見",
-            "對端解碼播放"
+            "聽音",
+            "接收可解碼、播放路由",
+            "控制Completed"
           ],
           [
-            "對端錄音可聽",
-            "此次輸出路徑可用",
-            "其他條件是否相同"
+            "RF/對端",
+            "實際鏈路與接收輸出",
+            "本機bytes_sent"
           ]
         ]
       }
     },
     {
-      "heading": "單向無聲先問誰聽不到誰",
+      "heading": "時序是邊界的一部分：先做甚麼影響聽到甚麼",
+      "kind": "concept",
       "paragraphs": [
-        "A 聽不到 B，先追 B 的送出和 A 的接收；B 聽不到 A，則追 A 送出和 B 接收。若另有 Radio 或類比介面，要再按實際系統分段。",
-        "在不知道公司真實路徑前，不能把 Ozeki、iCallAPI、介面盒和無線電硬排成固定串接順序。"
+        "假設用戶0ms按下，20ms控制收到，60ms設備可發射，90ms媒體路由準備，麥克風卻10ms開始把聲音送入。前80ms資料可能丟棄、緩存或誤路由，依實現不同；控制最終成功不能補回已漏的第一字。若系統不緩存，真正可用起點需等所有必要條件成立，或給說話者明確提示；不是隨便增加固定等待便完成設計。",
+        "松開也涉及順序：停止放入新音訊、處理必要尾部、撤銷發射或結束通話、確認恢復接收。某些系統要求尾音/排空緩衝，另一些實時系統選擇丟棄積壓；應按契約，不可無條件“flush全部”導致松開後持續發話。媒體與控制時序相依，卻仍是各自可測條件。",
+        "本地callback與設備時鐘不同，先後不能簡單等同因果。建立同一目標/請求的事件序列，必要時用可識別音訊標記對照輸出；跨機器時間差要考慮同步誤差。若當前沒有設備，時間線可教規則與候選，但不能稱測得公司的發射延遲。"
       ]
     },
     {
-      "heading": "SDK 物件存在不代表媒體已接通",
+      "heading": "例題一：控制Completed而發音為false",
+      "kind": "worked-example",
       "paragraphs": [
-        "若程式建立了媒體元件，也要查是否選對裝置、完成 Attach／Connect／Start 等該版本需要的動作、資料是否實際流動、結束時是否正確清理。",
-        "這些名稱只是部分 SDK 的例子；真正函式及生命週期要查對應版本手冊，不能把 Ozeki 教學片段直接當成公司程式碼。"
+        "輸入LabController已通過QueryState並獲得Completed，LabAudioPath的ReceivingAttached/SpeakerConnected為true，SendingAttached也true但Capturing=false。控制結果Completed；Tx=Capturing&&SendingAttached為false；Rx=ReceivingAttached&&SpeakerConnected為true。因此模型“本端能聽、對方聽不到我”可由來源條件缺失產生，無需控制失敗。",
+        "修正僅將Capturing=true，Tx/Rx都true，控制結果不變。這裡bool是自制模型條件，不是實際SDK遙測；真實Capturing需來源狀態/內容證據，不能用硬寫true作為生產修復。例題的意義是邏輯蘊涵：控制成功不推出來源存在，但特定方向的完整條件才能推出模型路徑可用。",
+        "進一步若Capturing=true而SendingAttached=false，Tx仍false；來源修正不夠。你應在運行前列真值表，再用實際數據定位缺項。中級維護不是知道某個功能名，而是能說明某證據為何排除一段、為何仍需下一段。"
+      ],
+      "code": {
+        "title": "完整控制與音訊分離；對應boundaries",
+        "text": "using var adapter = new LabScriptedAdapter();\nusing var c = new LabController(adapter);\nstring id = c.Submit(\"QueryState\", 0);\nadapter.Emit(new LabCompletion(id, c.Session, \"Completed\"));\nvar audio = new LabAudioPath { Capturing=false, SendingAttached=true, ReceivingAttached=true, SpeakerConnected=true };\nConsole.WriteLine($\"control={c.Results[id]} tx={audio.Tx} rx={audio.Rx}\"); // Completed False True\naudio.Capturing=true; // 測試注入來源恢復\nConsole.WriteLine($\"tx={audio.Tx} rx={audio.Rx}\"); // True True"
+      }
+    },
+    {
+      "heading": "例題二：兩個變量共用一路，停止一端會影響另一端",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入path是一個LabAudioPath實例，a=path、b=path是兩參照，不是兩條獨立路。起初Tx/Rx均true，a.Capturing=false後b.Tx也false。若你以為每個頁面有各自audio欄位就獨立，會在關閉A時不小心停掉B。它是基本參照共享造成的邊界錯誤，不是網路傳輸偶發失敗。",
+        "修正可每通擁有獨立路線/媒體，或者共享來源由owner管理，退出一個使用者只解除該路關聯。本章代碼用第二個獨立LabAudioPath展示隔離，不宣稱每通打開實體麥克風可行。真實裝置可能獨佔或共享，必須查平台/SDK；不要把“物件隔離”直接推成“硬件也能複製”。",
+        "驗收需要B在A退出後仍有完整條件，最後owner退出能停/釋所有資源。共享資源方案還需多使用者切換與引用管理。這個例題把程式圖和裝置圖接起來：C#字段獨立不必然實例獨立，實例獨立也不必然物理設備獨立，三層都需明確。"
+      ],
+      "code": {
+        "title": "完整參照共享與隔離例題",
+        "text": "var path = new LabAudioPath { Capturing=true, SendingAttached=true, ReceivingAttached=true, SpeakerConnected=true };\nvar a = path;\nvar b = path;\na.Capturing=false;\nConsole.WriteLine(ReferenceEquals(a,b)); // True\nConsole.WriteLine(b.Tx); // False\nvar independent = new LabAudioPath { Capturing=true, SendingAttached=true, ReceivingAttached=true, SpeakerConnected=true };\na.Capturing=false;\nConsole.WriteLine(independent.Tx); // True"
+      }
+    },
+    {
+      "heading": "控制佇列與即時音訊佇列的政策不同",
+      "kind": "concept",
+      "paragraphs": [
+        "控制命令常重視不丟與有結果，實時音訊卻重視及時可用。來源每秒50塊、處理每秒40塊，若不丟，5秒多50塊；20ms一塊就是積壓1秒。所有資料最後都有送出，不表示對話可用。把兩種資料放同一無限佇列，還會讓停止命令排在大量音訊後，使用者松開仍持續發話。",
+        "因此系統需定義容量、優先與丟棄政策。舊音訊可按業務選擇丟棄過期塊，但停止發射或關鍵控制不能用相同隨機丟包規則。優先級也不是越高越好：長期高優先可讓其他狀態查詢餓死，診斷時看不到設備結果。讀取程式要找enqueue/dequeue、容量、取消與關閉規則，說明哪些資料可丟、哪些必須確認。",
+        "跨邊界緩衝還會影響起始與結束。啓動前緩存聲音可減少首字丟失，卻可能增加發話延遲或把未獲准語音留到以後；結束時排空可以保尾音，卻可能延長設備佔用。每種取捨要按實際需求與設備時序驗證。本模型沒有真實佇列，數字只用來推導問題；未來觀察來源/處理速率、積壓和停止響應，才能決定應改哪個邊界，而不是一律提高buffer。"
       ]
     },
     {
-      "heading": "跨邊界時需要成對觀測",
+      "heading": "設備、電氣與RF不能用軟體狀態全部證明",
+      "kind": "concept",
       "paragraphs": [
-        "一端「已送」與另一端「已收」是兩個觀測點。網路封包、串列位元組、介面盒燈號、設備狀態及對端音訊各能證明的事不同。",
-        "例如 LED 亮可提示某個訊號或狀態，但其實際意義要查該設備手冊；不能由燈號直接推斷聲音已抵達。"
+        "設備控制可能經網路、RS232、USB或數字I/O送出；實體設備內部再執行TX/RX切換、增益或狀態轉換。某些PTT腳位低有效，控制輸出變化不等同RF能量已出現，RF出現也不證明對端解調和播放正確。軟體記錄“發射請求接受”只覆蓋控制邊界，硬件/無線電鏈需獨立觀測。",
+        "回報方向也要辨認：COR/COS等可指接收載波/靜噪活動，不一定是“本端TX已準備”；Busy可來自接收通道、發話權或應用資源。將輸入指示當輸出確認，會錯誤提前放音或停止接收。真正定義需設備手冊、電氣圖與程式映射共同核對，本章不替未知公司設備定義腳位。",
+        "在工程圖上區分控制線、電氣狀態、音訊線和RF路徑，標每個觀察點的來源與單位。軟體模擬能夠驗證准入與順序，實物量測驗證電平、時序和聲音路徑；兩者不替代。適用設備取得後，應按其文檔測試，而不是為了“完整系統”自行添加假想發話許可層。"
       ]
     },
     {
-      "heading": "把未知寫回待查表",
+      "heading": "跨界轉換需要保護語義和格式",
+      "kind": "concept",
       "paragraphs": [
-        "遇到 `vv_service`、`callarea` 或撥碼字樣時，先標來源與出現場景，詢問是否屬控制訊息、媒體或 UI 計算結果；只在有授權文件、程式路徑和測試後才定義。",
-        "這種整理能保留工作背景，又不讓先前助手的假設悄悄變成公開教材裡的事實。"
+        "adapter把業務狀態翻成設備字段，媒體元件把格式翻成另一格式，UI把狀態翻成文字；這些轉換可能丟資訊。將所有設備錯誤映為bool false會丟階段，取樣率轉換不說明格式會讓聲音時長錯，將某設備Busy映為“全部不能發”可能錯誤擴大範圍。維護需給每個轉換輸入、規則與輸出。",
+        "例如業務0–100音量與設備0–255原始等級，線性映射只是一項假設，實際可能非線性或保留值；若當前契約確實線性，80%對應255×0.8=204，需要明確捨入與邊界。不能因C#可轉int就知道設備效果。聲音格式也不能靠強制轉換數組解釋，重採樣/聲道轉換與編碼各有機制。",
+        "對外邊界還要保存版本與身份。控制目標D1和媒體端點M1應由已確認關係配對；映射表錯誤會控制A說話卻把B音訊送出，紀錄各自都顯示成功。驗證用一項可辨認輸入，讓兩端對應起來，不僅數所有發送成功次數。完整觀念讓你看到“邊界翻譯”也是可能根因。"
+      ]
+    },
+    {
+      "heading": "追碼實作：以方向與身份完成一張資料圖",
+      "kind": "lab",
+      "paragraphs": [
+        "執行boundaries，在QueryState完成前後以及audio.Tx判定設斷點，預測各結果。變因把Capturing改true卻SendingAttached=false，路徑仍失敗；再保留TX而SpeakerConnected=false，RX失敗。這證明兩個方向不同；不能把任意一個條件true叫整個媒體好。",
+        "獨立執行共享參照例題，畫a/b→同path，再畫independent。把停止路徑移動到“關閉A”的模擬步驟，說明哪種設計應由owner管理。故障後復原all，寫驗收：控制結果不受音訊條件改動而偽變、方向檢查符合真值、退出一個使用者不越界。",
+        "第二任務給0/20/60/90ms時序計算最早可放音時間，條件皆必要時為90ms；若來源從10ms不緩存，80ms資料不保證可用。這是虛構事件推導，不是設備性能數字。產物應有事件/條件/圖/未知實物項，未來再按真實手冊補電氣與RF觀察。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：設備Ready但本端無聲",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "同症狀候選甲是接收端有資料但喇叭路由沒建立；候選乙是根本沒收到本通媒體，Ready僅控制狀態；候選丙喇叭路由正常卻選無聲虛擬裝置。先確認“本端聽不到”方向，再查接收資料與輸出路由，而不是改發話命令或提高RF功率。",
+        "資料甲receiver有對應資料、SpeakerConnected=false，修路由與其生命週期；資料乙本端RTP/設備音訊輸入沒有資料，查協商與網路/電氣鏈，再用對端觀察縮小；資料丙輸出目標虛擬裝置，修選擇與保存規則。控制Ready在三案均不能排除這些原因，不應把它作為終止診斷的證據。",
+        "驗收逐方向已知語音、首次與下一通、重連/裝置改變與松開恢復。報告說清控制鏈已經證實到哪裡、音訊鏈缺哪一條件與具體變更。若僅模型驗證，結論限定模型，不寫公司媒體已修復；但概念必須完整到能選擇下一條實物證據。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【分工】設備 READY 可證明使用者聽得到嗎？",
-      "answer": "不能；還需音訊路徑與對端觀測。"
+      "question": "【基礎】為甚麼同一DLL有控制/音訊API也要畫兩條線？",
+      "level": "foundation",
+      "answer": [
+        "兩者資料語義、持續性、生命週期和驗證點不同，同組組件不證明同一物理通道。",
+        "控制結果不推出來源、傳輸和輸出完整。",
+        "按方向與身份連接，保留每條邊的證據。"
+      ]
     },
     {
-      "question": "【方向】A 聽不到 B，先追哪個方向？",
-      "answer": "B→A 的送出、傳輸、接收與播放。"
+      "question": "【基礎】有byte持續增加能證明非靜音內容嗎？",
+      "level": "foundation",
+      "answer": [
+        "靜音也有樣本與byte，格式錯或虛擬裝置同樣可能持續。",
+        "需要內容/幅度與格式證據，不只是存在性。",
+        "選已知輸入並在對應節點觀察，確認最後輸出。"
+      ]
     },
     {
-      "question": "【SDK】只見建立媒體物件，可證明資料已流動嗎？",
-      "answer": "不能；查連接、附著、啟動與資料量。"
+      "question": "【基礎】C#兩字段與兩物件、兩硬件設備是否等價？",
+      "level": "foundation",
+      "answer": [
+        "字段可指同實例，實例可共享同硬件，兩層都不自動獨立。",
+        "查new/工廠/ReferenceEquals與裝置選擇/資源契約。",
+        "關閉範圍按owner，不能從變量數推設備數。"
+      ]
     },
     {
-      "question": "【燈號】介面盒燈亮能直接證明對端音訊可聽嗎？",
-      "answer": "不能；先查燈號定義與其他觀測。"
+      "question": "【應用】12kHz、16-bit、mono、20ms，算樣本與byte/塊及塊/s。",
+      "level": "application",
+      "answer": [
+        "樣本12000×20/1000=240；每樣本2byte，區塊480byte。",
+        "每秒1000/20=50塊，原始24000byte/s。",
+        "這是採集PCM假設，不含codec/封包頭，也不說明內容可聽。"
+      ]
     },
     {
-      "question": "【名稱】iCallAPI 一定在 Ozeki 上方嗎？",
-      "answer": "未證實；需實際呼叫與版本證據。"
+      "question": "【應用】控制35ms、TX70ms、媒體95ms皆必要，聲源15ms開始無緩存，最早可用與風險窗口？",
+      "level": "application",
+      "answer": [
+        "全部條件成立最早95ms。",
+        "15到95差80ms，這段資料可能失去，不能由後續成功恢復。",
+        "驗收真實可聽起點與政策，不任意猜固定延遲。"
+      ]
     },
     {
-      "question": "【跨端】發送端 log 寫 SEND 能證明對端收到嗎？",
-      "answer": "不能；需對端或中途觀測。"
+      "question": "【應用】Capturing=true SendingAttached=false ReceivingAttached=true SpeakerConnected=false，TX/RX？",
+      "level": "application",
+      "answer": [
+        "TX為true&&false=false；RX為true&&false=false。",
+        "發音缺附著，聽音缺輸出邊，原因不同。",
+        "分別修並驗證，而不是將mediaReady硬設true。"
+      ]
     },
     {
-      "question": "【查證】`callarea` 功能能從字面推定嗎？",
-      "answer": "不能；目前只作待查名稱。"
+      "question": "【診斷】本端無聲，A receiver有資料無speaker邊，B無資料但路由正確。下一證據與修正？",
+      "level": "diagnosis",
+      "answer": [
+        "A查路由建立/拆除並修有限媒體邊；B查上游傳輸/協商/設備音訊輸入。",
+        "Ready僅控制證據，不能排除任一媒體故障。",
+        "逐方向、第二通和重連回歸，保存身份與內容。"
+      ]
     },
     {
-      "question": "【下一步】控制已回 READY 但 A 無聲，應補哪條線？",
-      "answer": "補實際音訊送收、解碼及 A 的播放證據。"
+      "question": "【診斷】關閉A後B發音也停，a/b同path；與B媒體錯誤目標D2如何區別？",
+      "level": "diagnosis",
+      "answer": [
+        "共享停止會改變同實例條件，查ReferenceEquals、owner和停止調用。",
+        "錯目標會有來源與工作卻路由至另一端，查控制目標與媒體映射。",
+        "分別修共享範圍或目標映射，驗收另一使用者持續及可識別兩端聲音。"
+      ]
     }
   ],
   "recap": [
-    "控制成功與媒體可用分開驗證。",
-    "音訊是兩個方向，各有自己的端點。",
-    "未知公司元件只記待查，不畫假箭頭。"
+    "命令與音訊屬於不同資料機制，控制成功不代表可聽。",
+    "方向、格式、關聯與時序都要完整，邊界轉換也會製造錯誤。",
+    "程式、裝置與RF證據各有覆蓋，按模型選擇下一觀察。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 boundaries，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    }
   ],
   "sources": [
     {
-      "label": "IETF RFC 3261：SIP 控制與通話的技術分層",
-      "url": "https://www.rfc-editor.org/rfc/rfc3261"
+      "label": "Ozeki：MediaConnector來源/目標與附著",
+      "url": "https://voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
     },
     {
-      "label": "IETF RFC 3550：RTP／RTCP 媒體路徑",
-      "url": "https://www.rfc-editor.org/rfc/rfc3550"
+      "label": "Ozeki：控制與媒體生命週期",
+      "url": "https://voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
     },
     {
-      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+      "label": "RFC3550：RTP時序與交付邊界",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550.html"
+    },
+    {
+      "label": "NASA：接口關係與管理",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
     }
   ]
 }

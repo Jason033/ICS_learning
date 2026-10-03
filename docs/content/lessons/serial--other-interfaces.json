@@ -1,207 +1,278 @@
 {
-  "intro": "設備文件可能寫 RS-422、RS-485、TTL UART、USB、CAN、SPI、I2C 或 GPIO。本章幫你辨認它們回答的問題，不把名字相近的介面當成可直接互接，也不把「有串列資料」等同「有 COM Port」。",
-  "plan": [
-    {
-      "label": "比較三種 RS 介面",
-      "minutes": 12
-    },
-    {
-      "label": "看轉換器與其他介面",
-      "minutes": 10
-    },
-    {
-      "label": "閱讀設備卡",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 13
-    }
+  "contentVersion": 2,
+  "intro": "同樣串列bytes可以走單端、差分或同步匯流排，但每種介面的時鐘、方向、共享與定址規則不同。本章先深入RS-422/485，再用SPI/I²C與USB/網路橋比較維護時需要的契約。",
+  "prerequisites": [
+    "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
+    "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      19
+    ],
+    "practice": [
+      20,
+      40
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+  },
   "goals": [
-    "能比較 RS-232、RS-422、RS-485 的訊號方式與常見拓撲。",
-    "能說明 USB–serial、TTL UART 與其他總線不是 RS-232 的同義詞。",
-    "能從設備文件列出仍需核對的線對、方向、終端與上層協定。"
+    "解釋差分、三態驅動、半/全雙工與匯流排仲裁。",
+    "用反射、終端、偏置與common-mode形成物理模型。",
+    "計算半雙工交易的時間與方向切換條件。",
+    "區分UART、SPI、I²C、USB與網路橋的狀態邊界。"
   ],
   "sections": [
     {
-      "heading": "先辨認電氣與拓撲，再問命令格式",
+      "kind": "concept",
+      "heading": "差分與多節點是不同能力",
       "paragraphs": [
-        "RS-232 常以單端訊號連接兩個端點；RS-422 和 RS-485 使用差動訊號，常用於較長距離或雜訊環境，但實際距離與速率受線材、終端、設備與環境限制。這些名稱主要回答物理電氣與連接方式，不會替你規定設備命令。",
-        "同一條設備命令可能經不同物理介面傳送，但不能因此直接把不同電氣的線接在一起；要用符合手冊的收發器或轉換器。"
+        "RS-422/485主要以一對導線電壓差傳送數字資訊，比單端對共同干擾有不同抵抗機制；並不因此自動有節點地址或命令協議。RS-422通常一驅動可對多個接收，RS-485允許多個驅動器接同匯流排但每次要按設計啟用。能接多個傳送端的電氣能力，不是能任意同時發資料的業務規則。",
+        "RS-485 driver可進high-impedance（三態中的釋放狀態），減少未傳送端對匯流排的驅動；DE控制是否驅動，RE控制接收是否啟用，實際active polarity依晶片。兩位driver同時輸出相反狀態形成爭用，資料錯誤亦可能有電氣後果。協議需決定誰什麼時候可以傳送，UART字元start不會仲裁節點。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "半雙工的方向切換必須等到最後bit",
+      "paragraphs": [
+        "兩線共享差分對常半雙工，雙方輪流傳；四線可將兩個方向分開，有全雙工拓撲，但多節點某方向仍需協調。傳送API完成或FIFO空，可能僅意味buffer交出去，shift register仍在推最後stop bit。過早釋放DE會截尾，太晚釋放則擋對端回應，須依器件/驅動transmission-complete定義與手冊turnaround控制。",
+        "地址、輪詢、回應時隙、衝突恢復屬於上層協議。A/B端子名稱在廠商之間可能不一致，不能按字母同接就保證極性；以差分真值與手冊標籤核對。接收echo是否啟用也會影響APP看到自身TX還是對端RX，parser需識別方向與請求/回覆，不能把每筆echo算裝置回答。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "反射、終端與偏置各處理不同狀態",
+      "paragraphs": [
+        "傳輸線上快速邊緣遇阻抗不連續會反射，返波疊加改變取樣電壓；線長、邊緣速率、stub與拓撲決定是否顯著，不只看baud。匹配終端在設計位置吸收波，常見沿匯流排兩端安排，不能每節點都隨意加一個。很多parallel終端會增加負載，長star/stub也有不同反射後果。",
+        "偏置/failsafe讓所有driver釋放、斷開或短路等條件下接收輸出有可預測的狀態，具體受器件內建功能與網路設計影響。它不是用來修正正在傳送時的碰撞。終端/偏置值須依據正式設計與實際器件，教材不提供未知裝置通用120Ω接法。差分仍需common-mode在容許內，隔離與參考要按環境設計。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "用阻抗與拉昇模型理解終端與板級匯流排",
+      "paragraphs": [
+        "理想傳輸線反射係數可用Γ=(Z_load−Z_line)/(Z_load+Z_line)理解：負載等於線路特徵阻抗時Γ0，開放端近+1，短路端近−1。符號代表反射極性，數值表示理想幅度比例；這不是指示你把未知線路短路測量。真實線還有損耗、多個stub與驅動波形，公式用來解釋阻抗匹配為何能減少回波。",
+        "終端不是加越多越好。兩個120Ω並聯等效60Ω，四個並聯30Ω，driver必須承擔更大負載；但120僅教學數值，不是本專案裝置規定。拓撲、器件額定與線路阻抗決定正式值和位置。偏置電阻又影響靜態差分與耗流，因此和終端組合後要整體核對，不能把兩種設計功能視為互不影響的外掛。",
+        "I²C open-drain只主動拉低，釋放後的上升由pull-up與總電容決定；更小電阻可加速，卻增加拉低電流與器件負擔。以5V/4.7kΩ教學直流例，拉低需約1.06mA（忽略器件低態壓），並不是零負載。速率提升需同時滿足邊緣和電流/額定，不能只把clock變數調高。SPI推輓clock/data的機理不同，也要查取樣邊緣和線延遲。",
+        "這些例子解釋為何「都是串列」不能共享所有接線與設定規則：有的重點是差分/釋放/仲裁，有的是clock edge/片選，有的是open-drain/拉昇/地址。公司介面若經過橋接，先確定各邊界機制與資料契約，再決定是程式、時序還是硬體設計需要證據。",
+        "部分RS-485轉接器使用RTS作DE方向控制，另一些由driver/硬體自動控制，還可能有固定延遲配置。RTS原本也可用於UART硬體flow control，因此不能同時假設它是接收容量與匯流排方向的同一語意。核對轉接器實際模式、控制owner及API支援，再看事件時序；APP布林值不直接等於線上driver當下狀態。",
+        "若裝置有echo，本機接收可能在TX時看到自己剛送的request；parser應按協定識別request或response，不能任何完整frame都完成等待。關閉echo有時是有效設定，有時會失去需要的診斷資料，取決於系統契約。與跨TCP的ACK一樣，看到本地回送是某段證據，還需要遠端狀態。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：半雙工查詢完整時間預算",
+      "paragraphs": [
+        "教學匯流排19200 8N1，TX20bytes、處理5ms、方向與響應餘裕2ms、RX12bytes。TX=20×10/19200=10.4167ms，RX=12×10/19200=6.25ms，總最低預算10.4167+5+2+6.25=23.6667ms。請求API寫完時若僅在t=1ms，不能從t1就算裝置處理完成，因為線路發完至少約10.4ms。",
+        "若裝置要求最後stop後最早1ms回應，主機應在實際TX結束後按其支援時序釋放，不用固定sleep覆蓋所有baud。把baud改9600，線時間倍增，總約20.8333+5+2+12.5=40.3333ms；固定t=12釋放在9600會在請求尚未完前截斷。時序必須從真實完成事件而非APP寫呼叫時間推導。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "double baud = 19200;\nint bitsPerChar = 10;\nint txBytes = 20, rxBytes = 12;\ndouble txMs = txBytes * bitsPerChar * 1000 / baud;\ndouble rxMs = rxBytes * bitsPerChar * 1000 / baud;\ndouble workMs = 5, turnaroundMs = 2;\nConsole.WriteLine($\"TX={txMs:F3} RX={rxMs:F3} total={txMs+workMs+turnaroundMs+rxMs:F3}\");\n// UART shift-complete and driver release are hardware/driver contracts."
+      }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：同樣匯流排兩個地址同時回應",
+      "paragraphs": [
+        "教學輪詢發ADDR03、CMD10，但裝置D1/D2都配置ADDR03。兩個裝置在請求後5ms同時傳送不同狀態bytes，半雙工driver重疊；frame checksum不穩。若單接D1正常、單接D2正常、一起失敗，H地址衝突有可檢驗預測，但也應核對多節點負載/終端變化。",
+        "第二輪授權日誌顯示兩device都解析同ADDR03並在重疊區間enable-driver。只改D2為正式計劃的ADDR04，輪詢03只有D1回應、04只有D2回應，再重複多回合。這個修正針對仲裁/定址，不是因為差分接收不可靠；不能用軟體刪除壞幀掩蓋爭用，亦不能只增等待期限。"
       ],
       "table": {
-        "caption": "三種介面先看差別",
+        "caption": "例題二：同樣匯流排兩個地址同時回應",
         "headers": [
-          "介面",
-          "訊號方式／典型連接",
-          "仍需確認"
+          "條件",
+          "回應者",
+          "機制"
         ],
         "rows": [
           [
-            "RS-232",
-            "單端；常見點對點",
-            "DTE/DCE、pinout、控制線"
+            "僅D1 addr03",
+            "D1",
+            "單獨正常"
           ],
           [
-            "RS-422",
-            "差動；常見一個驅動端對一個或多個接收端",
-            "線對、終端與設備拓撲"
+            "僅D2 addr03",
+            "D2",
+            "單獨正常"
           ],
           [
-            "RS-485",
-            "差動；可用多個收發端，常見 2 線半雙工或 4 線配置",
-            "驅動使能、節點、終端與偏置"
+            "一起addr03",
+            "D1+D2",
+            "同時驅動候選"
+          ],
+          [
+            "D1=03/D2=04",
+            "各按輪詢",
+            "按契約區分節點"
           ]
         ]
       }
     },
     {
-      "heading": "RS-485 的「兩線」不等於隨時都能同時說話",
+      "kind": "concept",
+      "heading": "SPI與I²C為什麼不是換一個UART引數就能用",
       "paragraphs": [
-        "典型 2 線半雙工 RS-485 在同一差動線對上輪流傳送；發送端須適時啟用驅動，避免多端同時驅動。4 線配置可支援不同方向的線對，但實際主從或多點拓撲需依設備文件。",
-        "終端電阻與偏置要按線路長度、速率、線材與設備設計決定；不是「每個節點都加 120 Ω」。若有穩定性問題，先取得實際拓撲和廠商建議。"
-      ],
-      "table": {
-        "caption": "讀 RS-485 手冊要找的欄位",
-        "headers": [
-          "欄位",
-          "為什麼"
-        ],
-        "rows": [
-          [
-            "2 線／4 線、半／全雙工",
-            "決定方向和線對"
-          ],
-          [
-            "A/B 或 +/- 標示及 pinout",
-            "不同廠商命名可能不同，需核對極性"
-          ],
-          [
-            "驅動使能與轉向時間",
-            "避免雙方同時傳送或回覆被漏接"
-          ],
-          [
-            "終端、偏置、接地／隔離",
-            "決定訊號品質與安裝方式"
-          ],
-          [
-            "上層協定與節點位址",
-            "決定命令與回覆如何尋址"
-          ]
-        ]
-      }
+        "SPI有clock與chip-select，controller提供時鐘，外設按相位/極性在指定邊緣取樣，常有分開的兩個資料方向；CPOL/CPHA及字長/片選邊界需共同約定。它沒有UART start/stop自動字元模式，很多器件資料需按暫存器協議。錯誤clock mode可讓bytes看似移位，卻不是baud mismatch。",
+        "I²C常見SDA/SCL使用open-drain與pull-up，共享低電平條件，讓匯流排可處理地址、ACK/NACK及相應仲裁/clock-stretching機制。8-bit資料後的ACK確認匯流排層收件，不說明感測器讀值已業務正確。匯流排電容與上升時間影響有效速率，地址衝突與拉低未釋放也能阻塞；不能用RS-485偏置/終端規則直接套這類板級匯流排。"
+      ]
     },
     {
-      "heading": "TTL UART、USB–serial 與 RS-232 看起來像，電氣上不一樣",
+      "kind": "mechanism",
+      "heading": "USB橋與Ethernet橋增加了狀態邊界",
       "paragraphs": [
-        "TTL UART 通常是處理器附近的邏輯電平訊號，不能因為它也傳 9600,8,N,1 就直接接到 RS-232 線。USB–serial 轉接器在電腦側是 USB，外側可能是不同訊號標準；應查完整型號。",
-        "有些 USB 裝置以 COM Port 出現，有些使用專用驅動或不提供一般串列埠。看到 USB 插頭或 COM 名稱都不能跳過產品文件。"
-      ],
-      "note": "本章比較用途與辨識，不提供未知設備的改線、焊接或量測指示。"
+        "USB是有自己列舉、endpoint與packet排程的匯流排，不是TTL/RS-232電平代名詞；USB串列橋外側才可能有UART與電氣轉換。Ethernet串列server通常在TCP/UDP與串列流之間橋接，增加連線、訊息邊界/分段、網路buffer、session與橋配置等狀態。網路ACK到橋不證明串列裝置已收請求。",
+        "協議橋可原樣傳bytes，也可能封裝控制命令或轉語意；需讀ICD與驅動模式。把COM變網路端點後原本read/timeout假設可能更不成立，網路與串列時序都要列。比較介面時先分電氣、clock/bit、訊息、連線/transaction四欄，不用一張「哪個較快」表替代工程模型。"
+      ]
     },
     {
-      "heading": "CAN、SPI、I2C、GPIO、Ethernet 不是可互換的「串列線」",
+      "kind": "maintenance",
+      "heading": "把轉換鏈寫清楚，才知道換哪種轉接器",
       "paragraphs": [
-        "CAN 是具仲裁與框架的總線；SPI、I2C 常見於板上晶片之間；GPIO 是通用數位輸入／輸出；Ethernet 則有自己的實體與網路層。它們的接線、電氣、時序與軟體介面都不能用一張 RS-232 設定表取代。",
-        "維護時先看設備文件寫的是哪個介面、應用程式透過哪個驅動或 API 操作，再找對應的觀測工具。"
-      ],
-      "table": {
-        "caption": "看到名稱後先問哪種問題",
-        "headers": [
-          "名稱",
-          "常見觀測入口",
-          "不要套用"
-        ],
-        "rows": [
-          [
-            "RS-232／422／485",
-            "串列埠、轉接器與協定紀錄",
-            "假設三者可直接互接"
-          ],
-          [
-            "USB",
-            "裝置列舉、驅動與類別",
-            "假設必定是 COM Port"
-          ],
-          [
-            "CAN",
-            "介面卡與 CAN 框架",
-            "用 UART 8N1 解讀"
-          ],
-          [
-            "SPI／I2C",
-            "板上控制器與時序",
-            "當成普通 RS-232 線"
-          ],
-          [
-            "GPIO",
-            "腳位狀態與電氣規格",
-            "當成收送位元組的串列埠"
-          ],
-          [
-            "Ethernet",
-            "網卡、IP／Port 與封包",
-            "用 COM Port 參數排查"
-          ]
-        ]
-      }
+        "Device-Lab-C可寫OS API→TCP Socket→serial server→UART→RS-485→裝置協議；每個箭頭都註明格式、方向、owner與完成語意。若換轉接器但只沿用COM7和9600，未核對半雙工使能/終端/flow/echo，就可能在簡單命令正常、多節點負載失敗。轉換器不是透明到可以忽略所有狀態。",
+        "新型號實際可用速率、unit-load數量、isolated reference與故障安全都要正式規格。教材只建立因果，不推公司接法或發射設定。判斷工程取捨應考慮現有裝置契約、可維護觀測與恢復，而不是因為新技術聽起來先進就重構介面。"
+      ]
     },
     {
-      "heading": "虛構設備卡：先分類，再決定工具",
+      "kind": "lab",
+      "heading": "實作：計算方向預算與介面契約矩陣",
       "paragraphs": [
-        "Device-Lab-C 文件片段寫「2-wire RS-485, 19200 8N1, device address 0x07, request uses CRC」，轉接器標籤寫「USB to RS-232」。即使兩者都能在軟體中設定 19200 8N1，電氣介面仍不相符；應先換成經確認的 RS-485 轉接方式，並查線對、終端與 CRC 規則。",
-        "Device-Lab-D 文件只寫「UART RX/TX 3.3 V」，也不能使用 RS-232 轉接器直接連接。兩個例子都只供判讀，不是施工指示。"
+        "執行interfaces，逐項算23.667ms並改baud9600預測40.333；復原。手畫TX最後stop、DE釋放、裝置開始響應、RX結束，用兩個固定DE時刻說明過早與過晚的差異；模型不操控DE。再給UART/RS-232/485/SPI/I²C/USB各填clock、電氣、方向、定址/邊界欄。",
+        "驗收提交預算算式、addr03/04輪詢表與契約矩陣。無需真實終端電阻/硬體；真實波形、端子與切換必須授權測試。模型只計算，不能宣佈匯流排已無碰撞。"
+      ],
+      "steps": [
+        "先算線時間與處理/餘裕，不只總和。",
+        "改baud並解釋固定釋放時刻為何危險。",
+        "畫兩driver重疊與地址修正後的輪詢。",
+        "復原，列每種介面最先應取得的規格與觀測。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：只有多節點與長回覆時截尾",
+      "paragraphs": [
+        "候選H1DE過早釋放、H2地址爭用、H3反射或負載、H4parser不足。第二輪APP完整TX，線路最後兩字元卻在DE下降後中斷，單node長回覆也失敗且位置隨baud變化，支援H1；若只是節點增多時發生且兩driver重疊，更支援H2。時序證據比「RS-485太快」更具體。",
+        "隔離系統依driver真實transmit-complete完成再按manualturnaround，驗證長/短TX、各指定baud、反向響應及多node輪詢。保留bus觀測與APP parser結果，避免只看某小查詢透過。若反射/負載候選仍在，不用軟體延時修物理問題，交正式硬體設計核對。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【物理】RS-232 和 RS-485 都傳位元組，就能直接把線接在一起嗎？",
-      "answer": "不能。它們的電氣方式與拓撲不同，需按設備規格使用合適轉換。"
+      "level": "foundation",
+      "question": "差分自動提供節點地址嗎？",
+      "answer": [
+        "差分是電氣接收機制，地址與仲裁在協議層。",
+        "多driver能力需誰發的時序規則，不能同時任意驅動。",
+        "依匯流排與協議契約分別驗證。"
+      ]
     },
     {
-      "question": "【兩線】2 線半雙工 RS-485 可讓兩端在同一線對同時傳嗎？",
-      "answer": "典型半雙工不能同時驅動同一線對；需按協定與驅動使能安排輪流傳送。"
+      "level": "foundation",
+      "question": "FIFO空與最後stop發完哪裡不同？",
+      "answer": [
+        "FIFO空可能資料已進shift register仍在傳送。",
+        "DE太早釋放截最後字元；太晚阻擋回復。",
+        "查真正transmission-complete定義。"
+      ]
     },
     {
-      "question": "【終端】每個 RS-485 節點都加 120 Ω 終端一定正確嗎？",
-      "answer": "不一定。終端位置與值要依拓撲、線材、速率及設備文件；亂加可能增加負載。"
+      "level": "application",
+      "question": "9600 8N1 TX12、RX8、處理4、切換2，預算多少？",
+      "answer": [
+        "TX120/9600=12.5ms，RX80/9600=8.3333ms。",
+        "總12.5+8.3333+4+2=26.8333ms。",
+        "還需橋/排程及手冊實際限制，不是普遍deadline。"
+      ]
     },
     {
-      "question": "【名稱】A/B 的字母能跨所有廠商直接對應 +/- 嗎？",
-      "answer": "不能只看字母。需核對兩端手冊的極性與實際 pinout。"
+      "level": "application",
+      "question": "三驅動器同時兩種相反狀態，UART start能仲裁嗎？",
+      "answer": [
+        "不能，UART只取樣字元，不協調driver ownership。",
+        "協議需輪詢/時隙或明確仲裁。",
+        "保留DE與地址時間線，不能靠checksum丟棄解決爭用。"
+      ]
     },
     {
-      "question": "【USB】USB–serial 轉接器顯示 COM Port，就能把外側當 RS-232 嗎？",
-      "answer": "不能。外側可能是 RS-232、RS-485、TTL UART 等，查型號規格。"
+      "level": "application",
+      "question": "兩端A/B名字相同但差分定義相反，該照字母連嗎？",
+      "answer": [
+        "不能，廠商標籤不保證相同真值方向。",
+        "核對手冊差分定義、輸入/輸出與視角。",
+        "模型只給功能關係，實際接法須確切裝置檔案。"
+      ]
     },
     {
-      "question": "【其他介面】設備手冊寫 CAN，可用 pySerial 的 8N1 直接解碼嗎？",
-      "answer": "不能。CAN 有不同電氣與框架，需要對應介面卡與工具。"
+      "level": "application",
+      "question": "SPI mode錯但baud相同，為什麼可能錯字？",
+      "answer": [
+        "SPI靠clock edge與CPOL/CPHA共同解釋取樣。",
+        "頻率相同不補錯誤取樣邊緣。",
+        "按器件mode回歸暫存器/資料，不套UART parity策略。"
+      ]
     },
     {
-      "question": "【案例】Lab-C 要求 2 線 RS-485，手邊是 USB–RS-232，先調鮑率有用嗎？",
-      "answer": "先解決介面不相符；即使鮑率一致也不能直接連。之後再按手冊核對線對、終端、地址與 CRC。"
+      "level": "diagnosis",
+      "question": "I²C ACK後讀值錯誤，能當業務成功嗎？",
+      "answer": [
+        "ACK是匯流排層收件/回應，不證明暫存器/量測語意正確。",
+        "核對地址、暫存器、時序、長度與裝置狀態。",
+        "以已知輸入校準驗證，不只測ACK。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "網路橋TCP ACK正常，串列裝置沒回應，下一項？",
+      "answer": [
+        "ACK可能只確認到橋，仍需橋UART輸出和裝置RX證據。",
+        "查橋轉換/配置、串列引數與訊息邊界。",
+        "分網路和串列兩條狀態鏈，限定修正與回歸。"
+      ]
     }
   ],
   "recap": [
-    "RS-232、RS-422、RS-485 先看電氣與拓撲，再看上層協定。",
-    "RS-485 半雙工還要關心方向切換、線對與終端。",
-    "USB、TTL、CAN、SPI、I2C、GPIO、Ethernet 都不能因名字相近而混用。"
+    "解釋差分、三態驅動、半/全雙工與匯流排仲裁。",
+    "用反射、終端、偏置與common-mode形成物理模型。",
+    "計算半雙工交易的時間與方向切換條件。",
+    "區分UART、SPI、I²C、USB與網路橋的狀態邊界。"
   ],
   "sources": [
     {
-      "label": "Analog Devices：RS-232／422／485 比較",
-      "url": "https://www.analog.com/en/resources/technical-articles/guide-to-selecting-and-using-rs232-rs422-and-rs485-serial-data-standards.html"
-    },
-    {
-      "label": "Analog Devices：RS-485／422 實作指南",
+      "label": "Analog Devices AN-960：RS-422/485實作原理",
       "url": "https://www.analog.com/en/resources/app-notes/an-960.html"
     },
     {
-      "label": "TI：RS-485 終端何時需要",
-      "url": "https://www.ti.com/document-viewer/lit/html/ssztb23"
+      "label": "Analog Devices：UART字元與非同步傳送",
+      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
+    },
+    {
+      "label": "Analog Devices：SPI clock與片選",
+      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/introduction-to-spi-interface.html"
+    },
+    {
+      "label": "NXP UM10204：I²C匯流排機制",
+      "url": "https://www.nxp.com/docs/en/user-guide/UM10204.pdf"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/serial-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/Program.cs",
+      "label": "串列C#概念與解析模型",
+      "description": "本章用interfaces模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/README.md",
+      "label": "獨立.NET10模型操作說明",
+      "description": "本章用interfaces模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
     }
   ]
 }

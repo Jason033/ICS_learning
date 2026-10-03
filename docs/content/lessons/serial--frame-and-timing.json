@@ -1,234 +1,267 @@
 {
-  "intro": "UART 能把位元組送到另一端，卻不知道一筆設備訊息在哪裡結束。本章分開讀文字終止符與虛構二進位框架，練習十六進位、長度、校驗、分段讀取和 timeout；不要把一次 read 的結果當成完整回覆。",
-  "plan": [
-    {
-      "label": "讀文字邊界",
-      "minutes": 10
-    },
-    {
-      "label": "拆二進位框架",
-      "minutes": 12
-    },
-    {
-      "label": "比較分段讀取與逾時",
-      "minutes": 12
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 16
-    }
+  "contentVersion": 2,
+  "intro": "UART停止位只結一字元，不會告訴程式一條命令在哪結束。從文字終止符與二進位長度，到校驗、累積、重同步和交易期限，本章建立一個真正能讀懂parser行為的資料模型。",
+  "prerequisites": [
+    "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
+    "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      18
+    ],
+    "practice": [
+      20,
+      40
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+  },
   "goals": [
-    "能分清 UART 字元框架與應用訊息框架。",
-    "能解讀虛構文字與二進位命令的長度和校驗。",
-    "能處理回覆分批抵達、沒有終止符與逾時的情境。"
+    "區分字元幀、訊息幀與交易結果。",
+    "逐byte計算LEN、總長與XOR，並解釋校驗限制。",
+    "追蹤分段/多幀/雜訊後的解析狀態與上界。",
+    "區分read等待、字元間隔、交易期限和晚到回覆。"
   ],
   "sections": [
     {
-      "heading": "UART 停止位元不是命令結束符",
+      "kind": "concept",
+      "heading": "為何停止位不能當裝置命令終點",
       "paragraphs": [
-        "8N1 的停止位元只結束一個 UART 字元；設備命令可能是 8 個、20 個或更多位元組。若程式要知道整筆回覆結束，必須依設備協定找 CR LF、固定長度、長度欄、特殊結束符或其他規則。",
-        "請先拿到設備的命令文件再選讀取策略。不能因為終端機預設按 Enter 送出換行，就認定設備也要求換行。"
+        "UART一字元結束後可立即開始下一個字元，STATUS?七個ASCIIbytes就有七組start/data/stop。應用還需知道哪些字元一起表達一命令。文字協議可用CR LF或其他delimiter；binary可用固定長、LEN或同步標記。空隙也可作為特定協議定義的邊界，但必須明確時長與測量層，不能憑APP兩次callback時間間隔猜裝置已經結束。",
+        "固定長簡單卻需訊息類別與長度已知；delimiter需處理payload出現同符號時的轉義；length-prefix可承載任意內容但需可信長度上界及損壞恢復。sync marker幫助找候選起點，仍可能合法出現在payload，不能每見AA都無條件重開訊息。協議設計的邊界、校驗與同步要共同解釋，parser只執行明確契約。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "從未收齊到完整：parser的狀態如何遞進",
+      "paragraphs": [
+        "原創Device-Lab-B frame為AA、LEN、CMD、DATA、CHK。LEN只算CMD+DATA，1–32；總長LEN+3，包含AA/LEN/CHK三個額外byte。parser先找AA，等LEN，驗證範圍，再等總長，最後計算CHK；不足時保留，不能以本次read少於預期判壞。拿到一幀後消費該範圍，剩餘bytes繼續找下一幀。",
+        "模型以List暫存，每到一byte嘗試解析；無AA丟噪聲，LEN非法丟當前AA重找；校驗錯亦丟一個byte再尋找候選，避免把可能新AA一起丟掉。這個政策有成本：payload內AA可能造成假候選，壞LEN合法但很大可能暫時等更多。真實協議可能另有轉義、空隙期限或更強同步規則，不能把模型resync當通用唯一方法。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "校驗可以檢錯，卻不保證業務資料真實",
+      "paragraphs": [
+        "Parity在單字元層，checksum在訊息層。XOR把每byte各bit按奇偶合並，簡單但兩處相同bit變化可能互相抵消；sum類也有排列或補償變化的限制。CRC以約定生成多項式做bit級餘數，能力與多項式、長度、初始/反射/最終xor引數有關；只寫「CRC16」仍不足復現同結果。",
+        "校驗透過表示符合該演算法關係，不是資料一定正確、來源已授權或命令已執行。若格式欄位仍未知，也不能先用某網上CRC填答案。工程parser需要長度/欄位/命令合法性、校驗、交易關聯及後續狀態；這些機制疊加各保護不同錯誤，不應把一行CHK OK當READY。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "欄位編碼、位元組序與同步符的契約",
+      "paragraphs": [
+        "HEX是書寫方式，不是訊息在電線上「每兩位字母」傳送。AA在binary是一個0xAA byte，在ASCII工具輸入AA若未選HEX則是41 41兩個byte。parser定義與工具編碼必須一致。數值LEN若用16bits，又需byte order：01 00在big-endian是256，在little-endian是1。先看欄位規定，再作整數；不能使用平臺預設BitConverter就假設對端一致。",
+        "本Lab只有1-byte LEN，因此無LEN位元組序；將來擴為16bits時必須同時調整總長公式、上界、校驗範圍與測試，不只改一行讀取。最大len驗證應在分配記憶體、加頭開銷與等待之前完成，避免不可信欄位導致過大allocate、算術overflow或永久等待。訊息完整/損壞/超限/逾時各有錯誤類別，UI不可全壓成裝置無回應。",
+        "如果payload允許AA，sync marker不是絕對可靠邊界。可用escaping把特定符號編碼成另外組合，接收需先按約定還原；也可由長度及CRC共同篩候選，或特定協議用定時空隙分幀。不同方案增加開銷或恢復複雜度，無法在未修改雙方契約時自由切換。UART parity/stop提供字元恢復，上層sync提供訊息恢復，兩層重同步處理的範圍不同。",
+        "交易物件也是一欄位契約：device address、command type與request ID分別區分裝置、操作與回合。只有CMD90的frame不能分辨兩次同命令哪一回覆，時間近只是弱關聯；有request ID還需處理wrap、重複與舊session。parser把frame拆正確後，應用才判斷能否更新本次狀態，這個順序能避免晚到結果汙染新操作。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：請求與回覆從規則算完整HEX",
+      "paragraphs": [
+        "查詢CMD=10，無DATA，LEN=1，所以總長1+3=4；CHK=01 XOR10=11，TX=AA 01 10 11。回覆CMD90、DATA01，LEN2，總長5，CHK02 XOR90 XOR01：02 XOR90=92，再XOR01=93，RX=AA 02 90 01 93。LEN不包括AA、LEN自身與CHK，不可數整幀填5。",
+        "校驗漏檢例將CMD90→91並DATA01→00，同一低bit在兩處翻轉，02 XOR91 XOR00仍93。接收可發現語意不同，卻單憑XOR無法發現這組錯誤。若命令表不允許91可由欄位校驗拒絕；若91亦合法，就需協議更強檢錯與結果確認。這是完整性演算法與業務規則的互補。"
       ],
       "table": {
-        "caption": "兩種不同的「邊界」",
+        "caption": "例題一：請求與回覆從規則算完整HEX",
         "headers": [
-          "邊界",
-          "範圍",
-          "例子"
+          "HEX",
+          "LEN意義",
+          "總長",
+          "CHK"
         ],
         "rows": [
           [
-            "UART 字元邊界",
-            "一個資料字元／位元組",
-            "8N1 的開始與停止位元"
+            "AA 01 10 11",
+            "1 CMD",
+            "4",
+            "01 XOR10=11"
           ],
           [
-            "設備訊息邊界",
-            "一整筆命令或回覆",
-            "CR LF、固定長度、LEN 欄"
+            "AA 02 90 01 93",
+            "CMD+DATA=2",
+            "5",
+            "02 XOR90 XOR01=93"
+          ],
+          [
+            "AA 02 91 00 93",
+            "仍2",
+            "5",
+            "XOR仍透過但內容變"
           ]
         ]
       }
     },
     {
-      "heading": "文字協定：看實際位元組，不只看畫面字串",
+      "kind": "worked-example",
+      "heading": "例題二：噪聲、壞LEN、壞校驗與下一幀",
       "paragraphs": [
-        "虛構 Device-Lab-A 要求 ASCII 的 STATUS? 後接 CR LF。ASCII 的 CR 是 0D、LF 是 0A；十六進位完整命令為 53 54 41 54 55 53 3F 0D 0A。若只送 STATUS? 的可見文字，設備可能一直等結束符。",
-        "有些工具把按 Enter 轉成 CR、LF 或 CR LF；還可能顯示不可見字元。比對原始十六進位可以避免「畫面看起來一樣」的誤判。"
+        "輸入分兩批：00 AA FF AA 02 90 01 92，然後AA 02 90 01 93。先跳00；AA FF的LEN255大於32，丟AA後FF亦不為起點；接著AA02...92五bytes已齊但預期93，校驗拒絕，從下一byte重找直到下一批AA。第二批合法frame應完成1、buffer0。",
+        "正常另組AA02 90，再01 93 AA01 10 11：首批3bytes需5，等待；第二批補2完成回覆，再有4byte請求完整，完成數2。由read邊界切法不同仍得到相同兩幀，是stream parser的基本不變條件。不要把callback次數2當完成訊息數2，因為fault兩批只有一幀。"
       ],
       "code": {
-        "title": "自製教學命令，非實際設備規格",
-        "text": "文字：STATUS? + CR LF\nHEX：53 54 41 54 55 53 3F 0D 0A\n回覆文字：OK,READY + CR LF\n若只送：53 54 41 54 55 53 3F\n→ 缺少 0D 0A，設備可能繼續等待"
-      },
-      "note": "文字編碼與結束符號都必須按設備手冊；不是每台串列設備都使用 ASCII 或 CR LF。"
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "正常：RX1 AA0290 / RX2 0193AA011011\n狀態：3/5等待 -> 完成AA02900193 -> 完成AA011011\n異常：RX1 00AAFFAA02900192 / RX2 AA02900193\n狀態：噪聲00 -> LEN255拒絕 -> CHK92拒絕 -> 新候選AA -> 完成1幀\n每個接受frame都有 LEN+3 上界；每輪read可為0/1/多幀。"
+      }
     },
     {
-      "heading": "二進位協定：先宣告規則再算答案",
+      "kind": "code-reading",
+      "heading": "C#的完整條件與消費位置必須對應契約",
       "paragraphs": [
-        "另一台虛構 Device-Lab-B 使用教學框架：AA 是固定開頭；LEN 計算 CMD 與 DATA 的位元組數；最後 CHK 是 LEN、CMD 和所有 DATA 位元組逐個 XOR。這是為練習設計的規則，不是任何廠商標準。",
-        "查狀態的請求沒有 DATA，LEN=01、CMD=10，所以 CHK=01 XOR 10=11，完整框架是 AA 01 10 11。回覆有一個狀態資料 01，LEN=02、CMD=90，CHK=02 XOR 90 XOR 01=93，完整框架為 AA 02 90 01 93。"
+        "下方節錄LabParser核心：len先驗1–32，總長len+3；不足break保留；XOR範圍從LEN直到最後DATA，不包括AA或CHK。校驗成功再RemoveRange整個frame，失敗只RemoveAt(0)。這兩個消費長度為什麼不同，要用上節輸入逐byte推演，不能以「清空buffer比較簡單」替代。",
+        "若一次read含合法幀A+B，清空會把B丟掉；若LEN超上界不拒絕，可無期限等待與吃記憶體。模型每byte處理使暫存有界，但未實現交易ID與deadline；生產需單執行緒或同步保護parser、錯誤計數與適當限流。parser狀態不能由UI執行緒與callback無保護同時修改。"
       ],
-      "table": {
-        "caption": "虛構 Device-Lab-B 二進位框架",
-        "headers": [
-          "欄位",
-          "長度",
-          "本例用途"
-        ],
-        "rows": [
-          [
-            "AA",
-            "1 byte",
-            "固定起始標記"
-          ],
-          [
-            "LEN",
-            "1 byte",
-            "CMD + DATA 的位元組數"
-          ],
-          [
-            "CMD",
-            "1 byte",
-            "10=查詢；90=回覆（僅本例）"
-          ],
-          [
-            "DATA",
-            "0 或更多",
-            "回覆 01=READY（僅本例）"
-          ],
-          [
-            "CHK",
-            "1 byte",
-            "LEN、CMD、DATA 的 XOR"
-          ]
-        ]
-      },
       "code": {
-        "title": "虛構請求與回覆；十六進位位元組",
-        "text": "TX: AA 01 10 11       # 01 XOR 10 = 11\nRX: AA 02 90 01 93    # 02 XOR 90 XOR 01 = 93"
-      },
-      "note": "XOR 只能偵測部分錯誤；不應把本例的演算法套到未確認的設備。"
-    },
-    {
-      "heading": "一次 read 不保證拿到完整訊息",
-      "paragraphs": [
-        "串列埠 API 的 read(size) 在設定 timeout 時可能回傳少於 size 個位元組；資料也可能分批進入緩衝。假設這次想讀 5 bytes，第一次只拿到 AA 02 90，下一次才拿到 01 93；不能把第一段直接判成設備回覆長度錯。",
-        "應按協定累積位元組：先辨認起始標記和 LEN，再等到 CMD、DATA、CHK 都齊全才驗證；超過明確的交易 deadline 才記 timeout。還要定義最大長度，以免壞資料讓程式一直等。"
-      ],
-      "table": {
-        "caption": "虛構分段到達",
-        "headers": [
-          "讀取時間",
-          "本次取得",
-          "累積狀態"
-        ],
-        "rows": [
-          [
-            "0 ms",
-            "AA 02 90",
-            "知道預期總長 5 bytes，尚缺 2"
-          ],
-          [
-            "20 ms",
-            "01 93",
-            "共 5 bytes，可驗證 CHK"
-          ],
-          [
-            "200 ms",
-            "沒有新資料",
-            "對這筆交易已無影響"
-          ]
-        ]
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "if (pending.Count < 2) return;\nint len = pending[1];\nif (len < 1 || len > 32) { pending.RemoveAt(0); return; }\nint total = len + 3;\nif (pending.Count < total) return;\nbyte expected = 0;\nfor (int i = 1; i < total - 1; i++) expected ^= pending[i];\nif (expected != pending[total - 1]) { pending.RemoveAt(0); return; }\nbyte[] frame = pending.Take(total).ToArray();\npending.RemoveRange(0, total);\n// Outer loop continues; this excerpt alone handles one decision only."
       }
     },
     {
-      "heading": "逾時要問：等第一個位元組，還是等整筆回覆？",
+      "kind": "mechanism",
+      "heading": "等待的三種邊界與晚到資料",
       "paragraphs": [
-        "「讀取 timeout」可能是單次 read 等待時間；「交易 deadline」則是從送命令到收到完整回覆的總等待界線；某些系統還會設定字元之間的最大空檔。這些值不應混成一個「設備反應時間」。",
-        "決定 timeout 前要量測或查文件：命令送完要多久、設備處理多久、回覆多長、流量控制與轉接器延遲多少。只看到單次 read 回空，未必表示整筆交易永遠沒有回覆。"
-      ],
-      "table": {
-        "caption": "三種等待條件",
-        "headers": [
-          "等待什麼",
-          "可能觀察",
-          "如何記錄"
-        ],
-        "rows": [
-          [
-            "首 byte",
-            "請求後一直沒有 RX",
-            "起算時間與觀測點"
-          ],
-          [
-            "整筆訊息",
-            "有前半段但缺後半段",
-            "已收位元組與預期長度"
-          ],
-          [
-            "字元間空檔",
-            "兩段間隔異常長",
-            "每段時間與設備文件要求"
-          ]
-        ]
-      }
+        "read timeout限制一回合讀等待，transaction deadline限制從某明確操作起點至完整結果的總時長，inter-byte timeout限制相鄰字元間可接受空隙。三者起訖不同；每次讀都重新給200ms會讓緩慢一byte一byte永久拖延，應以整筆剩餘期限控制。用單調elapsed而非會被校時的wall clock量期限。",
+        "t=10ms收到前3，deadline200，t=210尾2到，交易已不在期限內成功。遲到bytes可以使parser組成完整frame，卻不應該無相關性地歸給剛開始的新請求。若協議沒有request ID，需限制並行、明確處理晚到與恢復策略；重開COM或DiscardInBuffer會丟資料但不讓已執行動作回滾。動作命令是否安全重試由語意決定。"
+      ]
     },
     {
-      "heading": "重試可能讓動作執行兩次",
+      "kind": "lab",
+      "heading": "實作：逐byte追蹤與定義回歸輸入",
       "paragraphs": [
-        "如果回覆遺失，但設備其實已執行「啟動馬達」之類的命令，程式自動重送可能重複執行。是否可以重試要依命令語意、序號和設備文件；STATUS? 這種查詢與實際動作命令不能一視同仁。",
-        "練習時寫出「已知設備收到嗎」「已知動作執行嗎」「回覆只是沒進程式嗎」，再決定是否重試。"
+        "執行frames及frames --fault，按預期2/1完成比較每次跳過與校驗；把正常兩個chunk重新切成每byte一批，結果應仍2。加入兩個合法幀一次輸入，剩餘消費應正確；把LEN改0、33、255，模型要拒絕，之後合法幀仍可恢復。執行timeout，列期限內不完整與晚到frame不可自動屬新交易。",
+        "驗收交LEN/CHK算式、每輪buffer狀態、恢復位置與deadline表。模型無真實UART或CRC標準，所有AA等為自制協議。只改一變因並恢復，不能把PASS當裝置checksum已驗證。"
+      ],
+      "steps": [
+        "先算兩個frame的總長與CHK。",
+        "跑normal/fault，逐byte標parser狀態與消費長度。",
+        "改變chunk分法與壞LEN，確認內容不變數和上界。",
+        "復原，用晚到資料說明交易關聯與解析完整不相同。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：從read半筆就報checksum錯誤",
+      "paragraphs": [
+        "APP第一read得到AA0290，立即取第三byte90當CHK，報校驗錯並清buffer；下一read0193被當噪聲。候選H1裝置校驗真壞、H2parser尚未收齊、H3線路掉byte。第二輪獨立RX trace兩批合併為AA02900193，完整符合LEN/CHK，支援H2。判斷時不能只看程式自己生成的「CRC error」。",
+        "修正為按LEN累積且消費確切範圍，保持裝置/UART不變。回歸3+2、1+4、兩幀合併、雜訊/壞CHK/壞LEN、EOF/期限半幀，正確幀都取得相同結果且錯誤可控。報告指出錯誤分類來自parser讀取邊界假設，不以延長read timeout碰巧收齊當機制修復。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【邊界】8N1 的停止位元能讓程式知道 STATUS? 命令結束嗎？",
-      "answer": "不能。停止位元只結束單個 UART 字元；命令需要設備協定的邊界，例如 CR LF 或長度欄。"
+      "level": "foundation",
+      "question": "UART stop與CR LF各結束什麼？",
+      "answer": [
+        "stop結束單個UART字元，CR LF按本協議結束訊息。",
+        "一訊息可含很多字元幀，串列API讀批次另由緩衝決定。",
+        "分別處理邊界，不能以stop推命令已齊。"
+      ]
     },
     {
-      "question": "【文字】STATUS? 加 CR LF 的最後兩個十六進位位元組是什麼？",
-      "answer": "0D 0A；若少了它，採 CR LF 結束的教學設備可能繼續等待。"
+      "level": "foundation",
+      "question": "XOR正確能保證內容和身份嗎？",
+      "answer": [
+        "只驗證演算法關係，補償變化可漏檢。",
+        "來源身分與語意需其他機制，不能由checksum推出。",
+        "欄位規則/交易確認各有責任。"
+      ]
     },
     {
-      "question": "【二進位】AA 01 10 11 的 LEN=01 表示什麼？",
-      "answer": "CMD + DATA 共 1 byte；本例只有 CMD 10，沒有 DATA。"
+      "level": "application",
+      "question": "新CMD20、DATA01 02，LEN與CHK及總長？",
+      "answer": [
+        "LEN=3，共CMD和2DATA，總長6。",
+        "03 XOR20=23，再XOR01=22，再XOR02=20。",
+        "完整AA 03 20 01 02 20；依本模型而非廠商標準。"
+      ]
     },
     {
-      "question": "【校驗】AA 02 90 01 93 的 CHK 如何算？",
-      "answer": "02 XOR 90 XOR 01 = 93，依本教材虛構規則；不是通用 RS-232 校驗法。"
+      "level": "application",
+      "question": "AA 03 91 10 20的frame未到CHK，預期總長及目前缺多少？",
+      "answer": [
+        "LEN3→總長6，目前5bytes缺1。",
+        "先等CHK或交易期限，不拿20當校驗。",
+        "末byte到後再按範圍校驗，保留讀取狀態。"
+      ]
     },
     {
-      "question": "【分段】預期 5 bytes，第一次 read 得 AA 02 90，能立刻寫設備回覆格式錯嗎？",
-      "answer": "不能。可能只是尚未收齊；按 LEN 累積，等到完整或交易 deadline 再判斷。"
+      "level": "application",
+      "question": "一次read兩個合法frame，處理第一個後清buffer為什麼錯？",
+      "answer": [
+        "第二幀已在剩餘bytes，清空把合法資料丟棄。",
+        "只消費第一的LEN+3，然後繼續外層loop。",
+        "用合併與任意chunk切分回歸相同完成數。"
+      ]
     },
     {
-      "question": "【逾時】單次 read 在 200 ms 回空，等於設備永遠不會回覆嗎？",
-      "answer": "不等於。要看這次 read 的起算、完整交易 deadline、抓包或硬體觀測與設備處理條件。"
+      "level": "application",
+      "question": "交易deadline300，首段100、尾段320，parser完整能宣稱按期成功？",
+      "answer": [
+        "320已經超過300，完整與期限是兩標準。",
+        "記錄遲到結果，並核對原請求關聯。",
+        "不能把它默歸新交易；按語意處理與恢復。"
+      ]
     },
     {
-      "question": "【重試】動作命令沒有回覆，可以無條件自動重送嗎？",
-      "answer": "不行。可能設備已執行但回覆遺失；先按設備協定確認重試是否安全。"
+      "level": "diagnosis",
+      "question": "新壞校驗後仍AA不斷出現，直接每個AA重啟parser有何風險？",
+      "answer": [
+        "AA可能是合法payload內容。",
+        "按當前LEN與校驗決定何時恢復候選，不無條件斷幀。",
+        "測試AA在DATA、損壞LEN與合法跟幀，制定明確恢復政策。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "兩read各等200ms，裝置每150ms發一byte，為什麼整交易可拖很久？",
+      "answer": [
+        "每read重新起算無法限制總等待。",
+        "以交易起點單調deadline及remaining控制。",
+        "測慢滴流與正常分段，確保期限到結果分類正確且恢復可控。"
+      ]
     }
   ],
   "recap": [
-    "UART 字元邊界與設備訊息邊界不同。",
-    "原始 HEX、LEN、CHK 與接收時間要一起記錄。",
-    "分段讀取和逾時不等於設備一定錯；重試更要考慮命令語意。"
+    "區分字元幀、訊息幀與交易結果。",
+    "逐byte計算LEN、總長與XOR，並解釋校驗限制。",
+    "追蹤分段/多幀/雜訊後的解析狀態與上界。",
+    "區分read等待、字元間隔、交易期限和晚到回覆。"
   ],
   "sources": [
     {
-      "label": "pySerial：read、read_until 與 timeout",
+      "label": "pySerial：引數、讀取與timeout",
       "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
     },
     {
-      "label": "Analog Devices：UART 字元結構",
-      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
+      "label": "Microsoft：SerialPort.Read實際回傳數",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.read?view=netframework-4.6"
     },
     {
-      "label": "NI：串列通訊參數",
-      "url": "https://www.ni.com/docs/es-ES/bundle/labview/page/serial-port-communication.html"
+      "label": "Analog Devices：UART字元與非同步傳送",
+      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/serial-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/Program.cs",
+      "label": "串列C#概念與解析模型",
+      "description": "本章用frames模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/README.md",
+      "label": "獨立.NET10模型操作說明",
+      "description": "本章用frames模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
     }
   ]
 }

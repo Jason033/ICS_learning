@@ -1,196 +1,237 @@
 {
-  "intro": "「Ready、Busy、TX、RX、Error」看似一串狀態，但真實設備可能把通道忙碌、發射中和故障標成不同欄位。本章建立教學狀態圖，練習用事件和證據讀轉換，不把虛構狀態直接套給公司系統。",
-  "plan": [
-    {
-      "label": "三類狀態",
-      "minutes": 13
-    },
-    {
-      "label": "教學狀態圖",
-      "minutes": 15
-    },
-    {
-      "label": "例外與逾時",
-      "minutes": 12
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "狀態機不是把幾個燈號排成圖，而是描述：某個物件記得什麼、收到事件時依哪些條件改變、哪些動作永遠不能發生。本章從記憶與事件開始，建立能逐行讀懂的 PTT 控制模型，並分開軟體期望與裝置回饋。",
+  "prerequisites": [
+    "先能區分持續意圖、控制要求與裝置就緒；前章〈按下到TX〉補齊。",
+    "不需要先學圖論；本章從事件、記憶、if條件與副作用建立狀態機。"
   ],
+  "studyTime": {
+    "reading": [
+      12,
+      21
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      45
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 state、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
+  },
   "goals": [
-    "能區分設備狀態、通道狀態與畫面顯示狀態。",
-    "能在虛構狀態圖中解釋按下、拒絕、逾時與放開的轉換。",
-    "能指出「狀態卡在 TX」可能是回報、控制或設備問題。"
+    "能以狀態、事件、條件與動作推導一次轉換，不把事件名稱當成功結果。",
+    "能解釋互斥主狀態、獨立旗標及不變條件的差別。",
+    "能用世代、事件順序與權威來源診斷舊結果覆蓋新操作。"
   ],
   "sections": [
     {
-      "heading": "先問一個狀態「誰說的」",
+      "heading": "為何需要狀態：同一個事件不一定做同一件事",
+      "kind": "concept",
       "paragraphs": [
-        "Ready 可能是軟體允許操作，Busy 可能是通道檢出訊號，TX 可能是設備宣告發射中，RX 可能是接收鏈開啟，Error 可能是程式自己的錯誤。這些欄位未必互斥。",
-        "不要把畫面上的單一標籤當成完整設備狀態。記錄來源、更新條件及過期時間；斷線後仍亮的舊 TX 燈尤其容易誤導。"
-      ],
-      "table": {
-        "caption": "同字不同來源",
-        "headers": [
-          "標籤",
-          "可能來源",
-          "應查定義"
-        ],
-        "rows": [
-          [
-            "Ready",
-            "應用程式允許按鍵",
-            "是否代表設備就緒"
-          ],
-          [
-            "Busy",
-            "接收機或政策判定",
-            "是通道忙還是資源忙"
-          ],
-          [
-            "TX",
-            "設備／介面盒／UI",
-            "測到的是哪一層"
-          ],
-          [
-            "Error",
-            "設備或程式",
-            "錯誤碼與時間"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "Box-Lab-B：簡化狀態圖",
-      "paragraphs": [
-        "教學模型從 Idle/Ready 出發，按鍵後進 Requesting；若收到虛構 PERMIT，再進 TX Active；若拒絕則回 Ready 並記原因；放開則 Releasing，收到停止確認後回 Ready。",
-        "這套模型故意有 PERMIT 以練追蹤，但傳統電台不一定有獨立許可。若真實系統只有 PTT 腳位與 TX 指示，請改用其實際事件，不要補造 PERMIT。"
-      ],
-      "flow": [
-        "Ready",
-        "Requesting",
-        "Permitted",
-        "TX Active",
-        "Releasing",
-        "Ready"
-      ],
-      "image": {
-        "src": "./assets/diagrams/ptt-state-flow.svg",
-        "alt": "虛構狀態從 Ready 經 Requesting、Permitted、TX Active、Releasing 回 Ready；拒絕與逾時進查證。",
-        "caption": "教學狀態圖；PERMIT 不是通用電台訊息。"
-      }
-    },
-    {
-      "heading": "Busy 可是限制條件，不一定是主狀態",
-      "paragraphs": [
-        "設備可能仍可接收，但 Busy Channel Lockout 令按 PTT 不能發射；有些系統則因發話權被別人占用而等待。兩者都可能顯示 Busy，來源與處理卻不同。",
-        "在紀錄中分開 channel_busy、floor_busy、local_tx 等欄位比硬塞進一個單選狀態更清楚。實際欄位要按設備文件或程式證據命名。"
-      ],
-      "table": {
-        "caption": "兩種忙碌",
-        "headers": [
-          "觀測",
-          "可能機制",
-          "下一個證據"
-        ],
-        "rows": [
-          [
-            "接收機通道忙",
-            "Busy Channel Lockout",
-            "接收指示及設備設定"
-          ],
-          [
-            "其他人已發話",
-            "發話權控制",
-            "請求／拒絕／排隊事件"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "逾時不是自動轉成「設備沒有發射」",
-      "paragraphs": [
-        "假設 Requesting 等 500 毫秒未收到回報，程式可記 TIMEOUT；它只表示在此期限內沒有看見預期事件，設備可能晚到、回報遺失或狀態本來就沒有該欄。",
-        "若重送會改變實體發射，先查介面規格與去重策略；不能把逾時直接當成可安全重試的證據。"
-      ],
-      "code": {
-        "title": "虛構觀測",
-        "text": "1000 request=TX_REQ id=R7\n1500 app=TIMEOUT id=R7\n設備 TX：未知；介面盒輸出：未知"
-      }
-    },
-    {
-      "heading": "放開後還顯示 TX 的三種可能",
-      "paragraphs": [
-        "一是放開事件沒到程式，二是解除控制沒有到設備，三是設備已停止但 UI 使用舊回報。也可能有文件明定的尾音或延遲，不能一律判故障。",
-        "要同時讀按鍵 UP、TX_END、設備 TX_OFF 及畫面更新時間。先確定哪一層真的仍在 TX，才能決定措施。"
+        "考慮 Ready 這個通知：按住發話且正在等待電台準備時，它可以開啟音訊；已鬆開後才抵達時，它不該重新發射。同樣名字的事件有不同後果，因為程式必須記住之前發生什麼。狀態就是一段流程中被保留、會影響後續決策的資訊，不只是畫面上的文字。",
+        "沒有明確狀態仍然會有隱含狀態：散在按鍵事件、計時器和回呼裡的布林值共同決定行為。維護者若只看單一方法，很容易以為每次收到 Ready 都應設 Tx=true；另一條路徑其實早已撤銷發話。狀態機把這些歷史與條件集中，讓合法與非法轉換可以預測和測試。",
+        "一個狀態模型總有範圍。本章 LabPttController 描述一個本地控制器的發話流程，不描述整個 RF 系統；它的 Tx 表示本地准入條件達成。實際電台發射中可能需額外回報，對端聽到又需另一份證據。先定義狀態屬於誰，再討論值是什麼，才不會把畫面 Tx 誤當電台已發射。"
       ]
     },
     {
-      "heading": "狀態要有新鮮度與歸屬",
+      "heading": "四個元素：狀態、事件、條件、動作",
+      "kind": "concept",
       "paragraphs": [
-        "每筆狀態至少標設備、請求 ID、來源時間、接收時間及是否仍有效。若 A 的回報被拿來更新 B 的畫面，就會形成假 Busy／假 TX。",
-        "故障報告可畫兩條時間線：預期事件與實際事件。缺少實際回報時寫未知，不寫「設備拒絕」或「設備壞」。"
+        "狀態是當下記憶，事件是輸入一次發生的事情，條件是事件到來時必須成立的判斷，動作是因此修改記憶或要求外部工作。例如 Idle 收到 Press，在沒有 Busy 時，建立 Held=true、增加 Epoch，要求 PTT 並進入 Keying。Press 是瞬間事件，Held 是持續資訊；兩者不能因中文都叫「按下」就混成一個欄位。",
+        "轉換可寫成「來源狀態＋事件＋條件→目的狀態＋動作」。不符合條件時也要有策略：忽略並記錄、拒絕、保留等待或進 Fault。本 Lab 的過早 Ready 被忽略；這個選擇意味 Grant 之後必須有新的 Ready 或重新查詢機制，不能靠已丟棄的通知自動前進。圖沒有畫的事件若在程式裡默默生效，圖就不能作為維護規格。",
+        "動作有內外之分。把 Ptt=true 寫入本地變數是同步記憶改變；把要求送到介面盒可能失敗或稍後完成。生產設計常需要 Keying／Releasing 等中間狀態承接這段不確定性。將「要求已送」和「裝置已完成」合併，會讓下一步太早開音訊，也使失敗無處表示。"
+      ]
+    },
+    {
+      "heading": "主狀態互斥，旗標可以正交",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Lab 主狀態為 Idle、WaitingGrant、Keying、Tx、Fault，一次只有一個值，表示發話流程走到哪裡。Busy、Held、Ptt、RadioReady、AudioOpen 是不同維度：Busy 是新發話的准入限制，Held 是人的持續意圖，Ptt 是期望控制，Ready 是注入的就緒證據，AudioOpen 是准入閘門。不能用一串 Ready／Busy／RX／TX 把所有維度硬塞進一個 enum。",
+        "例如某電台在接收中且通道忙，這兩件事可能同時成立；有故障也可能仍有最後一次 TX 觀測。若主 enum 只能選一個，選 Error 可能抹掉持續輸出的風險。相反地，完全用布林又容易產生 Held=false 而 AudioOpen=true 的非法組合。工程上要依問題選主狀態與獨立資料，再用條件保護它們的關係。",
+        "本 Lab 的重要不變條件是：送出樣本必須 Held、Ptt、RadioReady、AudioOpen 皆真且主狀態 Tx；Idle 時四個旗標都關閉。Fault 的 Held 可以仍真，表示人還按著但輸出已撤銷，必須先 Release 才能重新啟動。這解釋為何不應為了讓旗標看起來整齊就把所有值同時歸零：人的意圖和系統許可需要各自保留。"
+      ]
+    },
+    {
+      "heading": "用轉換表讀程式，而非只看箭頭",
+      "kind": "mechanism",
+      "paragraphs": [
+        "以 RequireGrant=true 為例，Idle 的 Press 成功後到 WaitingGrant；該狀態的同世代 Grant 到 Keying；同世代 Ready 到 Tx；Release 從任何狀態關閉輸出到 Idle。直接模式則省略 WaitingGrant，由 Press 直接 Keying。這是本地教學政策，真實介面是否有 Grant、Ready 如何定義，需要由公司實際版本契約填入。",
+        "讀 C# 時先找 enum、儲存狀態的物件、公開事件入口，再找每個 if guard 和每次寫入。接著追外部副作用，例如寫控制、訂閱回饋、開關媒體。只找到 State=Tx 一行不夠；如果它前面未檢查 Held 或事件所屬，這行在錯誤時機仍會執行。把每條 return 也記入轉換表，才能解釋為何某次通知沒有作用。",
+        "狀態轉換不是自動驗證安全。若模型容許 WaitingGrant→Tx，圖本身並不會指出違規，必須有「沒有權利不能准入」的規則對照。維護時先寫需求不變條件，再檢查圖與碼如何保證，而不是把現有程式畫成圖便宣稱正確。"
       ],
-      "steps": [
-        "標出狀態的來源與時間。",
-        "把命令與回報對到同一請求。",
-        "區分缺事件、拒絕、延遲與舊畫面。",
-        "只根據觀測更新結論。"
+      "image": {
+        "src": "./assets/diagrams/ptt-maintenance-state.svg",
+        "alt": "PTT Lab 主狀態與意圖、權利、就緒、結束條件圖",
+        "caption": "圖與本版Lab契約一致。Tx僅為本地准入，不是設備或對端成功。"
+      }
+    },
+    {
+      "heading": "例題一：合法流程與被忽略的 Ready",
+      "kind": "worked-example",
+      "paragraphs": [
+        "起始 Idle、Epoch=0、所有旗標假，RequireGrant=true。Press(0)成功，Held=true、Epoch=1、State=WaitingGrant，Ptt仍false。Ready(1,10)因狀態不是Keying而忽略，不改任何准入值。Grant(1,20)符合當前世代與Held，使 Ptt=true、State=Keying；Ready(1,40)才令 Ready與AudioOpen真、State=Tx。",
+        "這一條時間線證明有序的兩階段條件，不證明真實硬體 40ms 就緒。若沒有第二個 Ready，最後停在 Keying，會有控制要求而無樣本准入。不能把這案修成「任意 Ready 都開」；應先確定 Ready 是邊緣事件還是持續狀態，以及 Grant 後是否需要主動讀取最新裝置狀態。",
+        "再於50ms Release，使四個旗標假、Idle、Epoch=2。60ms 的舊 Ready(1)被世代與Held雙重阻擋。驗收要同時保證合法流程仍能到Tx，以及釋放後晚到結果不能復活；只驗證非法事件被丟棄會漏掉永遠到不了Tx的另一種故障。"
+      ],
+      "code": {
+        "title": "自製 Lab 型別；逐步讀碼",
+        "text": "var c=new LabPttController { RequireGrant=true };\nc.Press(0); int e=c.Epoch;\nc.Ready(e,10); // WaitingGrant，忽略\nc.Grant(e,20); // Keying\nc.Ready(e,40); // Tx\nc.Release(50);\nc.Ready(e,60); // 仍為 Idle，不重新准入"
+      }
+    },
+    {
+      "heading": "世代不是時間，也不是事件去重碼",
+      "kind": "concept",
+      "paragraphs": [
+        "Epoch 是本地流程版本：每次建立或撤銷意圖都增加，用來識別通知是否仍屬於當前生命週期。時間戳只說某時發生或收到，並不保證它屬於哪次按鍵；第一按與第二按甚至可能在同一毫秒。事件ID識別一次通知，世代識別一次流程，兩者目的不同。",
+        "只看State=Keying仍不夠：第一次已結束，第二次也在Keying時，第一次Ready的名字與來源狀態都合理，但它沒有資格啟動第二次。事件帶Epoch或可靠的RequestId，就能排除這種同形狀、不同歸屬的結果。若裝置沒有提供關聯ID，需在適配層使用序列化操作、清理訂閱或重新查詢等策略，不能假裝舊結果天然可辨。",
+        "Epoch也不是跨裝置權威序號：程式重啟會重設，本 Lab 用int且未處理長期溢位。生產可使用會話ID加單調序號，但需定義持久化、重連與比較規則。不要拿本地Epoch擅自判定遠端命令已撤銷；本地拒絕舊回呼和遠端停止是兩個工作。"
+      ]
+    },
+    {
+      "heading": "例題二：第二次按鍵不能承接第一次權利",
+      "kind": "worked-example",
+      "paragraphs": [
+        "資料為Press0產生e=1，Release10令e=2，Press20產生e=3；此時WaitingGrant。Grant(1,30)雖然事件名稱正確，與e=3不同，因此忽略且Ptt=false。Grant(3,40)才使Keying；Ready(3,50)才准入。第一份權利不會因目前仍有人按鍵而轉移到第二份意圖。",
+        "若刪掉Grant裡的epoch!=Epoch，30ms的舊Grant就能讓第二按Keying，隨後第二按Ready會合法達Tx；這個錯誤用只測一按的案例抓不到。再考慮錯誤修法：一律忽略所有Grant雖能防舊權利，但40ms的新Grant也被拒，破壞可用性。需要正確身份判斷與正反兩面測試。",
+        "一次操作的權利還應帶資源範圍，例如群組或頻道；本 Lab 只模擬單一資源，不含切頻道。公司程式若在等待中允許換資源，光有Epoch可能不足，除非切換時同步撤銷並增加世代。讀碼需檢查「哪個資源」與「哪次意圖」一起匹配。"
+      ],
+      "code": {
+        "title": "自製 Lab 型別；逐步讀碼",
+        "text": "var c=new LabPttController { RequireGrant=true };\nc.Press(0); int old=c.Epoch;\nc.Release(10); c.Press(20);\nc.Grant(old,30); // ignored，Ptt=false\nc.Grant(c.Epoch,40); // accepted，Keying\nc.Ready(c.Epoch,50); // Tx"
+      }
+    },
+    {
+      "heading": "事件執行順序與一致性邊界",
+      "kind": "maintenance",
+      "paragraphs": [
+        "若UI按鍵、計時器與裝置回呼在不同執行緒，同時讀寫State、Held、Epoch，單個if沒有自動形成完整保護。例如Ready讀Held=true後，Release把Held=false，Ready再寫AudioOpen=true，留下非法組合。應在同一事件佇列序列化轉換，或用一致鎖把檢查與寫入包在同一原子邊界；所有入口都必須遵守，不能只鎖Release。",
+        "持鎖範圍也要適當：不能在鎖內同步等裝置回覆，而該回呼也需要同鎖，否則互相等住。常見設計是短暫更新狀態並擷取命令，鎖外執行外部工作，結果回來再驗證世代與合法狀態。這增加中間狀態與失敗處理，但比把長外部工作藏在短bool修改裡可維護。",
+        "本專案所有情境都單執行緒依序呼叫，因此它證明的是轉換規則，不是執行緒安全。WPF Dispatcher、SDK事件執行緒與Timer回呼是否一致需查程式與檔案。先讀模型搞懂規則，再加入實際執行環境，才能分辨規則錯誤與競態造成的偶發失敗。"
+      ]
+    },
+    {
+      "heading": "追碼操作：預測狀態，再破壞一個條件",
+      "kind": "lab",
+      "paragraphs": [
+        "下載PTT練習包，在臨時副本以.NET10執行dotnet run -- state。先手寫六次呼叫後的State、Epoch與四旗標，再在Ready與Release設中斷點看guard。預期三個檢查：過早Ready不準入、合法流程可Tx、Release後舊Ready仍Idle。沒有連網、GPIO或硬體動作。",
+        "故障實驗一刪掉Ready的世代檢查，補入第二按Keying與第一按Ready，觀察是否非法准入；實驗二把Ready允許WaitingGrant，原state檢查應失敗。一次只改一項並說出破壞哪個不變條件。若第一實驗未重現，是因Held或State還在阻擋，應設計兩者都符合而僅身份錯的情境，不是宣稱世代無用。",
+        "恢復檔案後執行all，重新跑同世代合法Ready與跨世代舊Ready。將轉換表對照公司一個真實控制物件，只標你已找到的入口與欄位，未取得實際硬體回饋的部分保留證據要求。完成標準是能解釋每個return與副作用，而非背五個enum名稱。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：鬆開後畫面又亮 TX",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "同一現象可由舊UI工作覆蓋新畫面、控制器真的被舊Ready重新准入、或裝置仍在發射但本地已Idle造成。先取得同一意圖的控制器狀態、期望PTT、實體回饋與UI更新來源。只看到一張截圖無法判定哪一種，更不能直接刪掉整個Ready處理。",
+        "追加資料：Release後控制器Idle、Ptt=false；裝置停止回報已到；舊UI工作攜帶先前Epoch並稍後執行。這使「持續發射」在本次觀測範圍內被排除，優先修畫面更新執行時的身份檢查。若只在入列時檢查，等待佇列期間仍可能失效，檢查必須靠近真正套用的位置。",
+        "回歸包含合法Tx畫面、Release後舊工作、第二次Press、重連後舊來源以及UI忙碌造成的長延遲。若改後畫面不復活，但新發話也不亮，修復過度；若裝置回饋未知，報告僅寫UI一致性改善，不能推論實體解除已完成。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【來源】畫面顯示 Ready，能確定設備可發射嗎？",
-      "answer": "不能；先查 Ready 的來源與更新條件。"
+      "level": "foundation",
+      "question": "事件 Press 和旗標 Held 為何需要分開？",
+      "answer": [
+        "Press是一個輸入發生，Held是記住當前仍有發話意圖。事件結束後Held仍可保持，讓後來Grant判斷是否繼續。",
+        "Release撤銷Held；同一Grant在Held真與假時後果不同。若只看是否曾收到Press，舊Grant可能讓已結束意圖復活。",
+        "驗證按住等待及已鬆開晚到兩案，而不只是檢查Press入口被呼叫。"
+      ]
     },
     {
-      "question": "【Busy】通道 Busy 與別人拿到發話權是一回事嗎？",
-      "answer": "不是；可能來自不同機制，要分開記錄。"
+      "level": "foundation",
+      "question": "為何不能用一個enum Ready/Busy/RX/TX代替所有資料？",
+      "answer": [
+        "這些值可能屬於不同維度，Busy與接收中可能同時成立。若互斥列舉只能保留一個，就會遺失影響准入的資訊。",
+        "可為流程設互斥主狀態，另儲存Busy等獨立資料，用不變條件約束它們。",
+        "最後仍需說每個欄位的來源與定義，不能把本地Tx名稱當RF結果。"
+      ]
     },
     {
-      "question": "【模型】Box-Lab-B 的 PERMIT 是所有電台通用訊息嗎？",
-      "answer": "不是，這是教學假設；實際系統可能沒有。"
+      "level": "application",
+      "question": "新資料：RequireGrant=true；Press0、Grant同世代12、Frame100於15、Ready同世代30、Frame60於40。最後狀態與計數？",
+      "answer": [
+        "Press進WaitingGrant；Grant使Keying、Ptt真而音訊仍關。15ms的100樣本因此丟棄。",
+        "30msReady使Tx開閘；40ms60樣本送出，所以Sent=60、Dropped=100，尚未Release。",
+        "這依本Lab契約與單執行緒次序成立，不代表硬體100樣本真的被丟掉。"
+      ]
     },
     {
-      "question": "【逾時】等待回報逾時能證明設備絕對沒有 TX 嗎？",
-      "answer": "不能；可能回報丟失或遲到，仍需設備／介面觀測。"
+      "level": "application",
+      "question": "新資料：Press建立Epoch7，Release使8，再Press使9；Ready(7)抵達時當前Keying。只驗State與Held夠嗎？",
+      "answer": [
+        "不夠。第二按確實Held真且Keying，舊Ready會透過這兩個條件。",
+        "事件Epoch7不等於當前9，應拒絕，不得開AudioOpen；後續Ready9才可開。",
+        "回歸新Ready有效、舊Ready無效，避免把防舊事件修成所有事件無效。"
+      ]
     },
     {
-      "question": "【重試】TX_REQ 逾時可以立即無條件重送嗎？",
-      "answer": "不能；要先看設備與介接規格、去重及可能的實體影響。"
+      "level": "application",
+      "question": "新資料：Fault時Held=true但Ptt=false。這是否一定矛盾？",
+      "answer": [
+        "不一定。本模型Held代表人仍按著，Fault代表系統已撤銷准入，兩者是不同事實。",
+        "保留Held可以阻止逾時後在未鬆開時自動重啟，Release後才回Idle。",
+        "檢查真正不變條件：Fault不得送音訊，不能為了旗標一致而消除人的持續意圖。"
+      ]
     },
     {
-      "question": "【放開】放開後 UI 仍 TX，至少列兩種原因？",
-      "answer": "UP 事件未到、TX_END 未送、設備仍 TX 或 UI 舊狀態，均待查。"
+      "level": "diagnosis",
+      "question": "新程式：Ready先讀Held真，Release在另一執行緒歸零，Ready最後寫AudioOpen真。為何世代條件仍可能不足？",
+      "answer": [
+        "檢查與寫入之間沒有一致性邊界，Ready可能在舊世代檢查透過後才被Release插入。",
+        "把整個轉換序列化或使用所有入口共同遵守的短鎖，讓Release與Ready有明確先後。",
+        "用可控制交錯的測試重現，並驗合法Ready正常、不在鎖內等需要同鎖的裝置回呼。"
+      ]
     },
     {
-      "question": "【時間】舊的 TX 回報還能當目前狀態嗎？",
-      "answer": "不能；要看時間戳、有效期與是否已斷線。"
+      "level": "diagnosis",
+      "question": "Ready在WaitingGrant被忽略，後來Grant到達但永遠沒有第二個Ready；應直接放寬Ready嗎？",
+      "answer": [
+        "資料只證明本模型停Keying，未說原廠Ready是邊緣還是持續狀態。直接放寬可能繞過權利准入。",
+        "先核對契約：Grant後是否重新查詢Ready，或可儲存帶有效期與身份的最新狀態。",
+        "驗收合法路徑可到Tx，也驗沒有Grant不能准入；修可用性不能破壞權利條件。"
+      ]
     },
     {
-      "question": "【結論】沒有 TX_OFF 記錄可直接說設備拒絕停發嗎？",
-      "answer": "不能；先確認本次請求、觀測點及回報通道。"
+      "level": "diagnosis",
+      "question": "UI復活TX，但控制器Idle、裝置已停止，舊UI工作在Release後套用。修哪個邊界？",
+      "answer": [
+        "證據指向顯示更新，不是控制器准入或裝置持續發射。保留已正常的底層轉換。",
+        "在套用UI工作時檢查當前會話、世代與狀態，不能只在工作入列時判斷。",
+        "回歸忙碌UI、第二次按鍵及新合法Tx顯示，報告區分顯示修復與實體測試結果。"
+      ]
     }
   ],
   "recap": [
-    "狀態名稱需附來源、時間及有效性。",
-    "通道忙碌與發話權忙碌可同時存在。",
-    "逾時與缺回報屬未知，不能直接代替設備結果。"
+    "能以狀態、事件、條件與動作推導一次轉換，不把事件名稱當成功結果。",
+    "能解釋互斥主狀態、獨立旗標及不變條件的差別。",
+    "能用世代、事件順序與權威來源診斷舊結果覆蓋新操作。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/ptt-maintenance-lab.zip",
+      "label": "下載自製 C# PTT 概念與狀態模型完整練習包",
+      "description": ".NET10；純記憶體Lab型別，不連電台、SDK、音效卡、GPIO或RF；README說明各章模式與假設。"
+    }
   ],
   "sources": [
     {
-      "label": "KENWOOD：電台手冊中的忙碌鎖定與發射計時範例",
-      "url": "https://manual.kenwood.com/en_contents/attachDownload/1000010948"
+      "label": "RFC 8855：發話資源的仲裁與請求生命週期（作機制對照，不宣稱電台使用 BFCP）",
+      "url": "https://www.rfc-editor.org/rfc/rfc8855"
     },
     {
-      "label": "ETSI／3GPP：MCPTT 發話權控制規格（僅供特定系統對照）",
-      "url": "https://www.etsi.org/deliver/etsi_ts/124300_124399/124380/18.06.00_60/ts_124380v180600p.pdf"
+      "label": "Microsoft：lock 與共享狀態的同步範圍",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/statements/lock"
     },
     {
-      "label": "ITU：數位陸地行動無線電與 PTT 控制",
-      "url": "https://www.itu.int/dms_pub/itu-r/opb/rep/R-REP-M.2014-3-2016-PDF-E.pdf"
+      "label": "Microsoft：Timer.Elapsed 已排隊回呼與停止後競態",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.timers.timer.elapsed?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：WPF Dispatcher 與事件處理執行環境",
+      "url": "https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/threading-model"
     }
   ]
 }

@@ -1,178 +1,264 @@
 {
-  "intro": "這一篇回答「資料怎麼走到對方」。用 IPv4 子網範例先判斷直送或交給閘道，再讀路由表，最後比較 IPv6 的基本差異。所有位址均為文件範例，請用來推理，不要拿去連線。",
-  "plan": [
-    {
-      "label": "看懂 /24 與同網段",
-      "minutes": 10
-    },
-    {
-      "label": "追下一站與路由表",
-      "minutes": 11
-    },
-    {
-      "label": "認識 IPv6 對應觀念",
-      "minutes": 7
-    },
-    {
-      "label": "完成案例與練習",
-      "minutes": 12
-    }
+  "contentVersion": 2,
+  "intro": "子網不是背地址範圍，而是對32-bit位址做字首比較；路由不是一律送預設閘道，而是在符合目的地址的專案中選最長字首。本章逐位元算邊界，再讀程式如何選路與形成回程。",
+  "prerequisites": [
+    "只需會0–255數字；二進位與AND在首節及例題現算。",
+    "On-link與gateway是下一站選項，不等於完整路徑。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      18
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+  },
   "goals": [
-    "能根據 IPv4 位址與前綴長度判斷教學案例中的下一站。",
-    "能解釋預設閘道的角色與它不能保證的事。",
-    "能讀簡化路由表中的目的網段、下一站與出口介面。",
-    "遇到「本機可通、跨網段不通」能提出分段查證順序。"
+    "手算IPv4字首、網路位址與一般子網的邊界。",
+    "在重疊路由中先選最長字首再比較同級成本。",
+    "區分路由目的、下一站IP、來源介面與ARP目標。",
+    "辨認錯誤掩碼、VPN特定路由及缺回程的後果。"
   ],
   "sections": [
     {
-      "heading": "子網的用處：先判斷對方是不是本地",
+      "kind": "concept",
+      "heading": "為什麼需要字首，而不是每個目的都建一列",
       "paragraphs": [
-        "IPv4 的 /24 表示前 24 個位元是網路前綴。對 192.0.2.10/24 而言，192.0.2.20 在同一個 192.0.2.0/24；198.51.100.20 則不在。這影響主機是否把資料直接交給對方，或先送到路由器。",
-        "不要只比前面三段數字；/25、/26 等前綴會讓邊界不同。判斷時要用位址與前綴一起算，不要憑眼睛猜。"
-      ],
-      "table": {
-        "caption": "A 是 192.0.2.10/24 的教學例子",
-        "headers": [
-          "目的位址",
-          "與 A 同一 /24？",
-          "A 通常先交給"
-        ],
-        "rows": [
-          [
-            "192.0.2.20",
-            "是",
-            "B 的本地鏈路端點"
-          ],
-          [
-            "198.51.100.20",
-            "否",
-            "預設閘道 192.0.2.1"
-          ]
-        ]
-      },
-      "note": "這個判斷是假設正常的主機路由設定；更明確的路由項目可能改變選擇。"
+        "IPv4有32個位元，以四個0–255數值顯示。一個路由可以代表一整組共享前面若干位元的地址，這組就是prefix（字首）。/24表示前24位元相同，後8位元可變；/26表示前26位元相同，後6位元可變。位元數越大，集合越小，路由越具體。路由表利用這種集合讓一條路由涵蓋多個目的，不必列每臺主機。",
+        "掩碼的字首位為1、其餘為0；以位元AND保留字首部分。目的地址AND mask與路由network相等，才匹配該路由。例/26末byte為11000000（二進位192），故mask為255.255.255.192。這也解釋為什麼不是以最後一組數字大小猜同網段：若/23，範圍可跨兩個第三組；若/26，同一第三組內又分四個子網。"
+      ]
     },
     {
-      "heading": "預設閘道是本地的下一站，不是最終目的",
+      "kind": "mechanism",
+      "heading": "先找符合者，再選最長字首",
       "paragraphs": [
-        "當目的不在本地子網，主機會查路由表。若沒有更具體的路由，通常採用預設路由，把封包交給本地閘道。閘道再依自己的路由表決定下一站，可能經過多個路由器才到 B。",
-        "A 知道閘道的 MAC，並不等於知道 B 的 MAC；每段 Ethernet 幀的目的 MAC 可變，但 IP 封包的最終目的仍是 B。能 ping 到閘道也只證明本地到閘道某種測試可行，不能證明遠端服務可用。"
-      ],
-      "flow": [
-        "A 查目的 IP",
-        "查本機路由表",
-        "交給本地閘道",
-        "中間路由器逐跳轉送",
-        "B 收到 IP 封包"
-      ],
-      "note": "路由可能不對稱：A 到 B 與 B 回 A 未必走相同路徑。故障判斷要看雙向。"
+        "路由表的每項包括destination prefix、next hop、interface和cost/metric。目的可同時符合預設/0、區域/16與特定/24。基本路由規則先選最長匹配字首，不是先挑最小metric。只有同樣具體且依平臺規則可比較的候選，成本才幫選擇；不同OS、策略路由或VRF可能再有其他政策。本章模型單一路由表，沒有策略路由。",
+        "On-link表示下一站就是目的主機，因為路由認為它在這張鏈路。Via gateway則ARP下一站閘道。預設路由0.0.0.0/0匹配所有IPv4，只有沒有更具體合適路由時才使用；它不會修補錯誤特定路由。路由器也為每個收到的IP packet做自己的查表，A知道下一站不等於知道全程，也不能假設回程與去程相同。"
+      ]
     },
     {
-      "heading": "路由表：最具體的符合項目優先",
+      "kind": "mechanism",
+      "heading": "字首之外的三項關係：地址、介面與下一站",
       "paragraphs": [
-        "路由表可以想成「去某一組目的位址時，從哪個介面交給哪個下一站」。當多個路由前綴都符合目的 IP，通常先用最長前綴，也就是最具體的一項，再考慮同等前綴的其他選路條件。",
-        "例如下表同時有 198.51.100.0/24 與 0.0.0.0/0，目的 198.51.100.20 會先符合較具體的 /24。實際設備還有路由來源、度量、政策等設定，本章只先建立基本讀法。"
+        "給10.24.6.77/23，mask第三組254、第四組0；第三組6 AND254=6，network為10.24.6.0，範圍直到10.24.7.255。這與/24只到10.24.6.255不同，說明字首不一定停在octet邊界。以前的Class A/B/C分類是歷史模型，不能由地址第一組推定現在的mask。讀程式若把10.x永遠當/8，會與實際CIDR配置衝突。",
+        "路由的下一站必須能經指定鏈路抵達。表項via192.0.2.4如果選出的介面沒有相應本地可達路徑或鄰居，則查表選到不等於能送出。若gateway本身又需查路由，平臺會用相應解析規則；本模型直接假設gateway在本地192.0.2.0/24。因此範例選中/26後還應問下一站ARP及介面狀態，不能把SELECT行當全路徑驗證。",
+        "IPv6 link-local地址還有介面範圍：同樣fe80::1可能在不同鏈路各指不同鄰居，使用時需合適scope/zone。這是「位址加介面」一起識別下一站的例子。字首、來源選址、下一站解析三步各有契約；先畫其相依順序，才能知道某個失敗該讀route、neighbor或connection日誌。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：/26的每一個邊界都算出來",
+      "paragraphs": [
+        "A=10.24.6.77/26，末byte77=01001101；mask末byte192=11000000。AND後為01000000=64，所以network=10.24.6.64。剩6個host bits，共2^6=64個地址；host bits全1為00111111=63，因此最後地址64+63=127。一般IPv4多點子網中network .64與廣播 .127不分配一般host，常用host範圍.65–.126，62個。",
+        "目的.100是01100100，AND192仍為64，匹配；目的.130是10000010，AND192為128，不匹配。A往.100通常可使用該connected route直接ARP.100；往.130須找其他route，而不是只看前三組一樣。/31點對點及/32host route有不同用途，不能無條件把2^host−2套到每種prefix。"
       ],
       "code": {
-        "title": "模擬的 A 路由表",
-        "text": "目的網段          下一站          出口\n192.0.2.0/24       直接連線        eth0\n198.51.100.0/24    192.0.2.2       eth0\n0.0.0.0/0          192.0.2.1       eth0"
-      },
-      "note": "若 192.0.2.2 不可達，選中這條路由也不保證封包能送達。"
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "IP last octet      77 = 01001101\nMask last octet   192 = 11000000\nAND                  = 01000000 = 64\nHost mask         63 = 00111111\nBroadcast 64 OR 63   = 01111111 = 127\n.100 AND 192 = 64 -> inside 10.24.6.64/26\n.130 AND 192 =128 -> outside"
+      }
     },
     {
-      "heading": "IPv6 也有前綴與路由，但本地探索方式不同",
+      "kind": "worked-example",
+      "heading": "例題二：低metric不能打敗較長字首",
       "paragraphs": [
-        "IPv6 常以 /64 等前綴描述網段；主機仍需查目的位址、路由與下一站。IPv6 的鄰居位址解析使用 Neighbor Discovery，不用 IPv4 的 ARP。IPv6 位址如 2001:db8::10 為教學保留位址。",
-        "因此，看到「IPv4 正常、IPv6 失敗」時要分開檢查位址配置、預設路由、鄰居表與防火牆。不能把 IPv4 的 ARP 或 NAT 規則直接套到 IPv6。"
+        "目的10.24.6.77，表中/0 via192.0.2.1 metric10、10.24.0.0/16 via.2 metric5、10.24.6.0/24 via.3 metric50、10.24.6.64/26 via.4 metric100。先AND每個mask，四項全匹配；prefix長度0、16、24、26，選/26，儘管metric100最大。ARP目標為192.0.2.4，封包IP目的仍10.24.6.77。",
+        "改目的為10.24.6.130，只改這一項。/26不匹配，其餘三者匹配，所以選/24 via.3。再改10.24.9.1，/24也不匹配，選/16 via.2。這一組實算讓「同一類10.24地址卻不同路徑」成為可預測結果。若兩條/24存在，才在本模型比較metric；Windows實際需留意路由與介面metric等選擇條件。"
       ],
       "table": {
-        "caption": "相同問題，不同觀測",
+        "caption": "例題二：低metric不能打敗較長字首",
         "headers": [
-          "問題",
-          "IPv4 常見觀測",
-          "IPv6 常見觀測"
+          "prefix",
+          "next hop",
+          "metric",
+          "對.77"
         ],
         "rows": [
           [
-            "本機位址與前綴",
-            "IPv4 位址／遮罩",
-            "IPv6 位址／前綴"
+            "0.0.0.0/0",
+            "192.0.2.1",
+            "10",
+            "匹配但最不具體"
           ],
           [
-            "本地下一站位址解析",
-            "ARP／鄰居表",
-            "Neighbor Discovery／鄰居表"
+            "10.24.0.0/16",
+            "192.0.2.2",
+            "5",
+            "匹配"
           ],
           [
-            "跨網段方向",
-            "IPv4 路由表",
-            "IPv6 路由表"
+            "10.24.6.0/24",
+            "192.0.2.3",
+            "50",
+            "匹配"
+          ],
+          [
+            "10.24.6.64/26",
+            "192.0.2.4",
+            "100",
+            "選中"
           ]
         ]
-      },
-      "note": "實際 IPv6 配置方式很多；這裡只建立對應概念，不猜測現場部署。"
+      }
     },
     {
-      "heading": "案例：本地服務可連，遠端卻逾時",
+      "kind": "code-reading",
+      "heading": "C#為什麼用network byte order讀IPv4",
       "paragraphs": [
-        "假設 A 能連同子網的 C，但連 198.51.100.20:7000 逾時。這說明 A 的某些本地收送能力正常，不能因此排除 A 的路由設定、閘道、遠端路徑或 B 的服務問題。",
-        "先確認目的位址、前綴與路由表選到哪個下一站，再觀察 A 是否送出封包、閘道是否收到、B 是否收到及回覆能否回來。若只在 A 抓包，無法直接指出中間哪台路由器丟棄。"
+        "IPAddress.GetAddressBytes取得四個byte，先以ReadUInt32BigEndian轉成32-bit數。Big-endian把左側octet放最高位，與IP表示方式一致；直接BitConverter可能受平臺little-endian影響，導致mask比較錯位置。Mask(0)特別回0，避免C#位移計數規則令左移32被當0。這些邊界是維護地址程式常見錯誤。",
+        "下方Select先Where保留匹配項，再依Prefix降序、Metric升序。程式還缺資料驗證：prefix需0–32、路由network的host bits應為0、IPv6需不同位長、策略路由與interface可用性不在模型。讀碼時每個限制都應回到程式輸入契約，不能把此函式當完整OS路由器。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "uint IPv4(string text) {\n    byte[] bytes = System.Net.IPAddress.Parse(text).GetAddressBytes();\n    if (bytes.Length != 4) throw new ArgumentException(\"IPv4 only\");\n    return System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes);\n}\nuint Mask(int n) => n switch {\n    0 => 0, >= 1 and <= 32 => uint.MaxValue << (32 - n),\n    _ => throw new ArgumentOutOfRangeException(nameof(n))\n};\nbool Match(uint ip, uint network, int n) => (ip & Mask(n)) == network;\n// Route is an original lab record, not a Windows routing API.\nvar selected = routes.Where(r => Match(IPv4(destination), IPv4(r.Network), r.Prefix))\n    .OrderByDescending(r => r.Prefix).ThenBy(r => r.Metric).First();"
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "回程與錯掩碼為何造成看似單向的故障",
+      "paragraphs": [
+        "A發B需A有去程route；B回A也需B有回程route。兩端mask不一致會讓其中一端誤認對方on-link而ARP它，另一端卻正常送gateway。例如A=192.0.2.10/24、B=198.51.100.20卻誤設/8，B把192.x與198.x仍視為不同/8，所以此例不會產生該誤判；要以實算選案例，不能只說「mask太大」。真正例子A=10.1.1.10/24、B=10.2.2.20/8，B認為A在10.0.0.0/8本地鏈路，可能對A直接ARP，回覆便無法送到應用的路由器。",
+        "VPN常裝入更具體route，導致某些目標繞到VPN而一般網頁正常。DNS解析不同目的也可能選不同route。IPv6用128-bit prefix及Neighbor Discovery代替IPv4 ARP；IPv6無IPv4式廣播。理解字首匹配仍可遷移，但不能把四byte函式及廣播地址運算直接移植。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：由匹配清單解釋三個目的",
+      "paragraphs": [
+        "在 .NET 10模型依序執行 routes 10.24.6.77、routes 10.24.6.130、routes 10.24.9.1。先紙算每個matching prefix，再對照MATCH與SELECT；特別比較metric5的/16為何兩回合未選。修改/26 metric為1或999，結果仍選/26；刪去/26才應選/24。每次只改一個變因並復原。",
+        "Windows唯讀route print或Get-NetRoute、Get-NetIPInterface可觀察真實prefix、next hop、interface和成本。不執行route add/delete/f，也不清路由表。選一個自己認得的目的，寫下OS可能選哪條route、ARP誰、來源介面哪張，再比對連線實際LocalEndPoint。驗收包括三回合手算、模型輸出與回程圖，不要求現場數字匹配教材。"
       ],
       "steps": [
-        "記下 A 的 IP、前綴、閘道與要連的目的 IP。",
-        "查路由表選出的出口與下一站。",
-        "測試本地閘道與目的服務，分開記錄結果。",
-        "在允許的環境比對兩端封包與路由設備記錄，確認雙向路徑。"
-      ],
-      "note": "traceroute 可提供路徑線索，但某一跳不回應探測，不必然代表真正業務流量在那一跳中斷。"
+        "逐位元算.77/26與.130/26網路位址。",
+        "執行三個目的並製作匹配候選表。",
+        "改metric與刪候選各做一個模型試驗，說明不同機制；再復原。",
+        "選做以本機唯讀路由表查一路徑，記下去程和仍需查的回程。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：只有某段地址連不上，預設閘道卻正常",
+      "paragraphs": [
+        "A可連10.24.9.1，無法連10.24.6.77；候選H1目的服務未啟動、H2特定路由指錯下一站、H3回程缺失。A表有/26 via192.0.2.4，鄰居解析.4一直失敗，而/16 via.2正常。B端在故障時窗沒看到SYN。這輪證據指向H2的下一站問題，而不是因為「10.24都走同一閘道」去查B程式。",
+        "測試配置檔案確認/26為過期VPN設定，在隔離路由模型移除後改走/24 via.3。實際授權測試由管理者更正路由，驗證下一站可解析、B看到SYN、回程握手及應用結果。再測/26內另個目標與原本10.24.9.1，確認有限修正沒有破壞其他範圍。報告保留前後matched route，別只寫「改gateway就好了」。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "A 是 192.0.2.10/24。目的 192.0.2.20 與 198.51.100.20，哪個通常先交給預設閘道？",
-      "answer": "198.51.100.20 不在 A 的 192.0.2.0/24，若沒有更具體路由，通常先交給預設閘道。192.0.2.20 通常直接走本地鏈路。"
+      "level": "foundation",
+      "question": "/25為何比/24更具體？",
+      "answer": [
+        "IPv4固定32bits，/25多固定一位，host bits從8變7。",
+        "地址集合由256減為128，範圍較小。",
+        "路由選擇優先更精確的匹配，不是因為數字較大代表速度快。"
+      ]
     },
     {
-      "question": "路由表同時有 198.51.100.0/24 → 192.0.2.2 和 0.0.0.0/0 → 192.0.2.1。送往 198.51.100.20 通常選哪條？",
-      "answer": "選較具體的 198.51.100.0/24，下一站是 192.0.2.2。"
+      "level": "foundation",
+      "question": "目的在遠端，ARP查gateway會不會把IP目的改gateway？",
+      "answer": [
+        "ARP只解析本地下一站MAC。",
+        "frame目的是gateway-MAC，內部IP目的仍遠端。",
+        "除非有NAT等明示改寫，本題路由不替換端到端IP。"
+      ]
     },
     {
-      "question": "A 可以 ping 到閘道，能宣稱 B 的 TCP 7000 可用嗎？",
-      "answer": "不能。這只表示 A 與閘道間某個 ICMP 測試有回應；仍要查後續路由、回程、防火牆及 B 的 TCP 服務。"
+      "level": "application",
+      "question": "計算192.0.2.145/27的network、broadcast及一般host範圍。",
+      "answer": [
+        "/27 host5bits，block32；145位於128–159。",
+        "mask末byte224；145 AND224=128，host全1為31，broadcast159。",
+        "一般host129–158，30個；確認不是/31或/32特殊用途。"
+      ]
     },
     {
-      "question": "A 有送出封包，B 沒看到。能直接指出是哪一台路由器故障嗎？",
-      "answer": "不能。需要中間觀測、路由資訊與雙向測試；B 端抓包位置或篩選也要先確認。"
+      "level": "application",
+      "question": "目的10.7.8.9符合/8 metric1、10.7.0.0/16 metric80、10.7.8.0/24 metric100，選哪項？",
+      "answer": [
+        "三項匹配，/24最長，因此先選10.7.8.0/24。",
+        "metric100不能被/8的1打敗，因為匹配精確程度先比較。",
+        "若同/24再有成本較低候選，才按該平臺同級規則選擇。"
+      ]
     },
     {
-      "question": "IPv6 端點不通，查不到 ARP。這是否表示本地位址解析故障？",
-      "answer": "不能這樣判斷。IPv6 使用 Neighbor Discovery；應看 IPv6 位址／前綴、鄰居表、路由與 ICMPv6。"
+      "level": "application",
+      "question": "/24內廣播是.255；/26內也永遠是.255嗎？用192.0.2.70證明。",
+      "answer": [
+        "70/26位於64–127，network64。",
+        "host6bits全1=63，所以broadcast127而非255。",
+        "先算prefix再談廣播，不能背最後byte規則。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "C# Mask(0)若寫uint.MaxValue<<32會有什麼維護風險？",
+      "answer": [
+        "C# uint位移計數只用低5bits，32變0，結果仍全1。",
+        "/0應全0，錯誤使預設route只匹配特定地址。",
+        "顯式處理0並測/0、/1、/31、/32邊界。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "A=10.1.1.10/24，B=10.2.2.20/8，A的SYN到B但B ARP10.1.1.10無回覆，先查什麼？",
+      "answer": [
+        "B /8把A判成本地，回程ARP無法跨原本路由分隔。",
+        "核對B應有mask與回程route；已有到達B的證據，不先改A去程。",
+        "按配置修正後驗證B送gateway、A收SYN/ACK以及應用結果。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "改低預設route metric仍無法訪問被/32指錯的目標，為什麼？",
+      "answer": [
+        "/32是最具體host route，即使成本高仍比/0優先。",
+        "對同一目的展示候選表，確認是否策略另有變化。",
+        "有限修正應針對過期/32或其下一站，不以預設metric繞過機制。"
+      ]
     }
   ],
   "recap": [
-    "前綴長度和 IP 一起決定本地網段，不要只憑位址外觀。",
-    "跨網段先查路由表，預設閘道是本地下一站。",
-    "較長前綴通常比預設路由更優先。",
-    "能到閘道不代表能到遠端，更不代表服務正常。",
-    "IPv4 與 IPv6 的路由概念相似，但本地鄰居探索機制不同。"
+    "手算IPv4字首、網路位址與一般子網的邊界。",
+    "在重疊路由中先選最長字首再比較同級成本。",
+    "區分路由目的、下一站IP、來源介面與ARP目標。",
+    "辨認錯誤掩碼、VPN特定路由及缺回程的後果。"
   ],
   "sources": [
     {
-      "label": "RFC 4632：CIDR 與前綴",
-      "url": "https://www.rfc-editor.org/rfc/rfc4632.html"
+      "label": "IETF RFC 1812：5.2.4.3：最長字首及路由選擇",
+      "url": "https://www.rfc-editor.org/rfc/rfc1812.html"
     },
     {
-      "label": "RFC 791：IPv4 路由基礎",
-      "url": "https://www.rfc-editor.org/rfc/rfc791.html"
+      "label": "Microsoft：route表欄位與metric",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/route_ws2008"
     },
     {
-      "label": "RFC 8200：IPv6 規格",
+      "label": "IETF RFC 8200：IPv6位址與轉送差異",
       "url": "https://www.rfc-editor.org/rfc/rfc8200.html"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/networking-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
     },
     {
-      "label": "RFC 4861：IPv6 Neighbor Discovery",
-      "url": "https://www.rfc-editor.org/rfc/rfc4861.html"
+      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
+      "label": "網路維護 C# 讀碼模型（Program.cs）",
+      "description": "本章使用 routes 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/README.md",
+      "label": "實驗專案操作說明",
+      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
     }
   ]
 }

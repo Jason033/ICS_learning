@@ -1,0 +1,65 @@
+[
+  {
+    "file": "integration-maintenance-lab.zip",
+    "source_files": 3,
+    "sha256": "d257b0045713f5010f5c0a050e1fb11462ddef9e92a33c7e770c9cec6dfb8dd7",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "networking-maintenance-lab.zip",
+    "source_files": 4,
+    "sha256": "c50b4affb4a28780ac09e8af46a6ab7f9e03ccca5754d24b3e45b3ccfdb4cb41",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "ozeki-maintenance-lab.zip",
+    "source_files": 3,
+    "sha256": "d139b355924bb4f60181f4ba07a819649c2dd19ca0b3ac419299080e8ecd6ad9",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "ptt-maintenance-lab.zip",
+    "source_files": 4,
+    "sha256": "f2873d27bc6a7013f08b3de5fb77a29df6e6c517e1a02d6f7c18a739d6acd16d",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "radio-maintenance-lab.zip",
+    "source_files": 4,
+    "sha256": "d7d9b8929d96a0c04a4eb6efbfcbc98f53dcb2ab412a4377d5f0a94b124c7ff8",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "reliability-maintenance-lab.zip",
+    "source_files": 5,
+    "sha256": "e163935f7a1a5c582f4721d7fe422d0161f142d868c28bda693a4dbf7f64f65d",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "serial-maintenance-lab.zip",
+    "source_files": 4,
+    "sha256": "ea221c5a96f8ce36f04d22e76ab0cb56179c8c5ef313b2102b8a2197b085b404",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "sockets-maintenance-lab.zip",
+    "source_files": 4,
+    "sha256": "3669317ba3f098855bf4731eb6c43b3b795b4bb35ccf2727a5fcca76c89a9c50",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  },
+  {
+    "file": "voip-maintenance-lab.zip",
+    "source_files": 3,
+    "sha256": "7e11097f294924ad489e94e5d9f82652fe3d8505449a272657546b92bd1476eb",
+    "exact_source_match": true,
+    "excludes_build_output": true
+  }
+]

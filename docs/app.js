@@ -1,5 +1,6 @@
 const app = document.querySelector('#main');
 let catalog = null;
+let routeVersion = 0;
 const completedKey = 'learning-site-completed-v1';
 
 function escapeHtml(value) {
@@ -9,7 +10,29 @@ function escapeHtml(value) {
 }
 
 function safeAsset(value) {
-  return /^\.\/assets\/[a-z0-9/-]+\.(?:pcap|pcapng|svg|png|py)$/.test(value || '') ? value : '#';
+  return /^\.\/assets\/[A-Za-z0-9/-]+\.(?:pcap|pcapng|svg|png|py|cs|json|csv|zip|txt|md)$/.test(value || '') ? value : '#';
+}
+
+function timeRange(range) {
+  return Array.isArray(range) && range.length === 2 ? `${range[0]}–${range[1]} 分` : '尚待估計';
+}
+
+function chapterTimeLabel(chapter) {
+  return chapter.studyTime
+    ? `閱讀 ${timeRange(chapter.studyTime.reading)} · 操作 ${timeRange(chapter.studyTime.practice)} · 作答 ${timeRange(chapter.studyTime.exercises)}`
+    : '教材重編中';
+}
+
+function renderAnswer(exercise) {
+  const paragraphs = Array.isArray(exercise.answer) ? exercise.answer : String(exercise.answer || '').split(/\n\s*\n/);
+  return paragraphs.map((text) => `<p>${escapeHtml(text)}</p>`).join('')
+    + (exercise.answerSteps ? `<ol class="step-list">${exercise.answerSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>` : '')
+    + (exercise.answerCode ? `<figure class="code-example"><figcaption>${escapeHtml(exercise.answerCode.title || '解答程式')}</figcaption><pre><code>${escapeHtml(exercise.answerCode.text)}</code></pre></figure>` : '');
+}
+
+function sectionLinks(lesson) {
+  return (lesson.sections || []).map((section, index) => `<a class="toc-link" href="#section-${index + 1}">${escapeHtml(section.heading)}</a>`).join('')
+    + '<a class="toc-link" href="#practice">練習與解答</a><a class="toc-link" href="#recap">重點複習</a>';
 }
 
 function safeLink(value) {
@@ -87,7 +110,7 @@ function renderHome() {
     <section class="hero">
       <div class="hero-copy"><p class="eyebrow"><span class="pulse-dot"></span> 個人學習空間</p>
         <h1>從一個問題開始，<br><em>把知識學成自己的。</em></h1>
-        <p class="hero-lead">每個主題都能獨立學習。看圖解、做練習、核對解答；需要時再走進相關主題，慢慢建立維護與除錯的判斷力。</p>
+        <p class="hero-lead">每個主題都能獨立學習。從基礎觀念與運作原理，逐步讀懂程式、分析故障；需要時再走進相關主題，建立維護與除錯的判斷力。</p>
         <button class="primary-button" type="button" id="explore-topics">探索學習主題 <span aria-hidden="true">↗</span></button>
       </div>
       <div class="hero-visual" aria-hidden="true">
@@ -132,7 +155,7 @@ function renderTopic(topic) {
     <ol class="chapter-list">${topic.chapters.map((chapter, index) => {
       const isReady = chapter.status === 'ready';
       const isDone = completed.has(lessonKey(topic.id, chapter.id));
-      const inner = `<span class="chapter-number">${String(index + 1).padStart(2, '0')}</span><span class="chapter-copy"><strong>${escapeHtml(chapter.title)}</strong><small>${escapeHtml(chapter.summary)}</small></span><span class="chapter-state">${isDone ? '✓ 已完成 · ' : ''}${isReady ? `${chapter.contentType === 'full' ? '完整教材' : '入門樣本'} · ${chapter.minutes || 20} 分鐘` : '規劃中'}</span><span class="chapter-arrow" aria-hidden="true">${isReady ? '↗' : '·'}</span>`;
+      const inner = `<span class="chapter-number">${String(index + 1).padStart(2, '0')}</span><span class="chapter-copy"><strong>${escapeHtml(chapter.title)}</strong><small>${escapeHtml(chapter.summary)}</small></span><span class="chapter-state">${isDone ? '✓ 已完成 · ' : ''}${isReady ? `${chapter.contentVersion === 2 ? '工程教材 · ' : ''}${chapterTimeLabel(chapter)}` : '規劃中'}</span><span class="chapter-arrow" aria-hidden="true">${isReady ? '↗' : '·'}</span>`;
       return `<li>${isReady ? `<a class="chapter-row" href="${lessonHref(topic, chapter)}">${inner}</a>` : `<div class="chapter-row is-planned">${inner}</div>`}</li>`;
     }).join('')}</ol></div>
     <a class="text-link back-link" href="#/">← 回到所有主題</a>
@@ -140,7 +163,7 @@ function renderTopic(topic) {
 }
 
 function renderSection(section, index) {
-  return `<section class="lesson-section" id="section-${index + 1}"><div class="section-index">${String(index + 1).padStart(2, '0')}</div><div class="section-content"><h2>${escapeHtml(section.heading)}</h2>
+  return `<section class="lesson-section" id="section-${index + 1}"><div class="section-index">${String(index + 1).padStart(2, '0')}</div><div class="section-content"><h2>${escapeHtml(section.heading)}</h2>${section.kind ? `<p class="section-kind">${escapeHtml(({concept:"建立概念",mechanism:"機制推導","worked-example":"完整例題","code-reading":"程式追讀",lab:"維護實作","diagnostic-case":"故障鑑別",maintenance:"維護與取捨"})[section.kind] || "工程練習")}</p>` : ''}
     ${(section.paragraphs || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('')}
     ${section.flow ? `<div class="flow-box" role="img" aria-label="流程：${escapeHtml(section.flow.join('，接著'))}"><div class="flow-title">流程圖 · 教學示意</div><div class="flow-steps">${section.flow.map((step) => `<span>${escapeHtml(step)}</span>`).join('<b aria-hidden="true">→</b>')}</div></div>` : ''}
     ${section.bullets ? `<ul class="content-list">${section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join('')}</ul>` : ''}
@@ -162,17 +185,19 @@ function renderLesson(topic, chapter, lesson) {
   app.innerHTML = `<div class="shell page-lesson">
     ${breadcrumb([{ label: '主題總覽', href: '#/' }, { label: topic.title, href: topicHref(topic) }, { label: chapter.title }])}
     <div class="lesson-layout"><aside class="lesson-aside" aria-label="本主題章節目錄"><div class="aside-sticky"><a class="aside-topic" href="${topicHref(topic)}"><span aria-hidden="true">${escapeHtml(topic.icon)}</span>${escapeHtml(topic.title)} <b aria-hidden="true">↗</b></a><p class="aside-label">本主題章節</p><ol>${topic.chapters.map((item) => `<li>${item.status === 'ready' ? `<a href="${lessonHref(topic, item)}" ${item.id === chapter.id ? 'aria-current="page"' : ''}>${escapeHtml(item.title)}</a>` : `<span class="aside-planned">${escapeHtml(item.title)} <small>規劃中</small></span>`}</li>`).join('')}</ol></div></aside>
-    <article class="lesson-article"><header class="lesson-header"><p class="eyebrow">${escapeHtml(topic.title)} · ${String(currentIndex + 1).padStart(2, '0')} / ${String(topic.chapters.length).padStart(2, '0')}</p><h1>${escapeHtml(chapter.title)}</h1><div class="lesson-meta"><span>◷ 約 ${chapter.minutes || 20} 分鐘</span><span>${chapter.contentType === 'full' ? '完整教材' : '入門樣本'}</span><span>圖文 · 練習 · 解答</span></div><p class="lesson-intro">${escapeHtml(lesson.intro)}</p></header>
+    <article class="lesson-article"><header class="lesson-header"><p class="eyebrow">${escapeHtml(topic.title)} · ${String(currentIndex + 1).padStart(2, '0')} / ${String(topic.chapters.length).padStart(2, '0')}</p><h1>${escapeHtml(chapter.title)}</h1><div class="lesson-meta"><span>${escapeHtml(chapterTimeLabel(chapter))}</span><span>${lesson.contentVersion === 2 ? '原理 · 讀碼 · 除錯' : '教材重編中'}</span></div><p class="lesson-intro">${escapeHtml(lesson.intro)}</p></header>
+    <details class="mobile-lesson-toc"><summary>本章內容與練習</summary><nav aria-label="本章內容">${sectionLinks(lesson)}</nav></details>
     <section class="goal-box" aria-labelledby="goal-title"><div class="goal-icon" aria-hidden="true">✳</div><div><h2 id="goal-title">學完這章，你能…</h2><ul>${(lesson.goals || []).map((goal) => `<li>${escapeHtml(goal)}</li>`).join('')}</ul></div></section>
     ${(lesson.resources || []).length ? `<section class="lesson-resources" aria-labelledby="resources-title"><h2 id="resources-title">本章練習檔</h2><ul>${lesson.resources.map((resource) => `<li><a href="${escapeHtml(safeAsset(resource.path))}" download>${escapeHtml(resource.label)} <span aria-hidden="true">↓</span></a><p>${escapeHtml(resource.description || '')}</p></li>`).join('')}</ul></section>` : ''}
-    ${lesson.plan ? `<section class="lesson-plan" aria-labelledby="plan-title"><h2 id="plan-title">建議學習節奏</h2><ol>${lesson.plan.map((part) => `<li><span>${escapeHtml(part.label)}</span><strong>約 ${escapeHtml(part.minutes)} 分鐘</strong></li>`).join('')}</ol></section>` : ''}
+    ${lesson.prerequisites?.length ? `<section class="prerequisite-box"><h2>本章會補足的前置概念</h2><ul>${lesson.prerequisites.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
+    ${lesson.studyTime ? `<section class="lesson-plan" aria-labelledby="plan-title"><h2 id="plan-title">閱讀與動手時間分開估計</h2><ol><li><span>閱讀、推導與追程式</span><strong>${timeRange(lesson.studyTime.reading)}</strong></li><li><span>操作、比較與修正</span><strong>${timeRange(lesson.studyTime.practice)}</strong></li><li><span>獨立作答與核對</span><strong>${timeRange(lesson.studyTime.exercises)}</strong></li></ol><p class="time-basis">各項都是預估範圍，尚未經個人計時校準；初次安裝工具另計。</p><details class="estimate-details"><summary>查看時間估計依據</summary><p>${escapeHtml(lesson.studyTime.basis)}</p></details></section>` : ''}
     ${(lesson.sections || []).map(renderSection).join('')}
-    <section class="exercise-block" id="practice"><p class="eyebrow">PRACTICE</p><h2>想一想，再看解答</h2><p class="exercise-lead">先自己回答。解答會說明判斷依據，也會指出目前還不能確定什麼。</p>${(lesson.exercises || []).map((exercise, index) => `<div class="exercise-card"><div class="exercise-question"><span>練習 ${String(index + 1).padStart(2, '0')}</span><p>${escapeHtml(exercise.question)}</p></div><details><summary>查看解答與判斷過程 <span aria-hidden="true">↓</span></summary><p>${escapeHtml(exercise.answer)}</p></details></div>`).join('')}</section>
+    <section class="exercise-block" id="practice"><p class="eyebrow">PRACTICE</p><h2>想一想，再看解答</h2><p class="exercise-lead">依序檢查基本觀念、應用推導與故障判斷。先自己回答，再核對解答中的規則、中間步驟與結論。</p>${(lesson.exercises || []).map((exercise, index) => `<div class="exercise-card"><div class="exercise-question"><span>練習 ${String(index + 1).padStart(2, '0')} · ${escapeHtml(({foundation:"基礎理解",application:"應用推導",diagnosis:"故障判斷"})[exercise.level] || "理解練習")}</span><p>${escapeHtml(exercise.question)}</p></div><details><summary>查看解答與判斷過程 <span aria-hidden="true">↓</span></summary>${renderAnswer(exercise)}</details></div>`).join('')}</section>
     <section class="recap-block" id="recap"><p class="eyebrow">KEY TAKEAWAYS</p><h2>帶走這幾件事</h2><ul>${(lesson.recap || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
     ${(lesson.sources || []).length ? `<section class="sources"><h2>延伸閱讀與依據</h2><ul>${lesson.sources.map((source) => `<li><a href="${escapeHtml(safeLink(source.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.label)} <span aria-hidden="true">↗</span></a></li>`).join('')}</ul></section>` : ''}
     <div class="lesson-actions"><div><strong>讀完這章了嗎？</strong><p>完成紀錄只保存在目前這個瀏覽器。</p></div><button type="button" id="complete-button" class="complete-button ${completed.has(key) ? 'is-complete' : ''}" aria-pressed="${completed.has(key)}">${completed.has(key) ? '✓ 已標記完成' : '標記為已完成'}</button></div>
     <nav class="lesson-next" aria-label="章節導覽">${previous ? `<a href="${lessonHref(topic, previous)}"><small>← 上一篇</small><strong>${escapeHtml(previous.title)}</strong></a>` : '<span></span>'}${next ? `<a href="${lessonHref(topic, next)}"><small>下一篇 →</small><strong>${escapeHtml(next.title)}</strong></a>` : `<a href="${topicHref(topic)}"><small>返回 →</small><strong>${escapeHtml(topic.title)}目錄</strong></a>`}</nav>
-    </article><aside class="lesson-toc" aria-label="本章段落"><div class="aside-sticky"><p class="aside-label">本章內容</p><a href="#section-1" class="toc-link">從第一段開始</a>${(lesson.sections || []).map((section, index) => `<a class="toc-link" href="#section-${index + 1}">${escapeHtml(section.heading)}</a>`).join('')}<a class="toc-link" href="#practice">練習與解答</a><a class="toc-link" href="#recap">重點複習</a></div></aside></div>
+    </article><aside class="lesson-toc" aria-label="本章段落"><div class="aside-sticky"><p class="aside-label">本章內容</p><a href="#section-1" class="toc-link">從第一段開始</a>${sectionLinks(lesson)}</div></aside></div>
   </div>`;
   document.querySelector('#complete-button').addEventListener('click', (event) => {
     const values = getCompleted();
@@ -186,7 +211,7 @@ function renderLesson(topic, chapter, lesson) {
     event.currentTarget.classList.toggle('is-complete', done);
     event.currentTarget.setAttribute('aria-pressed', String(done));
   });
-  document.querySelectorAll('.lesson-toc a').forEach((link) => link.addEventListener('click', (event) => {
+  document.querySelectorAll('.lesson-toc a, .mobile-lesson-toc a').forEach((link) => link.addEventListener('click', (event) => {
     event.preventDefault();
     document.querySelector(link.getAttribute('href'))?.scrollIntoView({ behavior: 'smooth' });
   }));
@@ -204,7 +229,14 @@ function renderMissing(message) {
 
 async function renderRoute() {
   if (!catalog) return;
-  const route = decodeURIComponent(location.hash.slice(1) || '/').split('/').filter(Boolean);
+  const version = ++routeVersion;
+  let route;
+  try {
+    route = decodeURIComponent(location.hash.slice(1) || '/').split('/').filter(Boolean);
+  } catch {
+    renderMissing('網址格式無法辨識，請從主題總覽重新選擇內容。');
+    return;
+  }
   if (route.length === 0) document.querySelector('#home-link').setAttribute('aria-current', 'page');
   else document.querySelector('#home-link').removeAttribute('aria-current');
   if (route[0] === 'about') document.querySelector('#about-link').setAttribute('aria-current', 'page');
@@ -222,8 +254,10 @@ async function renderRoute() {
       const response = await fetch(`./content/lessons/${encodeURIComponent(topic.id)}--${encodeURIComponent(chapter.id)}.json`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const lesson = await response.json();
+      if (version !== routeVersion) return;
       renderLesson(topic, chapter, lesson);
     } catch (error) {
+      if (version !== routeVersion) return;
       renderMissing('教材載入失敗。請確認網路連線，或使用本機伺服器開啟網站。');
     }
   } else renderMissing('請從主題總覽選擇內容。');

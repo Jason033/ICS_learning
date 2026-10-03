@@ -1,0 +1,71 @@
+COMMAND layers
+COM-open=OK write=9 HEX=5354415455533F0D0A
+Lab message complete; response=OK,READY
+
+COMMAND layers --fault
+COM-open=OK write=7 HEX=5354415455533F
+UART bytes available; message missing CR LF
+
+COMMAND wiring
+RS232 data voltage=-6.0V => mark=1
+RS232 data voltage=0.0V => undefined region
+RS232 data voltage=6.0V => space=0
+single-ended signal relative to receiver=3V
+differential before=3V after=3V
+No pin numbers or construction instructions are implied.
+
+COMMAND uart
+8N1 bitsPerChar=10 bitTimeUs=104.166667 charTimeMs=1.041667
+request9BytesMs=9.375000 response10BytesMs=10.416667
+byte=53 lsbFirst=11001010 evenParity=0
+receiver3percentSlow driftAt9.5bits=0.285bit; receiver6percentSlow=0.57bit (idealized)
+
+COMMAND frames
+RX AA0290
+RX 0193AA011011
+FRAME AA02900193
+FRAME AA011011
+complete=2 buffered=0
+PASS expected valid frame count
+PASS bounded parser drains known input
+
+COMMAND frames --fault
+RX 00AAFFAA02900192
+skip noise 00
+invalid LEN=255
+skip noise FF
+checksum reject
+skip noise 02
+skip noise 90
+skip noise 01
+skip noise 92
+RX AA02900193
+FRAME AA02900193
+complete=1 buffered=0
+PASS expected valid frame count
+PASS bounded parser drains known input
+
+COMMAND timeout
+t=10 RX=AA0290 withinDeadline=True
+t=210 RX=0193 withinDeadline=False
+t=200 result=INCOMPLETE 3/5; t=210 late bytes are not a new transaction success
+
+COMMAND events
+DataAvailable chunk=3 total=3 complete=False
+DataAvailable chunk=0 total=3 complete=False
+DataAvailable chunk=2 total=5 complete=True
+PASS callback count is not byte or message count
+
+COMMAND interfaces
+halfduplex txMs=10.417 rxMs=6.250 workMs=5 turnaroundMs=2 totalMs=23.667
+one driver at a time; UART framing does not arbitrate bus ownership
+
+COMMAND diagnose
+Lab device: 9600,8,N,1; ASCII CR LF; no flow control
+APP TX=5354415455533F0D0A; reply=4F4B2C52454144590D0A
+Next validation includes split bytes, two frames, corrupt checksum and deadline.
+
+COMMAND diagnose --fault
+Lab device: 9600,8,N,1; ASCII CR LF; no flow control
+APP TX=5354415455533F; device parser waiting for CR LF
+Next validation includes split bytes, two frames, corrupt checksum and deadline.

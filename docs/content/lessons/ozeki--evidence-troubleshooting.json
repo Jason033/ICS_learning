@@ -1,251 +1,250 @@
 {
-  "intro": "最後把前六篇接成一套除錯方法。你會對「註冊失敗」「按下撥號卻沒通」「接通但單向無聲」「第二通才壞」四種虛構症狀，分開寫已知、未知與下一個最有用的證據；也學會在將來讀公司程式時只畫已查證的依賴線。",
-  "plan": [
-    {
-      "label": "建立排查圖",
-      "minutes": 10
-    },
-    {
-      "label": "讀四個案例",
-      "minutes": 20
-    },
-    {
-      "label": "寫證據紀錄",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "最後一章把物件、註冊、通話、媒體與生命週期接成維護方法。你將面對四個同症狀多原因的案例，先用模型選下一個觀測，再看追加資料、有限修正與回歸。目標是寫出別人能復核的因果說明，而不是把所有可能性羅列成清單。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
   ],
+  "studyTime": {
+    "reading": [
+      15,
+      26
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 evidence 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能把症狀放回設定、程式操作、SDK 事件、SIP、RTP／音訊與設備等位置。",
-    "能對四個虛構案例提出不超出證據的結論。",
-    "能建立待核對的版本、物件、事件與測試清單。"
+    "把使用者症狀轉成具體通話、方向、時刻與可測機制。",
+    "用能區分候選原因的下一觀測縮小範圍，避免一次改多項。",
+    "從程式變更連到機制、驗收與回歸，寫出可讀維護結論。"
   ],
   "sections": [
     {
-      "heading": "先描述症狀，再決定在哪一層找證據",
+      "heading": "完整模型：每層回答一個不同問題",
+      "kind": "concept",
       "paragraphs": [
-        "「打不通」太籠統。先問：是註冊失敗、沒有發起 INVITE、對端拒絕、通話已建立但沒 RTP、還是有 RTP 卻聽不到？每一種需要的證據不同。",
-        "下面的表是學習時的排查圖，並非公司架構圖；若實際程式有其他適配層或設備，必須用原始碼與文件增補。"
-      ],
-      "table": {
-        "caption": "症狀到第一個證據",
-        "headers": [
-          "症狀",
-          "先看",
-          "再看"
-        ],
-        "rows": [
-          [
-            "帳號無法註冊",
-            "產品／版本、設定、註冊事件",
-            "REGISTER 與回應、伺服器 log"
-          ],
-          [
-            "按撥號沒有對端反應",
-            "UI 到通話物件的呼叫",
-            "SDK 事件、INVITE 與回覆"
-          ],
-          [
-            "接通但單向無聲",
-            "對應方向的媒體路徑",
-            "SDP、RTP、設備與對端"
-          ],
-          [
-            "第二通才失敗",
-            "每通物件與清理時間線",
-            "事件訂閱、媒體所有權與重連"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "案例一：按註冊後沒有成功",
-      "paragraphs": [
-        "虛構教學紀錄：09:00:00 UI 點註冊；09:00:01 應用紀錄「Register requested」；抓包窗 09:00:00–09:00:10 在選定網卡沒見 REGISTER；SDK 事件沒有註冊成功。",
-        "能說的是「本觀測點未看見 REGISTER，且沒有成功事件」；不能直接說密碼錯或伺服器壞。下一步核對實際呼叫是否走到 SDK、目的位址、抓包網卡與過濾設定。"
-      ],
-      "code": {
-        "title": "案例一：自製虛構紀錄",
-        "text": "09:00:00.000 UI    Register clicked\n09:00:01.000 APP   Register requested\n09:00:00–09:00:10 CAP  no REGISTER at selected interface\n09:00:10.000 APP   registration still unknown"
-      },
-      "note": "「沒看到」只對這個時間窗與觀測點成立。"
-    },
-    {
-      "heading": "案例二：撥號動作有進程式，卻沒通",
-      "paragraphs": [
-        "虛構教學紀錄：應用建立 C1，SDK 回報 Dialing；抓包見 INVITE 與 486 Busy Here。這支持本機發起呼叫且對端或中間電話系統回覆忙線，但不能推論究竟是哪個人按了忙線，也不能用改麥克風修正這種 SIP 回覆。",
-        "下一步要查 486 是由哪個節點回覆、對端與 PBX 的相關狀態，以及通話事件如何把失敗告訴 UI。"
-      ],
-      "table": {
-        "caption": "案例二的分層結論",
-        "headers": [
-          "證據",
-          "可以寫",
-          "不能寫"
-        ],
-        "rows": [
-          [
-            "APP 建立 C1",
-            "有本機通話物件",
-            "對端已接通"
-          ],
-          [
-            "INVITE 與 486",
-            "信令有回覆且本次請求未接通",
-            "麥克風一定故障"
-          ],
-          [
-            "UI 顯示失敗",
-            "使用者看到失敗",
-            "486 的真實產生原因已查明"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "案例三：已接通但只聽得到對方",
-      "paragraphs": [
-        "虛構教學紀錄：SIP INVITE 有 200 OK／ACK，B→A RTP 在本機可見，A→B RTP 在本機觀測點未見；SDK 顯示 InCall。這提示優先看本機「麥克風→sender→call」與抓包點，但不能直接說麥克風壞。",
-        "若另有本機輸入音量、MediaConnector 連接、AttachToCall 與送出 RTP 的證據，就能逐步縮小位置；對端是否聽到仍需對端測試或回報。"
-      ],
-      "table": {
-        "caption": "案例三的證據界線",
-        "headers": [
-          "看到",
-          "仍需查"
-        ],
-        "rows": [
-          [
-            "SIP 完成建立",
-            "媒體路徑與實際音訊"
-          ],
-          [
-            "B→A RTP",
-            "本地解碼和喇叭是否出聲"
-          ],
-          [
-            "本機未見 A→B RTP",
-            "抓包點與 sender／輸入裝置"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "案例四：第一通正常，第二通沒聲音",
-      "paragraphs": [
-        "虛構教學紀錄：C1 結束後有 Stop，卻沒有記錄 DetachFromCall；C2 建立後有 InCall，但送出端音訊計數為 0。這只能提出「上一通媒體清理或新通附著未完成」等假設，不能單靠缺少一筆日誌宣布根因。",
-        "下一次重測應對 C1、C2 都記錄 sender 附著目標、解除目標、handler 狀態和實際媒體計數；若程式原本不記這些，先在授權的測試版本增加精簡紀錄。"
-      ],
-      "code": {
-        "title": "案例四：自製虛構紀錄",
-        "text": "12:00:00 C1 SDK Ended\n12:00:01 C1 APP Media Stop logged\n12:00:02 C2 APP Call created\n12:00:03 C2 SDK InCall\n12:00:04 C2 APP outgoing-audio-count=0\n未知：C1 是否 Detach？C2 sender 是否 Attach？"
-      },
-      "note": "缺少 Detach 日誌不等於沒有執行；需用程式與更完整的測試紀錄證實。"
-    },
-    {
-      "heading": "寫一份外行人也看得懂的故障紀錄",
-      "paragraphs": [
-        "報告不要只列「SIP 486」「RTP 0」等縮寫。用一段話先說發生什麼、在什麼條件下；再列出能支持的證據、尚未查證的地方，以及下一個最少但最有辨識力的檢查。原始完整資料留在受控的內部環境。"
-      ],
-      "code": {
-        "title": "可重複使用的故障紀錄格式",
-        "text": "症狀：在＿＿條件下，＿＿功能出現＿＿。\n已知：＿＿時間，從＿＿觀測點看到＿＿；這支持＿＿。\n未知：尚無法判斷＿＿，因為缺少＿＿。\n下一步：在＿＿觀測點取得＿＿，與＿＿基準比較。\n版本與範圍：SDK＿＿；測試環境＿＿；資料來源＿＿。"
-      },
-      "steps": [
-        "先寫可重現的症狀與條件。",
-        "把 UI、應用、SDK、SIP／RTP、設備的證據分開。",
-        "每一項推論都能指回一個觀測點。",
-        "選一個能排除最多候選原因的下一個檢查。",
-        "用一般人能懂的話寫結論。"
+        "先整理已學的關係。執行時實際載入的組件決定 API 實作；電話核心與線路決定帳號配置和註冊；call保存一次呼叫；事件把結果傳到包裝與UI；媒體圖把聲源經sender附到本通，再將receiver接到輸出；所有權決定結束時誰可以清甚麼。每層都接上一層，但不能由上層一句“成功”替所有下層驗收。",
+        "維護問題常不是缺少某個方法，而是關係斷了：line來自另一核心、handler訂舊call、UI快照過期、媒體附錯物件、舊終態釋放共享設備。完整觀念讓你從關係推原因，而不是見無聲只查port、見失敗只查密碼。讀程式時需要同時畫靜態物件圖和動態事件時間線：圖回答誰連誰，時間線回答何時生效與失效。",
+        "中級維護能力還包括邊界。一個假設要說它解釋哪些現象、預期看到甚麼、甚麼資料會推翻它。若懷疑sender附舊C1，那麼應預測當前C2發音不通但採集可以正常；觀察sender確實C2且採集零，就需要換假設。保留原始碼位置和輸入，讓另一人能重跑推導，而不是用術語使猜測顯得確定。"
       ]
     },
     {
-      "heading": "把教學方法搬到公司程式時，先建「待查圖」",
+      "heading": "症狀、故障機制與修正是三個層次",
+      "kind": "concept",
       "paragraphs": [
-        "工作背景提過 RCSCall、iCallAPI 和 Ozeki，但目前沒有足夠原始碼或版本資訊證明三者的實際依賴方向。可以先把它們列在待查清單：找宣告、建構、方法呼叫、事件訂閱、音訊連接與部署參照，再把已證實的線畫實線，未知留空。",
-        "若某節點涉及公司專有系統或設備，不要把這份公開網站的教學模型直接貼成真實架構。先在可分享範圍內取得版本與必要的去識別證據，再更新私人工作筆記；公開教材保持通用。"
+        "症狀是“第二通無聲”，機制可能是“第一通結束拆掉初始化唯一一條媒體邊”，修正可能是“統一為每通重建路由”或“保留程式級連接，只每通Attach/Detach”。機制連接具體條件與結果，修正選擇依所有權和業務限制決定。同一症狀有多個機制，不能直接從症狀跳到“升級SDK”。",
+        "一次有資訊的試驗只改變一個能區分候選的條件。例如兩案都無出站RTP，用本地已知錄音區分來源沒有聲與後續路徑斷；不是同時改麥克風、codec和網路。如果修正後恢復，仍要驗證機制預測：正確邊存在、目標本通、舊清理不越界。否則恢復可能來自重啓清空殘留，問題下一次再出現。",
+        "證據也有成本與覆蓋範圍。先查現成應用紀錄和程式物件，必要時再抓包或兩端錄音。取得更多資料不是無條件更好；大量紀錄可能堵回呼，抓到別的接口可能誤導。每項資料標明觀察點、身份、單位和時間基準；不同機器未同步時鐘不能直接減出單向網路延遲，但仍能用請求ID與各自本地順序對照。"
+      ]
+    },
+    {
+      "heading": "案例一輸入：註冊畫面一直轉，先自行選觀測",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "兩台虛構客戶端均按註冊後顯示“註冊中”10秒。環境已知為單條L1，程式能建立core與line，沒有立即例外；賬號參數來自同一測試清單。當前資料沒有網路回應、事件入口或UI派送紀錄。可考慮至少兩類原因：實際註冊未成功，或實際結果未被畫面正確表達。先不要直接改認證或延長等待。",
+        "你應提出一個能分叉的觀察：同一L1請求的最終處理結果，以及line事件handler有沒有到達。若網路/伺服器有200但handler未到，查訂閱與物件；若有403且handlerError到了但UI沒終止，查包裝／顯示；若沒有回覆，則另查請求到達和返迴路徑。不同分支的修正位置不同，開始就把三層全部重試會掩蓋機制。",
+        "練習時先寫預測卡再閱讀下一節。卡包含候選、預期證據、能排除甚麼和下一步。真實工程也可使用這張卡，減少“收到一個新詞就換方向”的除錯方式。此處不用公司帳號或設備，輸入足夠獨立作答，後續資料是刻意設計的測試材料。"
+      ]
+    },
+    {
+      "heading": "案例一追加資料與修正",
+      "kind": "maintenance",
+      "paragraphs": [
+        "客戶端A記錄0ms RegisterPhoneLine、18ms REGISTER200、21ms SDK成功、40ms才訂閱line事件；客戶端B記錄0ms訂閱、1ms註冊、45ms403、48mshandler收到Error、包裝只轉發成功。A屬於訂閱太晚，B屬於錯誤轉發漏失。A並不是網路失敗，B的UI卡住和伺服器拒絕是兩個並存問題。",
+        "A修正建立line後先訂閱再啓動，並按當前SDK契約取得初始化狀態；B補全錯誤/未註冊終態映射並保存錯誤上下文。兩案不應通過無限Register“修好”顯示。B伺服器403原因仍需賬號／政策證據，UI修正並不消除403，因此結論要明確兩個結果，避免把畫面不轉圈誤報成註冊成功。",
+        "驗收A包括快速成功、慢成功、失敗與重新配置晚到事件；B包括Error撤銷准入、再次成功恢復和A/B線互不覆蓋。紀錄至少保存line物件、配置世代、SDK狀態、包裝狀態與UI應用時刻，能看見機制被修正，而不只是最終結果看起來對。"
+      ]
+    },
+    {
+      "heading": "案例二輸入與推導：按撥號沒有接通",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "資料集P有按鈕DialClick、current=C3且current.State=Ended，入口檢查current!=null後return；數據集Q有Create C4與Start C4，handler訂閱publisher=C3，SDK紀錄C4 InCall。兩案同樣UI Ready，但P沒有新呼叫，Q有呼叫但沒有正確表達。第一項判讀是執行路徑是否到Start，而不是先找INVITE。",
+        "P的候選機制是終態路徑遺留引用，應查C3為何沒有進入正確清理；如果只補按鈕強制current=null，可能遺失仍活動電話。Q的候選機制是訂閱歸屬錯誤，應追WireUp是否讀取全域call或持有舊參數。追加資料P顯示只處理Completed而C3是Rejected，Q顯示建立C4後WireUp仍使用舊字段C3，分別支持這些機制。",
+        "修P為按SDK終態集合處理C3清理及當前槽位歸屬；修Q把事件綁定與會話建立放同一路徑、明確參數C4，並解除C3。驗收包括拒絕後重撥、正常結束、遠端取消和C3結束晚到；每次要記錄正確物件目標。媒體測試等控制歸屬確定後做，不把Control/UI缺口說成聲卡問題。"
+      ]
+    },
+    {
+      "heading": "例題一：相同單向症狀，下一證據如何選",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入A/B都Active且本端接收正常，對方聽不到本端。A本地採集有聲、sender未附本通；B附著正確、採集無資料。把資料寫成LabEvidence後，算法先看CaptureFrames，分別建議“sender附著／後續路徑”或“裝置／採集路徑”。它只是選擇下一觀測的模型，不憑一個bool自動執行修正。",
+        "逐行推導A.Active=true與Rx=true說明控制及本端聽音已經有模型證據；CaptureFrames=true縮小來源不存在的可能，再看Attached=false定位附著。B.CaptureFrames=false使來源路徑優先，即使Attached=true也不能產聲。實作輸出標籤用“next”，提醒目前推論是候選；實際內容質量與真實RTP還需獨立資料。",
+        "修正A歸屬後驗收當前通發音及舊清理，修正B來源後驗收非零已知聲音與對端可聽。兩者都做下一通回歸。這個完整輸入→規則→中間判斷→結論例子，說明為甚麼工程診斷的核心是完整模型與區分證據，而不是列二十種無聲原因。"
       ],
-      "table": {
-        "caption": "可驗證與待查分界",
-        "headers": [
-          "現在可寫",
-          "需要新證據才可寫"
-        ],
-        "rows": [
-          [
-            "官方 Ozeki 範例如何建立物件與事件",
-            "公司 RCSCall 是否真的持有某個 Ozeki 物件"
-          ],
-          [
-            "某份模擬 log 顯示的時間順序",
-            "公司設備實際的呼叫與回報順序"
-          ],
-          [
-            "一般 SIP／RTP 的觀測方法",
-            "公司某條音訊或 PTT 線路的配置"
-          ]
-        ]
+      "code": {
+        "title": "完整Lab證據分叉；對應evidence情境",
+        "text": "var samples = new[] {\n    new LabEvidence(\"A\", true, true, false, true),\n    new LabEvidence(\"B\", true, false, true, true)\n};\nforeach (var item in samples)\n{\n    string next = item.CaptureFrames ? \"sender attachment or RTP path\" : \"device or capture path\";\n    Console.WriteLine($\"{item.Id}: active={item.Active} capture={item.CaptureFrames} attached={item.Attached} rx={item.Rx} next={next}\");\n}\n// A: capture=True attached=False；B: capture=False attached=True\n// Lab bool是虛構輸入，不是Ozeki提供的遙測API。"
       }
+    },
+    {
+      "heading": "案例三追加：本機圖全對仍單向，才往網路走",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "第三組C本地錄音正常，sender/receiver附C7，裝置啓用，SDK有發出媒體，遠端抓不到C7該方向。此時附錯通話不再是首要解釋，下一步對照SDP的c/m字段與實際發送端點及網路路徑。若發送地址與協商匹配但對端未見，範圍偏傳輸/策略；若SDK發送另一個地址，查協商與配置或重新協商後的更新。",
+        "第四組D本機有對應RTP接收，receiver有輸出，speaker路由存在但輸出裝置是無聲的虛擬設備。它是聽音方向的末端問題，不能因為“有包”就說聲卡一定正常，也不能用同樣改NAT方案修。真實工程應記錄裝置選擇來源，避免重啓後預設裝置改變又回到原故障。",
+        "有限修正C需要授權的網路配置證據與回滾，驗收兩端逐方向、持續流與更新協商；D修裝置選擇及保存規則，驗收插拔／重啓後的選擇和聲音。兩案歸屬層不同，但均沿同一聲音模型向下追。沒有到對應層的證據前，不應跨層改參數製造新的變因。"
+      ]
+    },
+    {
+      "heading": "例題二：第二通失敗是靜態圖斷了，還是動態清理越界？",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入T1中C2一開始media.EdgeCount=0，C1結束曾Dispose唯一connector；T2中C2先Tx=true，隨後C1晚到Ended使共享附著消失。T1是初始化／復用圖在開始就不完整，T2是開始完整卻被後續事件破壞。僅在第二通結束時拍一次截圖，會把兩者都看成“沒附著”，因此需要開始與破壞時刻的序列。",
+        "下列Lab讓C1與C2獨立session：C1結束，只使s1.Ended與M1釋放，s2仍Tx/Rx為true。中間值能證明所有權隔離，隨後C2結束也清自己的資源。這個設計修T2的某類共享越界，若公司需要全局設備，仍須採用共享資源管理並驗證不釋放其他使用者。不要把例題當無條件性能建議。",
+        "修T1需統一媒體生命週期，重新建立本通路由或保留程式級連接；修T2需歸屬守衛或session隔離。共同驗收是三通、舊終態晚到、重復結束、保持恢復與關閉。單次重啓全部資源可能同時消除兩種現象，卻無法區分機制，因此只能作恢復措施，不能作為已找到原因的證據。"
+      ],
+      "code": {
+        "title": "完整兩通隔離驗證，LabSession均擁有自己的LabMedia",
+        "text": "var line = new LabLine(\"L1\");\nvar c1 = new LabCall(\"C1\", line);\nvar c2 = new LabCall(\"C2\", line);\nusing var s1 = new LabSession(c1);\nusing var s2 = new LabSession(c2);\nc1.Emit(LabCallState.Active);\nc2.Emit(LabCallState.Active);\nc1.HangUp();\nConsole.WriteLine(s1.Ended); // True\nConsole.WriteLine(s2.Media.Tx(\"C2\")); // True\nConsole.WriteLine(s2.Media.Rx(\"C2\")); // True\nc2.HangUp();\nConsole.WriteLine(c2.HandlerCount); // 0"
+      }
+    },
+    {
+      "heading": "證據紀錄：把命令、回報與副作用對在同一列",
+      "kind": "concept",
+      "paragraphs": [
+        "一筆可追查記錄至少要說明輸入與物件。例如action=Attach、call=C2、sender=M2、generation=7、thread=11、result=success，這比“media initialized”更有用。事件則保留originalState、publisher/session與接收、應用時間，避免包裝後全部只剩一個“成功”。最終報告不需全部原始紀錄塞正文，但應鏈接完整證據並解釋關鍵時間線。",
+        "如果使用RCSCall、iCallAPI等公司名稱，先查它是class、interface、DLL、配置還是外部服務。找到構造注入、字段型別、方法調用和事件訂閱，才畫實線依賴；同一namespace或文字名稱不等同運行依賴。未取得原始碼或版本時可以列待查點，但不能把教學core/line/call直接認定為公司的真實結構。",
+        "性能問題的記錄也要單位。回呼時長、UI排隊長度、媒體區塊速率與RTP包率不同，不能把它們一起寫“latency”。正常基準至少覆蓋程式剛啓動、第二通與持續運行，故障觀測用同樣條件比較。這樣記錄既讓外行知道結果，也讓工程師知道可以復核哪一段。"
+      ]
+    },
+    {
+      "heading": "追碼實作：把七個情境串成一張故障樹",
+      "kind": "lab",
+      "paragraphs": [
+        "先運行all，列每個PASS在驗證甚麼：graph驗證參照，registration驗證訂閱與結果，calls驗證舊事件歸屬，media驗證兩條圖，lifecycle驗證清理次數，version驗證清單，evidence驗證下一觀測。再選兩項故障在臨時副本修改，先預測最早應失敗的斷言，執行並記錄；不要把全部失敗都歸為最後的FAIL。",
+        "可以刪除LabSession的接收方向Connect，觀察calls/lifecycle的雙向檢查也失敗；這證明基礎媒體條件會影響上層行為。也可以保留圖但移除Ended解除訂閱，媒體仍Dispose卻HandlerCount殘留；它證明“聲音停止”和“生命週期完整”是不同目標。復原後all通過，保存輸入、變因、失敗位置與復原結果。",
+        "最後寫一份報告只用四段：問題與影響；模型和候選原因；關鍵證據及支持的機制；有限修正、驗收和仍未測範圍。不要報告“達到中級工程師”或“公司已修好”；這個練習實際驗證的是自制模型與推導能力，真實SDK與公司程式還需要對應環境。報告需單獨閱讀就懂前因後果，原始輸出留作證據而不取代說明。"
+      ]
+    },
+    {
+      "heading": "一份可讀的結論示範與下一步",
+      "kind": "maintenance",
+      "paragraphs": [
+        "示範結論：“第二通C2接通後我方發音中斷。正常基準顯示mic→sender、sender附C2均成立；在舊C1終態到達後，共用sender被Detach，發音條件隨即失效。改為每通獨立附著管理，並限制舊清理只能影響C1。連續三通、舊結束晚到和重復終止測試均保持當前通雙向路徑，事件訂閱在各自結束後為0。”讀者能看出症狀、機制、修正和驗收。",
+        "限制也應具體：“以上在Lab同步模型驗證；未裝實際SDK，未測真實RTP、裝置和回呼線程。下一步在授權測試專案記錄相同身份/事件，並按當前SDK宣告補外部適配器。”這比在每段反復說“公司未知”更有效：概念和推導已經完整，未知只放在對接真實系統的證據邊界。",
+        "未來學習時，用一通電話穿過這些層而不混同它們：加載與配置決定物件，註冊決定賬號狀態，call決定單通控制，媒體圖決定聲流，事件與所有權決定長期正確性。你無需先知道公司的全部架構，也能逐步閱讀和維護；但每次新增依賴都要用具體代碼與觀測補上，而不是自行腦補。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "【症狀】「打不通」為什麼不足以開始改設定？",
-      "answer": "它可能是註冊、撥號、SIP 拒絕、媒體或設備問題；先把失敗發生在哪一步描述清楚。"
+      "question": "【基礎】“第二通無聲”是機制還是症狀？為甚麼需要區分？",
+      "level": "foundation",
+      "answer": [
+        "這是症狀，尚未指出導致結果的條件。",
+        "機制可能是缺路由、舊附著或舊清理越界，修正各不相同。",
+        "需給中間狀態和能夠推翻假說的證據，再選擇有限變更。"
+      ]
     },
     {
-      "question": "【案例一】沒有看到 REGISTER，就能判密碼錯嗎？",
-      "answer": "不能。先核對抓包點和應用到 SDK 的呼叫；密碼錯通常需有認證相關回覆或伺服器證據。"
+      "question": "【基礎】InCall、RTP收到、speaker有輸出三項各覆蓋哪段？",
+      "level": "foundation",
+      "answer": [
+        "InCall覆蓋控制層觀測，RTP收到覆蓋某網路點，speaker輸出覆蓋播放端。",
+        "任何一項都不自動證明完整雙向聲音或正確內容。",
+        "按方向與call身分串聯，才能解釋從源頭到聽感的完整鏈。"
+      ]
     },
     {
-      "question": "【案例二】INVITE 收到 486，應先改麥克風嗎？",
-      "answer": "不應。先查 486 由哪個節點回覆，以及對端／PBX 的通話狀態；此時問題在信令回覆層。"
+      "question": "【基礎】兩台時鐘差未知，A發0ms、B收-8ms，可說負延遲嗎？",
+      "level": "foundation",
+      "answer": [
+        "不能，兩數字屬於不同時間基準。",
+        "先用交易/物件身分關聯和各端本地先後，跨端差值需時鐘同步誤差範圍。",
+        "報告保留時間來源，不虛構精確單向延遲。"
+      ]
     },
     {
-      "question": "【案例三】已接通且本地未見 A→B RTP，能斷言麥克風壞嗎？",
-      "answer": "不能。抓包點、媒體連接、sender、通話附著、設備與封包解析都需核對。"
+      "question": "【應用】LabEvidence E Active=true Capture=false Attached=true Rx=true，下一觀察與優先修正候選？",
+      "level": "application",
+      "answer": [
+        "來源無資料，先查採集裝置、Start、靜音和內容，附著正確不能補出聲音。",
+        "仍須具體資料支持哪個採集原因，不直接重連PBX。",
+        "修後檢查來源內容、發出與遠端可聽，再測第二通。"
+      ]
     },
     {
-      "question": "【案例四】缺少 Detach 日誌能證明沒有執行嗎？",
-      "answer": "不能。日誌可能漏記；要查程式路徑或在授權測試中加明確觀測。"
+      "question": "【應用】C12 Start已到、handler C12 Active也到，UIgeneration=9，但事件顯示任務帶8。結果該怎樣？",
+      "level": "application",
+      "answer": [
+        "控制層本通已有事件，顯示任務屬舊世代8。",
+        "UI不應拿8覆蓋當前9，保留紀錄並查為甚麼包裝派送攜舊世代。",
+        "驗證當前C12投影由正確世代生成，舊任務仍無法復活或清當前狀態。"
+      ]
     },
     {
-      "question": "【報告】只貼一個 CSV 的事件列表，為什麼仍不夠？",
-      "answer": "讀者需要症狀、測試條件、證據來源、推論限制與下一步，才能理解事件代表什麼。"
+      "question": "【應用】刪除receiver→speaker後calls和lifecycle均失敗，這是否三個獨立故障？",
+      "level": "application",
+      "answer": [
+        "可能是一項基礎圖缺失導致多個上層檢查失敗。",
+        "按依賴圖尋找最早條件：接收邊不存在使雙向檢查為false。",
+        "修基礎條件再回歸所有受影響情境，不能逐個刪上層斷言。"
+      ]
     },
     {
-      "question": "【公司映射】能把 RCSCall → iCallAPI → Ozeki 畫成已證實線嗎？",
-      "answer": "不能。必須有原始碼呼叫、參照或可信執行證據；目前只可列為待查。"
+      "question": "【診斷】註冊200、handler未到與403、handler到但包裝漏Error，分別給證據鏈和驗收。",
+      "level": "diagnosis",
+      "answer": [
+        "第一案先查訂閱時間/物件與SDK狀態，不改已成功賬號；第二案修錯誤映射，同時保留403後續伺服器調查。",
+        "每項修正對應自己的邊界，UI恢復不等同註冊成功。",
+        "回歸快速成功、拒絕、重新配置晚到事件和線間隔離，保留原始與包裝狀態。"
+      ]
     },
     {
-      "question": "【自評】完成本主題後，遇到陌生 Ozeki 專案的前三步是什麼？",
-      "answer": "先確認產品／SDK 與執行時版本；再辨認自寫包裝層和 SDK 型別；最後沿一個具體操作追方法、事件、SIP／媒體與清理。"
+      "question": "【診斷】C2從未有路由，另一案C2路由先好後被C1清理斷。設計能分叉的測試與結論。",
+      "level": "diagnosis",
+      "answer": [
+        "記錄C2媒體建立時和每次清理後的邊/附著/物件狀態，第一案開始已缺，第二案在舊事件後變化。",
+        "第一案統一重建或復用設計，第二案限制舊清理歸屬或隔離session。",
+        "回歸連續三通、晚到終態與重復End；結論寫實際機制與觀察，不僅寫“重啓後恢復”。"
+      ]
     }
   ],
   "recap": [
-    "先把籠統症狀切成可觀測步驟。",
-    "每個結論都標明資料來源和不能推論的部分。",
-    "真實公司依賴線只有在證據足夠時才畫。"
+    "先有完整物件、狀態與媒體模型，才能選區分原因的證據。",
+    "修正要改變已證實機制，並在原故障條件及相關生命週期開回歸。",
+    "報告讓人單獨讀懂症狀、機制、變更、驗證與限制，原始紀錄是證據。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 evidence，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
+    }
   ],
   "sources": [
     {
-      "label": "Ozeki 官方開發指南",
-      "url": "https://www.voip-sip-sdk.com/p_7332-voip-sdk-developers-guide.html"
-    },
-    {
-      "label": "Ozeki 官方註冊教學",
+      "label": "Ozeki：註冊路徑",
       "url": "https://voip-sip-sdk.com/p_7535-how-to-register-to-a-pbx-using-sip-account.html"
     },
     {
-      "label": "Ozeki 官方撥接教學",
-      "url": "https://www.voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
+      "label": "Ozeki：通話與事件路徑",
+      "url": "https://voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
     },
     {
-      "label": "Ozeki 官方媒體教學",
-      "url": "https://www.voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
+      "label": "Ozeki：媒體方向與附著",
+      "url": "https://voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
+    },
+    {
+      "label": "Ozeki：多通所有權",
+      "url": "https://voip-sip-sdk.com/p_7542-how-to-handle-more-than-one-call-in-the-same-time.html"
+    },
+    {
+      "label": "Microsoft：事件訂閱與解除",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/how-to-subscribe-to-and-unsubscribe-from-events"
     }
   ]
 }

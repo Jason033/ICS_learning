@@ -1,0 +1,29 @@
+=== press ===
+PASS ptt_is_not_audio_readiness
+PASS readiness_gates_audio
+=== interface ===
+PASS active_low_mapping
+PASS stable_window_removes_bounce
+=== state ===
+PASS ready_before_grant_ignored
+PASS legal_transition_reaches_tx
+PASS release_invalidates_old_ready
+=== grant ===
+PASS busy_denies_new_press
+PASS old_grant_cannot_key_new_press
+PASS grant_is_not_radio_ready
+=== timing ===
+PASS audio_only_in_valid_window
+=== release ===
+PASS timeout_cuts_model_outputs
+PASS repeated_timeout_does_not_create_new_fault_epoch
+PASS held_timeout_cannot_auto_rearm
+PASS release_then_new_press_rearms
+=== evidence ===
+PASS stage_delays_separate
+PASS identity_links_same_press
+=== troubleshooting ===
+PASS keyed_but_not_ready_has_no_audio
+PASS readiness_fix_allows_audio
+PASS late_ready_does_not_restart_tx
+PASS all assertions (Lab only; no device control)

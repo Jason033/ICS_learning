@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 540" role="img" aria-labelledby="title desc">
+<title id="title">PTT 音訊幀交付時間與有效窗口</title>
+<desc id="desc">8000Hz單聲道，每幀160樣本是20ms內容，四幀在20、40、60、80ms交付。Ready50ms。按交付時刻准入的Lab丟前兩幀，送後兩幀。緩衝策略可以保留首內容但增加延遲，圖不表示實體播放時間。</desc>
+<rect width="760" height="540" rx="24" fill="#f6f8f4"/>
+<g font-family="sans-serif" fill="#14342e">
+<text x="30" y="44" font-size="24" font-weight="700">內容完整，仍可能錯過有效傳送窗口</text>
+<text x="30" y="80" font-size="17">8000Hz；160樣本／幀＝20ms；虛擬時間，非設備規格</text>
+<text x="30" y="143" font-size="18" font-weight="700">內容區間</text>
+<rect x="180" y="113" width="120" height="55" fill="#e6e9f7"/>
+<rect x="300" y="113" width="120" height="55" fill="#e6e9f7"/>
+<rect x="420" y="113" width="120" height="55" fill="#dcefe7"/>
+<rect x="540" y="113" width="120" height="55" fill="#dcefe7"/>
+<text x="240" y="147" text-anchor="middle" font-size="17">0–20ms</text>
+<text x="360" y="147" text-anchor="middle" font-size="17">20–40ms</text>
+<text x="480" y="147" text-anchor="middle" font-size="17">40–60ms</text>
+<text x="600" y="147" text-anchor="middle" font-size="17">60–80ms</text>
+<text x="30" y="233" font-size="18" font-weight="700">交付時刻</text>
+<path d="M180 220 H690" stroke="#52645c" stroke-width="3"/>
+<g fill="#a56950"><circle cx="300" cy="220" r="8"/><circle cx="420" cy="220" r="8"/></g>
+<g fill="#26766b"><circle cx="540" cy="220" r="8"/><circle cx="660" cy="220" r="8"/></g>
+<text x="300" y="259" text-anchor="middle" font-size="17">20：丟</text>
+<text x="420" y="259" text-anchor="middle" font-size="17">40：丟</text>
+<text x="540" y="259" text-anchor="middle" font-size="17">60：送</text>
+<text x="660" y="259" text-anchor="middle" font-size="17">80：送</text>
+<path d="M480 189 V344" stroke="#26766b" stroke-width="3" stroke-dasharray="7 5"/>
+<text x="480" y="184" text-anchor="middle" font-size="17" font-weight="700">Ready 50ms</text>
+<text x="30" y="313" font-size="18" font-weight="700">准入窗口</text>
+<rect x="180" y="290" width="300" height="47" fill="#f8e7df"/>
+<rect x="480" y="290" width="210" height="47" fill="#dcefe7"/>
+<text x="320" y="320" text-anchor="middle" font-size="17">未 Ready，交付幀不准入</text>
+<text x="585" y="320" text-anchor="middle" font-size="17">Ready 後准入</text>
+<text x="30" y="384" font-size="18" font-weight="700">丟棄策略：首 320 樣本＝40ms 內容遺失；後 40ms 准入</text>
+<text x="30" y="423" font-size="17">前置緩衝可保存首幀，但增加延遲、容量與尾段排空責任。</text>
+<text x="30" y="462" font-size="17">Frame 准入計數不是對端播放；聲音內容與處理時刻要分開。</text>
+<text x="30" y="507" font-size="16" fill="#52645c">依同一身份與時基查首尾缺口；增大固定等待不會自行保存聲音。</text>
+</g></svg>

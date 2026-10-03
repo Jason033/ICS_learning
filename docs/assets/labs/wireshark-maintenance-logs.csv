@@ -1,0 +1,10 @@
+host,clock,time_seconds,request,stage,detail
+client,relative,0.118,q17,SEND,13 bytes
+server,relative,0.121,q17,PARSE,GET
+server,relative,0.151,q17,COMPLETE,READY
+client,relative,0.166,q17,DISPLAY,READY
+client,relative,0.418,q18,SEND,13 bytes
+server,relative,0.421,q18,PARSE,GET
+server,relative,0.425,q18,QUEUE,depth=8
+client,relative,0.918,q18,TIMEOUT,deadline=500ms
+server,relative,1.105,q18,COMPLETE,READY; reply failed closed session

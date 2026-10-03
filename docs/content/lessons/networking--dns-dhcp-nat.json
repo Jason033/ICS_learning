@@ -1,173 +1,280 @@
 {
-  "intro": "連線設定不只有 IP 和 Port。實際操作還常遇到主機名稱、動態位址與 NAT。這一篇將 DNS、DHCP、NAT 放在一次連線的前後順序中，練習判斷「名字找不到」「拿到錯誤設定」「內外看到不同位址」分別該查哪裡。",
-  "plan": [
-    {
-      "label": "理解 DNS 名稱解析",
-      "minutes": 8
-    },
-    {
-      "label": "理解 DHCP 配置",
-      "minutes": 8
-    },
-    {
-      "label": "理解 NAT 位址轉換",
-      "minutes": 9
-    },
-    {
-      "label": "讀案例並作答",
-      "minutes": 10
-    }
+  "contentVersion": 2,
+  "intro": "DNS把名稱轉成查詢結果，DHCP提供介面配置，NAT改寫跨邊界的位址／Port；三者會一起出現在通訊路徑，卻各有獨立狀態。本章由資料與時間算出它們何時影響程式。",
+  "prerequisites": [
+    "先辨認名稱與IP的區別，本章首節重新解釋。",
+    "時間單位統一為秒或小時，不把TTL當Socket期限。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      19
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+  },
   "goals": [
-    "說明 DNS、DHCP、NAT 分別解決什麼問題。",
-    "將名稱解析、取得設定、建立連線排成合理順序。",
-    "知道 NAT 前後抓包可能出現不同來源 IP 與 Port。",
-    "遇到名稱或連線問題時選出能區分原因的檢查。"
+    "區分名稱解析、位址配置與位址轉換的責任。",
+    "依DNS記錄、TTL與快取重建程式實際連線目的。",
+    "讀DHCP取得與續租流程，判斷IP之外的配置影響。",
+    "把NAT內外五元組及回程對映連成同一工作。"
   ],
   "sections": [
     {
-      "heading": "先把三個名詞放回流程",
+      "kind": "concept",
+      "heading": "名稱、配置、轉換各解決一個不同問題",
       "paragraphs": [
-        "DHCP 可提供主機的位址、閘道、DNS 伺服器等配置；DNS 可把主機名稱解析成位址；NAT 在某個轉換點改寫封包位址，常見於私有 IPv4 網路對外連線。這三者不是同一種服務，也不是每次連線都一定會用到。",
-        "若程式直接使用 IP，可能不需在當下查 DNS；若位址是手動配置，可能不需 DHCP；若 A 與 B 位於不需轉換的網路，可能沒有 NAT。先弄清現場路徑，不要硬套。"
-      ],
-      "flow": [
-        "主機取得必要設定",
-        "程式需要時解析名稱",
-        "系統選路並連線",
-        "路徑上可能經過 NAT"
-      ],
-      "note": "這裡是通用案例，不代表公司網路一定有 DHCP、DNS 或 NAT。"
+        "人希望以lab.example找服務，不想記固定IP；DNS以分散資料庫回答某名稱的特定record。電腦插上網路需要IP、mask、gateway及DNS伺服器等配置；DHCP協助在時間有限的lease內分配與提供選項。邊界裝置可能讓私有地址共用外部地址；NAT依規則改寫packet地址，NAPT再改Port以區分多個流量。",
+        "三者不互相保證成功。解析到IP不代表服務Port有監聽；DHCP取得IP不代表gateway可達；NAT有對映不代表B已處理查詢。工程閱讀應沿「名稱輸入→解析結果→路由/來源→實際端點→內外封包」核對，避免一個DNS設定錯被叫成所有網路故障，也避免收到IP便跳過其他配置。"
+      ]
     },
     {
-      "heading": "DNS：名稱解析到位址，不等於連得上",
+      "kind": "mechanism",
+      "heading": "DNS從問題到快取：記錄型別與結果都要對齊",
       "paragraphs": [
-        "程式要連 example.net 時，通常先取得其 A／AAAA 等紀錄，再選定一個目的 IP。DNS 成功只能說拿到解析結果，不能證明該 IP 的 Port 可達。DNS 失敗則可能是名稱拼錯、DNS 服務不可達、紀錄缺失或快取等問題。",
-        "排查時記下查詢名稱、得到的位址、使用的 DNS 伺服器、時間與位址家族。只說「DNS 正常」太籠統；實際程式可能使用快取、hosts 檔或不同解析方法。"
-      ],
-      "table": {
-        "caption": "同一症狀，下一步不同",
-        "headers": [
-          "看到的現象",
-          "先查什麼"
-        ],
-        "rows": [
-          [
-            "名稱解析失敗",
-            "名稱、DNS 設定、回覆與快取"
-          ],
-          [
-            "解析到不預期位址",
-            "紀錄、快取、hosts 或環境設定"
-          ],
-          [
-            "解析成功但連線超時",
-            "路由、政策、目的 Port 與服務"
-          ]
-        ]
-      },
-      "note": "example.net 可作文件用網域名，但本章不要求連外測試。"
+        "A記錄提供IPv4，AAAA提供IPv6，CNAME把名稱指向另一名稱。應用透過OS resolver查詢，resolver可能先讀本機快取／hosts，再向配置的DNS查詢；recursive server可替Client逐步找資料，authoritative server提供它管理範圍的答案。名稱相同、record type不同、所用resolver不同，都可能得到不同結果。",
+        "TTL是資源記錄允許快取的剩餘時間基礎，不是連線timeout。已建立的TCP不因TTL到期自動切換IP，應用自己的地址快取也可能比OS更久。NXDOMAIN表示名稱不存在的回覆，NODATA是名稱存在但缺所查型別，兩者與無響應不同；負快取可讓修正後仍暫時看到失敗。DNS常用UDP但也用TCP，不能因「DNS都是UDP53」而忽略截斷重查或政策路徑。"
+      ]
     },
     {
-      "heading": "DHCP：取得配置，不代表所有配置都正確",
+      "kind": "mechanism",
+      "heading": "資料狀態的範圍與更新：同一名稱不是唯一資料",
       "paragraphs": [
-        "DHCP 用租約方式自動提供網路配置。典型 IPv4 交換可概括為 Discover、Offer、Request、Acknowledge，但實際還有續租與其他狀態。取得 IP 後還要檢查前綴、閘道與 DNS；只有「有 IP」不足以說配置完整。",
-        "假設 A 拿到 192.0.2.10/24，閘道卻填 198.51.100.1。A 可能能連本地同網段設備，卻無法正常把遠端封包交給閘道。要比對租約內容與實際路由表。"
+        "CNAME鏈與最終A/AAAA是不同記錄，可各自有TTL；某個別名到期不代表每一項記錄在同一時刻清除。多筆答案、不同resolver和內外DNS檢視也可能合理地回不同地址。維護先說明查詢server、record type、answer與選用策略，不把兩臺機器結果不同立即判成一臺設定壞。",
+        "DHCP資料屬於取得時的介面與lease。程式若啟動時讀一次設定、之後不理會網卡重連，可能保留舊來源地址或Socket；DNS選項更新亦未必讓應用自有cache清除。NAT狀態又在邊界裝置，與Client物件生命週期不是同一份記憶體。這三種狀態的擁有者及更新事件不同，正是重連後「設定看起來正確，但程式仍用舊資料」的重要概念。",
+        "判斷更新是否生效應看使用值，不只看設定值。配置檔案寫新host，執行中的物件仍用舊字典；DHCP控制檯寫新DNS選項，Client尚未續租；NAT轉送表改新內側目標，已有流量是否重新評估由裝置政策決定。工程操作需辨認哪些變更立即、下回查詢、下次lease或新連線才生效，並設計相應驗證。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：TTL與長連線為什麼不同步",
+      "paragraphs": [
+        "教學DNS在t=0回A=198.51.100.20，TTL120s。t=30從快取使用，剩90s；t=100仍在快取有效範圍；t=120到期需按resolver規則再查，新的答案為198.51.100.30。應用C1在t=10建立連到.20，若維持不重新連，它在t=150仍可能與.20通訊，DNS更新不搬移已建立Socket。",
+        "應用C2在t=150重新解析後連.30，但若自己的字典在啟動時固定存.20，便可能仍舊連線。故日誌需分開resolved-at、TTL/策略、selected-address、connected-remote、connection-start，而不是只寫host。比較是否使用舊地址，應查應用實際快取路徑，不能反覆清OS DNS當成一定能修復。"
       ],
       "code": {
-        "title": "模擬 DHCP 配置摘要",
-        "text": "IPv4：192.0.2.10/24\n預設閘道：198.51.100.1  ← 與本例本地前綴不符，需查證\nDNS：192.0.2.53"
-      },
-      "note": "IPv6 配置可使用不同機制；不要把 IPv4 DHCP 的四步流程直接當成所有 IPv6 環境的行為。"
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "t=0    resolver: lab.example A=198.51.100.20 TTL=120\nt=30   cache: remaining=90\nt=10   C1 connected remote=198.51.100.20:7000\nt=120  new query: lab.example A=198.51.100.30 TTL=120\nt=150  C1 still Established to .20\nt=150  C2 resolved and connected to .30\n另種情況：APP addressCache[lab.example]=.20 且無更新政策"
+      }
     },
     {
-      "heading": "NAT：同一條通訊在不同觀測點長得不同",
+      "kind": "mechanism",
+      "heading": "DHCP配置為何有期限與續租階段",
       "paragraphs": [
-        "NAT 設備可能把 A 的來源 192.0.2.10:54000 轉成外側 203.0.113.5:40001。B 在外側看到的是轉換後的來源，而 A 內側抓包看到的是轉換前的來源。位址與 Port 不同，不一定是不同連線。",
-        "比對 NAT 前後的通訊，要結合轉換紀錄、時間、協定與端點。若連線只有去程沒有回程，可能是回程路由、轉換狀態或政策問題；不能只憑單側抓包下定論。"
+        "一般初次取得有Discover尋找、Offer提案、Request選擇、ACK確認四步；每步都有client/server身份與交易識別，不能把一筆Offer當取得完成。跨網段可由DHCP relay轉送，廣播不能任意穿越路由器。ACK給lease及選項後，Client配置介面；伺服器也可能NAK要求重新取得，不能把ACK/NAK與TCP確認混同。",
+        "lease到期前Client嘗試續租；有T1和T2門檻，常見預設分別約0.5及0.875 lease時間，但伺服器可指定，應讀實際值。T1通常向原server續租，T2擴大rebinding尋可回應server。若lease到期仍未續得，不能假設可永久沿用舊配置。維護需看lease起訖、是否DHCP啟用、gateway/DNS選項與介面，單看ipconfig的一行IP會遺漏關鍵條件。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：續租時間與NAT內外端點計算",
+      "paragraphs": [
+        "給lease8小時、T1=4小時、T2=7小時，t=08:00取得，T1為12:00、T2為15:00、到期16:00。12:00無法聯絡原server並不等於08:00取得的配置立即失效；仍須追到15:00 rebinding與最終到期。若DNS選項誤指舊server，IP保持正常也會出現名稱失敗，應與同一時窗其他選項比較。",
+        "另一次TCP流量A內網10.0.0.10:54000→B198.51.100.20:7000，邊界NAPT改來源為203.0.113.5:61000；回覆B:7000→203.0.113.5:61000按對映還原目的10.0.0.10:54000。第二Client10.0.0.11:54000可改61001以區分。兩邊抓包看到不同來源不是矛盾，必須以對映、目的與時間關聯。"
       ],
       "table": {
-        "caption": "模擬 TCP 轉換",
+        "caption": "例題二：續租時間與NAT內外端點計算",
         "headers": [
-          "觀測位置",
+          "步驟",
           "來源",
-          "目的"
+          "目的",
+          "需記錄"
         ],
         "rows": [
           [
-            "A 內側",
-            "192.0.2.10:54000",
-            "198.51.100.20:7000"
+            "內側送出",
+            "10.0.0.10:54000",
+            "198.51.100.20:7000",
+            "TCP與時間"
           ],
           [
-            "轉換設備外側",
-            "203.0.113.5:40001",
-            "198.51.100.20:7000"
+            "外側送出",
+            "203.0.113.5:61000",
+            "198.51.100.20:7000",
+            "NAT對映"
+          ],
+          [
+            "外側回覆",
+            "198.51.100.20:7000",
+            "203.0.113.5:61000",
+            "是否匹配現存對映"
+          ],
+          [
+            "內側回覆",
+            "198.51.100.20:7000",
+            "10.0.0.10:54000",
+            "相符連線"
           ]
         ]
-      },
-      "note": "此例只是來源位址／Port 轉換。實際 NAT 類型與規則不同，應以現場設定和紀錄為準。"
+      }
     },
     {
-      "heading": "案例：能用 IP 連，卻不能用名稱連",
+      "kind": "mechanism",
+      "heading": "NAT狀態會改路徑，但不替應用修協議",
       "paragraphs": [
-        "假設 A 能直接連 198.51.100.20:7000，但以名稱連線失敗。這支持路徑與服務在「直接使用該 IP」條件下可行，優先檢查名稱解析是否取得相同 IP、解析家族、DNS 設定及程式對結果的選擇。",
-        "另一個案例是內側 A 發出 SYN，外側沒有看到對應封包；應在轉換點比對 NAT 規則與政策。若外側有發出，則繼續追遠端與回程。"
+        "狀態式NAT依協議與五元組維護對映，閒置、連線關閉或裝置重啟會影響儲存時間。UDP沒有TCP關閉狀態，對映壽命需裝置政策；一段時間無資料後回覆可能找不到內側目標。外部主動連線通常需要明確轉送規則／相應狀態，不能從「內網可上網」推成外部能連內網服務。",
+        "NAT改packet header，某些應用把地址又寫在payload，例如SIP/SDP媒體端點，payload地址未必自動修正；ALG、ICE或特定閘道器策略可能處理，但要看協議與配置。不要把所有單向音訊歸因NAT，也不要隨意開ALG。維護取捨是查實際header對映、payload端點及雙方向，而不是憑私有地址出現就改變閘道器。NAT也不等於加密或完整的訪問控制策略。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "C#應分別記解析結果、選中地址與連線結果",
+      "paragraphs": [
+        "Dns.GetHostAddressesAsync可能回多個IPv4/IPv6；陣列第一項不應被當成固定穩定地址。下面以列印結果展示讀取位置，生產的連線選擇、失敗切換與取消策略需另設計。配置在程式啟動時解析一次與每回合查詢是不同快取策略，找出呼叫位置才能解釋更新行為。",
+        "實驗services分支沒有真實DNS或NAT，只以record與with產生內外五元組。它把TTL比較與地址改寫分開，因此你能看到elapsed達到120後cache-valid變false，與C1是否關閉沒有程式關聯。讀取同一程式中兩項概念時，別把相鄰輸出誤認為自動因果。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "string host = \"lab.example\"; // documentation name; do not treat as live service\nSystem.Net.IPAddress[] answers = await System.Net.Dns.GetHostAddressesAsync(host);\nforeach (var address in answers)\n    Console.WriteLine($\"name={host} answer={address} family={address.AddressFamily}\");\n// Connect with a documented selection policy; log actual RemoteEndPoint.\n// Original NAT model: header rewrite only, no live router.\nvar inside = new Flow(\"TCP\", \"10.0.0.10\", 54000, \"198.51.100.20\", 7000);\nvar outside = inside with { Src = \"203.0.113.5\", SrcPort = 61000 };\nConsole.WriteLine(inside);\nConsole.WriteLine(outside);"
+      }
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：不用現場許可權讀三份狀態",
+      "paragraphs": [
+        "執行 dotnet run -- services；手算30、120、150s的快取狀態並畫NAT回覆還原。把TTL改60只影響快取時間；把SrcPort改62000只影響外部端點，兩者不能互相修復。復原後重跑。另手寫本章DHCP8小時例的T1/T2表，將未續租時各階段的動作列清楚。",
+        "Windows選做ipconfig /all、Resolve-DnsName localhost與Get-DnsClientCache，分別看介面配置和解析。使用localhost避免向未知公司目標發請求；不要ipconfig /release導致本機斷網，也不先清快取，因為那會丟掉原始證據。驗收是DNS時間表、DHCP期限表、NAT雙向五元組表，以及一段解釋三種改動影響哪個階段。"
       ],
       "steps": [
-        "確認實際輸入是名稱還是 IP，記下協定與 Port。",
-        "比對名稱解析結果與直接連通的位址。",
-        "若路徑經 NAT，對照轉換前後的時間與端點。",
-        "確認服務回覆，而不只確認 DNS 或 NAT 有動作。"
-      ],
-      "note": "公司 DNS 名稱與 NAT 設定不應放進公開教材；可用脫敏且確認可公開的資料另做練習。"
+        "紙算TTL與lease門檻，再執行模型對照。",
+        "單獨改變TTL與外側Port，寫各自影響及不影響的變數。",
+        "讀本機唯讀配置，標出地址、mask、gateway、DNS與lease欄位；不能公開實際敏感值。",
+        "恢復模型，區分解析失敗、connect失敗與應用失敗的日誌階段。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：改服務IP後部分客戶端仍連舊主機",
+      "paragraphs": [
+        "新服務IP=.30，但部分畫面超時；候選H1DNS快取未到期、H2應用長期快取、H3仍是舊長連線、H4新目標服務沒監聽。第二輪OS查到.30且TTL正確，APP日誌卻C7從昨日持續連.20；此客戶端支援H3，清DNS不會搬移C7。另一客戶端新C8也連.20，原始碼顯示static地址字典永不更新，支援H2。",
+        "有限修正是在教學模型為重連時加入受控解析更新，長連線按產品策略重新建立，而不是每次訊息都重建TCP。驗證新連線實際RemoteEndPoint=.30、收到業務結果，並測解析失敗時不無限重試、既有連線是否按設計繼續或結束。先證明新目標服務可用，再宣告遷移完成；避免把更新地址當成已驗證所有服務功能。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "DNS 查詢成功取得 IP，能直接判定 TCP Port 7000 可連嗎？",
-      "answer": "不能。DNS 只提供名稱到位址等資訊；還要查路由、政策與目的服務。"
+      "level": "foundation",
+      "question": "DNS、DHCP、NAT分別改變什麼資料？",
+      "answer": [
+        "DNS回答名稱記錄；DHCP提供有期限的介面配置；NAT改傳輸路徑上的地址/Port。",
+        "三者在不同階段作用，成功條件不同。",
+        "用解析、配置、內外五元組證據分別驗證。"
+      ]
     },
     {
-      "question": "A 有 IPv4 位址，但無法連遠端；同網段服務可連。DHCP 配置中哪兩項值得優先看？",
-      "answer": "優先看前綴／遮罩與預設閘道，並比對路由表；若使用名稱還要查 DNS。"
+      "level": "foundation",
+      "question": "NXDOMAIN與DNS無回覆能直接當同一錯誤嗎？",
+      "answer": [
+        "NXDOMAIN是有伺服器回覆且其語意為名稱不存在；無回覆是等待沒有結果。",
+        "前者查名稱/權威/負快取，後者先查伺服器與傳輸路徑。",
+        "錯誤分類應保留原始響應及階段而非同一超時字串。"
+      ]
     },
     {
-      "question": "A 內側抓到來源 192.0.2.10:54000，B 看到 203.0.113.5:40001。一定是不同連線嗎？",
-      "answer": "不一定。可能經 NAT 轉換來源位址與 Port；應對照時間、協定與轉換紀錄。"
+      "level": "application",
+      "question": "t=10取得TTL90，t=70還剩多久？t=110的新連線必定舊IP嗎？",
+      "answer": [
+        "快取期限為t=100；t=70剩30s。",
+        "t=110已過本記錄期限，應依resolver策略重新查；新答案是否變化另看資料。",
+        "應用自有快取或舊連線仍需核對，不因TTL算式就斷言實際目標。"
+      ]
     },
     {
-      "question": "直接用 IP 可連，但名稱連失敗。第一個有用的比較是什麼？",
-      "answer": "比較名稱解析取得的位址與直接成功的 IP，並確認程式選 IPv4 還是 IPv6。"
+      "level": "application",
+      "question": "lease12小時、T1=6h、T2=10.5h，03:00取得，三個門檻在哪？",
+      "answer": [
+        "T1=09:00，T2=13:30，到期15:00。",
+        "09:00續租失敗不等於立即到期，但需要追後續狀態。",
+        "若正式ACK指定不同T1/T2，以實際選項為準。"
+      ]
     },
     {
-      "question": "NAT 外側看不到 A 的 SYN，可否直接判定 B 沒有監聽？",
-      "answer": "不能。封包可能未通過轉換設備或被政策阻擋，尚未到 B；先查 NAT 前後與路由政策。"
+      "level": "application",
+      "question": "UDP內側10.1.1.9:4000→B:5004，外側203.0.113.8:62000；回覆應怎樣還原？",
+      "answer": [
+        "外側B:5004→203.0.113.8:62000匹配UDP對映。",
+        "內側應為B:5004→10.1.1.9:4000。",
+        "需對映仍有效；無狀態時不能假定回覆一定交付。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "A記錄正確但AAAA指舊IPv6，應用選IPv6失敗，為什麼只查A不足？",
+      "answer": [
+        "名稱同時有不同型別結果，應用實際地址家族決定路徑。",
+        "記錄所有答案與被選RemoteEndPoint。",
+        "修正相應AAAA或選擇政策後，雙家族與切換回歸，不只證明IPv4正常。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "DHCP ACK給IP但DNS選項舊，直接IP連線成功、名稱失敗，優先查哪段？",
+      "answer": [
+        "已有目的服務可由IP連的基準，缺口在名稱解析的配置/請求。",
+        "核對實際DNS選項、查詢到哪個resolver及響應。",
+        "修正測試選項後驗解析結果與實際連線，不先改Socket parser。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "UDP閒置10分鐘後回覆沒進內側，重發後短暫恢復；列兩個候選。",
+      "answer": [
+        "候選NAT對映閒置到期，或內側程式接收狀態/佇列異常。",
+        "對比外側回覆、對映存活和內側抓包/接收日誌可區分。",
+        "依據已證據的機制修正保活或接收策略；保活頻率需裝置政策，不套固定數。"
+      ]
     }
   ],
   "recap": [
-    "DHCP 提供配置；DNS 解析名稱；NAT 改寫某些封包端點。",
-    "取得 IP 不代表閘道與 DNS 設定正確。",
-    "解析成功不等於服務可連。",
-    "NAT 前後抓包端點可能不同，需用時間和轉換紀錄對照。",
-    "除錯按實際使用的功能逐一確認，不預設三者一定存在。"
+    "區分名稱解析、位址配置與位址轉換的責任。",
+    "依DNS記錄、TTL與快取重建程式實際連線目的。",
+    "讀DHCP取得與續租流程，判斷IP之外的配置影響。",
+    "把NAT內外五元組及回程對映連成同一工作。"
   ],
   "sources": [
     {
-      "label": "RFC 1034：DNS 概念",
-      "url": "https://www.rfc-editor.org/rfc/rfc1034.html"
+      "label": "IETF RFC 1035：DNS記錄與訊息",
+      "url": "https://www.rfc-editor.org/rfc/rfc1035.html"
     },
     {
-      "label": "RFC 2131：DHCP",
+      "label": "IETF RFC 2308：負快取",
+      "url": "https://www.rfc-editor.org/rfc/rfc2308.html"
+    },
+    {
+      "label": "IETF RFC 2131：DHCP租約及續租",
       "url": "https://www.rfc-editor.org/rfc/rfc2131.html"
     },
     {
-      "label": "RFC 3022：傳統 NAT",
+      "label": "IETF RFC 3022：NAT/NAPT內外轉換",
       "url": "https://www.rfc-editor.org/rfc/rfc3022.html"
     },
     {
-      "label": "RFC 5737：IPv4 文件範例位址",
-      "url": "https://www.rfc-editor.org/rfc/rfc5737.html"
+      "label": "Microsoft：Resolve-DnsName查詢",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/networking-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
+      "label": "網路維護 C# 讀碼模型（Program.cs）",
+      "description": "本章使用 services 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/README.md",
+      "label": "實驗專案操作說明",
+      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
     }
   ]
 }

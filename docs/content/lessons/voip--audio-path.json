@@ -1,168 +1,262 @@
 {
-  "intro": "網路上有 RTP，也可能在麥克風前或喇叭後失去聲音。本章把類比聲波、數位取樣、編碼、雙向網路傳送與播放串起來；Lab-Audio 是本機教學訊號，不是公司音訊路由。",
-  "plan": [
-    {
-      "label": "建立基礎概念",
-      "minutes": 12
-    },
-    {
-      "label": "讀教學例子",
-      "minutes": 14
-    },
-    {
-      "label": "對照證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "麥克風和喇叭不是網絡Port，它們通過格式、緩衝與裝置路由參與同一條聲音鏈。本章從連續信號到取樣值、聲道、量化和PCM bytes建立基礎，再逐行讀獨立C# WAV模型，學習定位靜音、格式錯誤、削波、迴音與緩衝斷續。",
+  "prerequisites": [
+    "理解樣本率、聲道、sample 與 frame，以及 PCM 和壓縮格式的差別。",
+    "能分辨通話控制與媒體資料；本章沿著輸入、編碼、網路、解碼與輸出逐段閱讀。"
   ],
   "goals": [
-    "能說出 ADC、PCM、Codec、DAC 的基本位置。",
-    "能畫出 A→B 與 B→A 的獨立音訊路徑。",
-    "能區分數位資料存在和人耳聽見。"
+    "能從採樣率、bit depth、聲道數推PCM框架和bytes。",
+    "能解釋格式標籤、重採樣、增益、緩衝及裝置路由對聲音的後果。",
+    "能以已知合成輸入逐段隔離錄音、處理與輸出故障。"
   ],
   "sections": [
     {
-      "heading": "先從聲波和取樣開始",
+      "kind": "concept",
+      "heading": "從連續聲壓到離散數字：取樣與量化做不同事情",
       "paragraphs": [
-        "麥克風感受空氣振動，類比輸入經 ADC（類比轉數位）取得離散樣本。PCM 常用來表示這些樣本；取樣率是每秒樣本數，位元深度影響每個樣本可表示的數值。",
-        "例如 8000 samples/s、16-bit、單聲道的未壓縮 PCM 是 8000×16=128000 bit/s。這不是 G.711 的線上負載速率，更沒算 IP／UDP／RTP 標頭。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/voip-audio-chain.svg",
-        "alt": "麥克風、ADC、PCM、Codec、RTP、接收端解碼、DAC、喇叭沿發送方向排列；反方向需另一條鏈。",
-        "caption": "Lab-Audio 的一個方向；雙向通話有兩條相反路徑。"
-      }
-    },
-    {
-      "heading": "數位化後才談 Codec 與封包",
-      "paragraphs": [
-        "編碼器依選定 Codec 把音訊樣本轉成傳送格式；封包化把一段音訊放入 RTP。對端按格式解碼，交給播放緩衝、DAC 和喇叭。",
-        "即使 RTP Packet Type 看起來正確，封包內容也可能是靜音、錯誤格式或無法正常解碼；再往後還可能是輸出裝置被靜音。"
-      ],
-      "flow": [
-        "麥克風",
-        "ADC／PCM",
-        "音訊處理與 Codec",
-        "RTP／網路",
-        "解碼與播放緩衝",
-        "DAC／喇叭"
+        "聲音在時間上連續變化，錄音裝置在固定時刻測量並輸出數值。採樣率定義每秒每聲道的取樣時刻；量化把每個測量值映射到有限精度。8000Hz與16bit分別回答「每秒量幾次」和「每次用多少位表示」，不能把Hz當位率，也不能靠增加bit depth恢復原本沒取到的高頻細節。",
+        "理想帶限條件下，採樣率fs的可表示頻率需低於fs/2；實際錄音還需適當濾波，避免高頻混疊成假低頻。因此8k採樣適合某些語音帶寬，不代表電話整個鏈品質只由8k決定。設備、噪聲、編碼、丟失與處理都影響結果。本章只用容易手算的1000Hz正弦，不假裝它是所有真實語音。",
+        "16bit有符號PCM通常範圍-32768至32767，0附近是波形零點；它的數值代表離散幅度而非直接的聲壓單位。滿量程是數字格式的範圍，實際音量還受後續增益與裝置。8bit或浮點PCM有不同表示，讀bytes前必須知道signed、bit depth、字節序與聲道佈局。"
       ]
     },
     {
-      "heading": "兩條方向不能共用結論",
+      "kind": "mechanism",
+      "heading": "取樣時刻、sample值、audio frame與byte對齊",
       "paragraphs": [
-        "A→B：查 A 的輸入、編碼、送出及 B 的接收、解碼、播放；B→A 全部反過來。",
-        "「A 聽不到 B」不等於「A 麥克風壞了」。先問出問題的是接收還是發送方向，然後沿這條鏈找第一個有證據的節點。"
+        "音訊裏的frame通常是一時刻所有聲道的樣本集合，不是Ethernet frame，也不是codec frame。單聲道一frame一個值，雙聲道一frame兩個值。48000Hz立體聲每秒48000frames、96000sample values。blockAlign是每frame的bytes，PCM可算channels×bits/8；byteRate=sampleRate×blockAlign。",
+        "16bit雙聲道blockAlign4，緩衝長度必須保持完整frame；600bytes代表150frames，而不是600個樣本時刻。若把程序API返回的frame count誤當byte count，就會少複製或越界。若把聲道數再乘進RTP timestamp，則會把媒體時間錯倍，時鐘表達時刻而非每時刻值數。",
+        "常見interleaved佈局把左右聲道同一時刻挨着放：L0,R0,L1,R1；planar則把聲道分開。把兩種佈局混讀會錯路由。立體聲轉單聲道可用(L+R)/2等策略，但左右反相會抵消；取左聲道和平均並不相同。具體SDK格式與轉換規則需查正式接口。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：20ms緩衝的每一層數值",
+      "paragraphs": [
+        "輸入16000Hz、雙聲道、16bit PCM、20ms。每聲道時刻16000×.020＝320frames；總樣本值320×2＝640；每值2bytes，所以緩衝1280bytes。blockAlign2聲道×2bytes＝4；byteRate16000×4＝64000bytes/s，兩種算式都得.020×64000＝1280。",
+        "若輸出要求8000Hz單聲道16bit，不是把原bytes一半砍掉就好；需聲道混合與恰當重採樣，輸出20ms應160frames×2＝320bytes。改變格式標籤卻不改變樣本會導致時長或聲道錯誤。改變取樣率的處理與更改WAV標頭兩種動作必須區分。",
+        "如果SDK回numFramesAvailable=320，程序應依實際輸入blockAlign4複製1280bytes，而不是320bytes。如果只複製320，時間窗僅保留5ms輸入，可能製造斷續。遇到buffer bug先寫單位，再看循環與實際容量，能避免「數字都是320所以看起來對」的誤判。"
       ],
       "table": {
-        "caption": "由症狀選方向",
+        "caption": "同一20ms輸入的不同單位",
         "headers": [
-          "症狀",
-          "先追的媒體方向",
-          "接收端"
+          "量",
+          "計算",
+          "結果"
         ],
         "rows": [
           [
-            "A 聽不到 B",
-            "B → A",
-            "A 的解碼與喇叭"
+            "時刻數",
+            "16000×0.020",
+            "320frames"
           ],
           [
-            "B 聽不到 A",
-            "A → B",
-            "B 的解碼與喇叭"
+            "樣本值",
+            "320×2聲道",
+            "640values"
           ],
           [
-            "雙方都聽不到",
-            "兩條都查",
-            "兩端各自驗證"
+            "blockAlign",
+            "2×16/8",
+            "4bytes/frame"
+          ],
+          [
+            "buffer",
+            "320×4",
+            "1280bytes"
           ]
         ]
       }
     },
     {
-      "heading": "回音、音量與「完全無聲」不同",
+      "kind": "mechanism",
+      "heading": "增益、削波、靜音與迴音：數值如何變聲音",
       "paragraphs": [
-        "回音可能和聲音從喇叭耦合回麥克風、回音控制或其他音訊處理有關；AGC（自動增益控制）調整音量，設定不合適也可能讓音量忽大忽小。",
-        "它們是後續品質檢查的候選，不應看到「完全無聲」就直接調 AGC。先確認選用設備、取樣資料、Codec 與播放是否存在。"
+        "增益把幅度乘係數。輸入8000乘5是40000，超過int16最大32767，需要削波或其他處理；直接unchecked轉換可能繞回成負數，波形突變更嚴重。Clipping把超範圍壓到邊界，會改變波形併產生失真；提高數字增益不等於提升錄音品質，可能同時放大噪聲。",
+        "靜音可以在裝置、應用、會話或某聲道發生；零PCM是合法樣本，不是沒有callback。網絡持續傳靜音與完全沒有媒體是兩種現象。AGC是自動增益控制，噪聲抑制降低某些背景，AEC估計並減去輸出回到麥克風的迴音；這些機制輸入與依賴不同，不能都叫音量開關。",
+        "聲學迴音來自喇叭聲音被本機麥克風重新錄入，數字迴路則可能由虛擬音訊路由或混音配置產生。AEC需要合適輸出參考與時序，不能自動糾正所有錯誤接線或格式。查迴音時先標聲音的路徑，用單向控制輸入區分回錄與網絡重複，別只因聽見兩次就說RTP重複。"
       ]
     },
     {
-      "heading": "本機取樣練習算的是資料量",
+      "kind": "mechanism",
+      "heading": "重採樣與格式轉換：改變數據，不是重貼標籤",
       "paragraphs": [
-        "下載程式後直接執行，可看到一秒 440 Hz 教學正弦波的 8000 個樣本、16000 個 16-bit PCM bytes，以及每 20 ms 的 160 樣本與 320 bytes。加上 --write-wav 才會在當前資料夾產生可播放的 WAV。",
-        "這是原始 PCM 示範，不含 G.711／G.729 編碼、不送 RTP，也不依賴麥克風。若不能執行，可直接用上述乘法核對。"
+        "重採樣把一種時刻網格的信號轉換到另一種採樣率，需要插值與適當帶限濾波。16k轉8k不是對任何輸入隨意丟一半點就保證品質；高頻需先過濾避免混疊。教材的獨立WAV模型未實現專業重採樣器，所以不把簡單跳點代碼當生產音頻轉換。",
+        "字節序也取決格式：常見PCM WAV以little-endian保存整數，而某些網絡格式如L16採用不同規定。16bit值0x1234在LE爲34 12，在BE爲12 34。把PCMU壓縮碼當short或把LE當BE，會產生很大錯誤，網絡長度仍可能正確。每個接口邊界都列格式與bytes解釋規則。",
+        "量化bit depth、聲道數和採樣率改動分別影響精度、佈局與時間，處理器應保證轉換前後時長合理。日誌只寫format=PCM不足夠，需要rate、channels、bits、佈局與有效byte數。讀代碼時找轉換入口、輸出條件與buffer複用，防止下游讀取上一幀格式。"
       ]
     },
     {
-      "heading": "把資料與結果分開記錄",
+      "kind": "worked-example",
+      "heading": "例題二：錯誤採樣率標頭使聲音快一倍",
       "paragraphs": [
-        "有聲音檔，只證明程式生成了可存放的樣本；有 RTP，只證明網路觀測點看到媒體資料；有解碼成功紀錄，也還需確認輸出裝置與音量。",
-        "以相同方式排查公司程式時，實際音訊設備與 SDK 接法必須由授權文件或紀錄核對。"
+        "項目生成8000個單聲道16bit樣本，data16000bytes，採樣率8000。時長=8000frames/8000＝1秒，1000Hz正弦在這1秒有1000週期。WAV包含44-byte最小標頭，總長16044。這個長度可獨立驗證，不需真人錄音或聲卡。",
+        "若只把標頭rate改16000且byteRate改32000，而data原樣，播放器會每秒讀16000frames，8000frames用.5秒。原1000週期在.5秒完成，聽覺頻率約2000Hz；不是網絡把聲音壓縮變快，而是格式時間解釋改變。正確重採樣到16000保持1秒應產生16000frames與32000bytes，不是改兩個整數。",
+        "另變因把原樣本乘5並Clamp：正弦部分超範圍形成平頂；silence所有0則RMS0但檔仍完整。比較這三份輸入可以確認處理數值與文件格式，不用於測裝置頻響。聽選做低音量，數值與長度驗證先做，避免用「好像有聲」代替機制檢查。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "逐行讀C#模型：PCM值怎麼進入WAV",
+      "paragraphs": [
+        "Program.cs用Enumerable.Range生成0～7999，Math.Sin的參數2π×1000×i/8000按採樣時刻求波形，幅度8000，Round後轉short。它是自行建立的Lab，不調用麥克風。Scale先用double計算，Clamp到short範圍再cast，避免強轉溢位。Check明確驗證削波存在，而不是保證真人聽感。",
+        "WriteWave用BinaryWriter寫RIFF長度36+dataLen、WAVE與fmt塊、PCM編號1、聲道、rate、byteRate、blockAlign與bits，隨後data長度與每個short。BinaryWriter在該類型寫法以little-endian保存數值；字串顯式ASCII，避免加入編碼長度前綴。最小44-byte格式只涵蓋本例PCM，實際WAV可有額外塊，不應把所有WAV解析硬定44。",
+        "程序Check16044與單位算式，輸出目錄由參數或臨時資料夾決定。文件成功創建證明模型輸出，不證明音訊裝置或SDK運行。維護閱讀習慣是找輸入格式、算式、中間類型、邊界處理與輸出合同，每一行有明確責任；這比複製整段無法解釋的音頻代碼更可持續。"
+      ],
+      "code": {
+        "title": "取自獨立項目的樣本與削波核心",
+        "text": "var samples = Enumerable.Range(0, rate)\n    .Select(i => (short)Math.Round(8000 * Math.Sin(2 * Math.PI * 1000 * i / rate)))\n    .ToArray();\nshort[] Scale(short[] input, double gain) => input\n    .Select(x => (short)Math.Clamp(Math.Round(x * gain), short.MinValue, short.MaxValue))\n    .ToArray();"
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "裝置和緩衝：輸入正常、網絡正常仍可能無聲",
+      "paragraphs": [
+        "Windows音訊裝置可有默認設備、每應用會話音量、虛擬線路與熱插拔；應用實際選擇的端點ID比顯示名稱更可覈對。USB裝置拔掉或默認更換時，舊對象可能失效，需要按API處理重新建立。操作系統可混音及轉換，應用不能假設設備一直使用原格式。",
+        "Capture端需及時讀輸入buffer，Render端需及時寫輸出buffer。漏讀可能丟輸入，未寫滿時可能underrun，消費慢則queue積壓。底層callback的frame大小可能變化，不必每次等20ms整數。若把callback裏做長文件寫入或網絡等待，可能破壞音訊期限，應按實際線程規則設計隔離。",
+        "本章查了WASAPI原理以解釋裝置buffer，但C#標準庫項目並沒有呼叫WASAPI或實現錄放；公司可能用SDK封裝另一套接口。讀實際程序先找選擇裝置、獲格式、buffer事件、處理與清理，查對應官方API線程與生命週期，不能把WAV生成PASS當設備API測試。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：驗證格式、剪裁與每條算式",
+      "paragraphs": [
+        "運行項目輸出到獨立目錄，先看PCM:8000/1/16、blockAlign2、byteRate16000，以及20ms160frames/320PCMbytes。用文件屬性確認三個WAV各16044bytes，按Program.cs或獨立Python wave讀取頭驗證rate/channels/bits/dataframes。tone RMS非零、silence RMS0、clipped有邊界值，證明不同數據機制。",
+        "變因在源常量改channels前先理解程序目前生成mono samples、寫頭與data佈局一起需要變化；不能只改單個header然後稱真實立體聲。安全的本章實驗是改Scale gain1與5，保持格式和時長不變，比對削波數量；或複製檔手工標註錯誤rate模型，勿覆蓋正常基準。",
+        "驗收是能解釋16044、320、160的層級差別、算出錯誤rate時長與頻率、分辨靜音數據與沒有資料。恢復原代碼再運行Check，保留結果與限制。當前已在.NET10編譯運行，獨立頭與sample驗證可重複；沒有錄音、設備播放或專業重採樣驗證。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "斷續、音量小與迴音不能都歸網絡",
+      "paragraphs": [
+        "同樣斷續，候選可以是網絡晚到、decode消費不足、輸出underrun或格式不符。先用已知本機tone直接走輸出路徑與網絡輸入作對照；若本機也斷續，優先裝置／調度；若本機正常而網絡資料late，查媒體期限。每個對照只替換一段鏈。",
+        "音量小可能輸入樣本幅度已低、數字增益低或輸出裝置音量低。各階段量peak/RMS並查靜音與裝置，不一開始把gain無限提高。若輸入已削波，後面降低音量無法恢復原波形；需修前段增益。迴音則追返回路徑與參考，不只是比較兩包內容。",
+        "修正後迴歸相同已知輸入、時長和格式，記錄queue、underrun、削波與輸出選擇；真實品質另需聽測及授權設備。基礎觀唸完整讓你能把症狀變成不同可測候選，不會只說「音效有問題」而無下一步。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【位置】ADC 在麥克風之後還是喇叭之後？",
-      "answer": "在輸入路徑，將類比訊號轉成數位樣本。"
+      "level": "foundation",
+      "question": "PCM裏的audio frame爲何不等於network frame或codec frame？",
+      "answer": [
+        "audio frame是一時刻各聲道的值集合，network frame是鏈路傳輸外殼，codec frame是編碼算法處理單位。",
+        "它們長度與時間規則不同，API返回值需確認單位。",
+        "讀buffer代碼標frame/byte/sample，避免同數字誤用。"
+      ]
     },
     {
-      "question": "【位置】DAC 主要在哪個方向？",
-      "answer": "播放輸出，把數位樣本轉回類比訊號供喇叭使用。"
+      "level": "foundation",
+      "question": "只改WAV rate是否是真正重採樣？",
+      "answer": [
+        "不是，它改變對同樣samples的時間解釋而不創建新採樣網格。",
+        "時長與頻率會變化，真正重採樣需合適濾波／插值。",
+        "驗證轉換前後時長及格式，別以檔可播放當處理正確。"
+      ]
     },
     {
-      "question": "【算式】8000 Hz、16-bit、單聲道 PCM 一秒幾 bytes？",
-      "answer": "16000 bytes；8000×2。"
+      "level": "application",
+      "question": "新資料：48000Hz、雙聲道24bit PCM、10ms。blockAlign、frames、bytes爲何？",
+      "answer": [
+        "24/8＝3bytes每值，雙聲道blockAlign6。",
+        "48000×.01＝480frames，buffer480×6＝2880bytes。",
+        "假設packed24bit，若容器32bit另算；格式條件寫清纔可複製。"
+      ]
     },
     {
-      "question": "【分層】上述 128 kbit/s 等於 G.711 payload 速率嗎？",
-      "answer": "不等於；那是未壓縮 16-bit PCM，G.711 另有編碼。"
+      "level": "application",
+      "question": "新資料：16bit樣本20000乘2，直接cast與Clamp有何風險差別？",
+      "answer": [
+        "數學結果40000超short最大32767，unchecked強轉可能繞回負數。",
+        "Clamp產生32767邊界，避免繞回但仍削波失真。",
+        "合理修正檢查增益與前段峯值，迴歸不溢位和可接受動態範圍。"
+      ]
     },
     {
-      "question": "【方向】A 聽不到 B，先查 A 的麥克風嗎？",
-      "answer": "不是；先追 B→A 發送與 A 的接收播放路徑。"
+      "level": "application",
+      "question": "新資料：左聲道+1000，右-1000，同一時刻平均成mono多少？能說源靜音嗎？",
+      "answer": [
+        "平均(1000－1000)/2＝0，是反相抵消。",
+        "兩聲道各非零，不代表來源沒有聲音，混合策略造成結果。",
+        "覈對佈局與相位，選擇符合產品路由；測試同相／反相與單聲道。"
+      ]
     },
     {
-      "question": "【RTP】看見 RTP 就能證明有人聲嗎？",
-      "answer": "不能；內容可能是靜音或解碼／播放失敗。"
+      "level": "application",
+      "question": "新資料：16000個mono樣本按8000Hz播放，原1000Hz/16000Hz生成。時長與頻率？",
+      "answer": [
+        "樣本16000/8000＝2秒，原數據用16000Hz時爲1秒。",
+        "同1000週期拉到2秒約500Hz，格式解釋使速度減半。",
+        "修復正確rate或真實重採樣，不能把它說網絡延遲。"
+      ]
     },
     {
-      "question": "【回音】回音一律是網路延遲造成嗎？",
-      "answer": "不是；端點聲學耦合與音訊處理也可能有關。"
+      "level": "diagnosis",
+      "question": "PCAP媒體正常、decode輸出非零但用戶無聲，給最先兩段驗證。",
+      "answer": [
+        "先查播放任務是否消費樣本及輸出buffer，之後覈對實際端點ID、音量／靜音。",
+        "以低音量已知tone驗證輸出，不先重啓SIP或改codec。",
+        "有限修正後迴歸裝置切換與雙向通話，記錄真實輸出證據。"
+      ]
     },
     {
-      "question": "【腳本】本機 tone 腳本驗證了公司麥克風嗎？",
-      "answer": "沒有；它合成樣本，不讀取實際裝置。"
+      "level": "diagnosis",
+      "question": "輸入RMS很高且多樣本卡±邊界，遠端失真。減少接收音量能恢復嗎？",
+      "answer": [
+        "不能，前段削波已丟原波形信息，接收降音量只縮小已失真信號。",
+        "查錄音增益或處理gain並減少超範圍，保持網絡格式。",
+        "迴歸峯值、削波比例與已知輸入，真實聽感另驗證。"
+      ]
     }
   ],
   "recap": [
-    "聲音要經輸入、取樣、編碼、封包、解碼與輸出。",
-    "兩個方向分開追。",
-    "原始 PCM、Codec payload 與網路總流量不可混算。"
+    "能從採樣率、bit depth、聲道數推PCM框架和bytes。",
+    "能解釋格式標籤、重採樣、增益、緩衝及裝置路由對聲音的後果。",
+    "能以已知合成輸入逐段隔離錄音、處理與輸出故障。"
   ],
   "sources": [
     {
-      "label": "ITU-T G.711：語音 PCM 規格",
-      "url": "https://www.itu.int/ITU-T/recommendations/rec.aspx?rec=g.711"
+      "label": "Microsoft：WAVEFORMATEX的取樣率、聲道、對齊與位率",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex"
     },
     {
-      "label": "IETF RFC 7874：WebRTC 端點音訊處理、AGC 與回音控制",
-      "url": "https://www.rfc-editor.org/rfc/rfc7874"
+      "label": "Microsoft .NET10：BinaryWriter",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.binarywriter?view=net-10.0"
     },
     {
-      "label": "Python 官方：wave 標準函式庫",
-      "url": "https://docs.python.org/3/library/wave.html"
+      "label": "Microsoft：WASAPI與音訊端點緩衝",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi"
+    },
+    {
+      "label": "Microsoft：讀取錄音stream與frame單位",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/capturing-a-stream"
+    },
+    {
+      "label": "Microsoft：輸出stream與緩衝管理",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/rendering-a-stream"
     }
   ],
   "resources": [
     {
-      "label": "下載本機取樣練習程式",
-      "path": "./assets/labs/voip-tone-lab.py",
-      "description": "標準函式庫；計算 8 kHz／16-bit 單聲道取樣與 20 ms 分幀，可選擇在本機產生教學 WAV。"
+      "path": "./assets/labs/voip-maintenance-lab.zip",
+      "label": "VoIP獨立計算與WAV示範（.NET10）",
+      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
     }
-  ]
+  ],
+  "studyTime": {
+    "reading": [
+      11,
+      19
+    ],
+    "practice": [
+      40,
+      60
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+  }
 }

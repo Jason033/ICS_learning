@@ -1,195 +1,257 @@
 {
-  "intro": "這篇先看通話建立，不急著判斷聲音好壞。用一份 16 筆合成封包，沿 SIP 的 INVITE、回應、ACK、BYE 看一次通話控制，再從 SDP 找出預告的兩端音訊 Port。SIP 200 OK 表示該教學呼叫流程的訊號回覆，不保證有人聽見聲音。",
-  "plan": [
-    {
-      "label": "篩出 SIP 與 Call-ID",
-      "minutes": 9
-    },
-    {
-      "label": "讀 INVITE 到 ACK",
-      "minutes": 11
-    },
-    {
-      "label": "從 SDP 找音訊端點",
-      "minutes": 10
-    },
-    {
-      "label": "用 VoIP Calls 看流程",
-      "minutes": 9
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 11
-    }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/wireshark-sip-rtp.pcap",
-      "label": "下載：SIP 與 RTP 練習檔（PCAP）",
-      "description": "16 筆合成封包：7 筆 SIP 訊號、9 筆 RTP 資料，全部使用文件保留位址與無實際語音的固定資料。"
-    }
+  "contentVersion": 2,
+  "intro": "電話建立是一次控制協商，聲音傳送是另一條資料流。Wireshark可以讓你讀出兩者怎麼關聯，但必須先理解SIP訊息、交易、對話與SDP的收聽端點。本章不用「200 OK不等有聲」一句話帶過，而是從控制機制推到實際Port、格式與方向，讓你知道應該到哪裡找下一段證據。",
+  "prerequisites": [
+    "知道 IP 是主機位址、Port 是應用端點；本章遇到傳輸與擷取新概念會從機制解釋。",
+    "可以使用自己電腦上的 Wireshark 開檔；未安裝時可先讀本章完整資料與推導，再進行操作。"
   ],
   "goals": [
-    "能用 sip 篩出一次呼叫的控制訊號，找出 Call-ID 與方向。",
-    "能依序說明 INVITE、100、180、200、ACK、BYE 的位置。",
-    "能從 SDP 找出 RTP 的雙向 IP／Port。",
-    "能分清 SIP 訊號成功、RTP 封包出現與實際聽見聲音三種證據。"
+    "能依Call-ID、標籤、CSeq與方法關聯同一通話的訊號。",
+    "能從SDP offer/answer推導雙向媒體目的端點與編碼。",
+    "能分開判讀訊號、協商、媒體及應用播放故障。"
   ],
   "sections": [
     {
-      "heading": "先篩出 SIP，確認這是一通教學呼叫",
+      "kind": "concept",
+      "heading": "SIP與媒體爲何分成不同路徑",
       "paragraphs": [
-        "下載並開啟合成 PCAP。清除篩選後應有 16 筆；輸入 sip 應有 7 筆。選 INVITE，展開 Session Initiation Protocol，找 Request-Line、From、To、Call-ID、CSeq。此檔 Call-ID 為 training-call-001@example.invalid，可用它核對後續訊息是否屬同一通。",
-        "Call-ID 是呼叫關聯線索，不是使用者身分證明。若現場有多通電話，不能只靠 IP 或 Port 混在一起讀，應結合 Call-ID、時間與方向。"
+        "一次電話要決定找誰、對方是否願意、用何種音頻格式、在哪接收及何時結束，這些由控制訊號協商。SIP是應用層控制協議，可以在UDP、TCP或TLS等傳輸上運作；它不是音頻本身。RTP則把即時媒體內容分段傳送，重視播放時間與順序。兩種流量對可靠、延遲和路由的需求不同，所以不能用SIP數據量代替聲音量。",
+        "端點可能直接通話，也可能經Proxy、背靠背用戶代理或媒體服務器。Proxy協助轉送SIP，媒體未必經同一個點；媒體代理可能改寫協商端點。B2BUA可將一個使用者通話拆成不同信令腿，每腿Call-ID也可能不同。教材只有A和B直接協商，作爲最小可算模型；真實公司關係要依實際拓撲與文件確認。",
+        "一個人的「沒有聲音」可能發生在尚未接通、SDP錯誤、沒有媒體、媒體格式不符、解碼失敗或裝置未播放。先把功能拆成控制、媒體與本地音訊處理三條觀察線，才知道封包可回答哪些部分。看到網絡媒體到達還不能證明喇叭輸出；但它可以排除「這觀察點完全沒有媒體」這一個候選。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "先讀消息結構：起始行、標頭、本文",
+      "paragraphs": [
+        "SIP請求的第一行包含方法與目標URI，例如INVITE sip:b@example.invalid SIP/2.0；響應第一行是SIP/2.0加狀態碼。方法描述動作，狀態碼回答某個動作，不能只搜索所有200 OK。REGISTER常用於登記聯絡位置，INVITE建立或修改會話，BYE結束已建立會話；OPTIONS可查詢能力。這些200的業務階段不同。",
+        "標頭提供關聯與路由，空行之後纔是本文。Content-Type說明本文格式，Content-Length說明本文bytes數。本套件INVITE及200帶application/sdp，180與ACK沒有本文。若SIP經TCP，一條消息可能跨segment，需要重組與正確長度；經UDP時也需區分一個datagram中實際內容。讀取內容不能只依列表Info的一句摘要。",
+        "1xx爲臨時響應，像180表示響鈴階段；2xx通常爲成功最終響應；4xx、5xx等是不同失敗類別。收到401可能是認證挑戰的一步，需看後續請求與最終結果；並非每次401都代表密碼錯。中級判讀把狀態碼連到方法、交易和上下文，而不是建立一個「紅色碼全部異常」清單。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "Call-ID、Dialog、Transaction與CSeq的關聯層級",
+      "paragraphs": [
+        "Call-ID爲關聯一組SIP消息提供標識，但更精確的Dialog還結合兩邊標頭tag。分叉呼叫可能同Call-ID出現不同To tag，對應不同對話分支；只看Call-ID把所有響應串成單一路徑會混淆。From/To的地址表示邏輯身分，與封包實際IP不一定相同，尤其經Proxy與NAT時。",
+        "Transaction是一個請求與其相關響應的交互；Via branch等有助關聯交易。CSeq由數字和方法組成，用來識別與排序請求。一個dialog裏會有多個請求，每個最終響應要用CSeq方法確認它答的是INVITE、BYE還是OPTIONS。相同方法與CSeq的UDP請求再出現可能是SIP層重傳，不同於TCP同seq範圍的重傳。",
+        "ACK確認INVITE最終響應，但處理2xx與非2xx的交易規則並不完全相同。入門抓正常2xx流程可看INVITE→200→ACK，進一步診斷需根據對應規範與信令腿確認ACK路由。別假設任何200都需要ACK：例如BYE的200不照INVITE模式處理。理解消息關聯層級，纔會知道「ACK不見」指的是哪一筆。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "SDP宣告接收條件：m、c、rtpmap與方向",
+      "paragraphs": [
+        "SDP是會話描述格式，常作爲SIP本文攜帶。c=給連接地址，m=給媒體種類、接收Port、傳輸profile及允許的格式；a=rtpmap把某Payload Type映射到編碼與時鐘。一個端點宣告的IP與Port通常表示它希望對方把該媒體送到哪裏，不是它保證實際會從那裏發出，也不是SIP監聽Port。",
+        "媒體級c=可以覆蓋會話級c=；多個m=分別描述音頻、視頻等，不應隨手拿第一個IP套到所有媒體。媒體Port爲0通常用於拒絕該媒體流；sendonly、recvonly、sendrecv、inactive表達方向條件。方向以發出該SDP的一方爲參照，不是以你電腦爲參照。正確判讀能區分協商預期靜音與異常單向無聲。",
+        "Offer提出可用條件，answer針對它選擇相容條件與自身接收端點。動態PT的編號不是全系統固定編碼表，要看本次rtpmap；靜態PT也要結合profile。本教材profile是RTP/AVP、PT0 PCMU/8000。實際SRTP、ICE候選、RTCP複用或後續re-INVITE會改變細節，此章先建立普通最小鏈，再依系統正式協商補充。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：從同一5060端點區分兩通交錯呼叫",
+      "paragraphs": [
+        "mixed在wire time1.500有lab-a INVITE，1.550有lab-b INVITE，兩者都A:5060→B:5060。只看UDP五元組或Follow UDP會把兩通合成一段。先查sip.Call-ID，lab-a@example.invalid四筆時間1.500、1.510、1.530、1.540；lab-b則1.550、1.560、1.580、1.590。",
+        "lab-a INVITE的CSeq 1 INVITE，180和200的CSeq同爲1 INVITE，ACK爲1 ACK。From tag aa，響應To tag ba；lab-b tag ab/bb不應加入lab-a的dialog。兩通的INVITE到200都是30ms，到ACK都是40ms。這些是信令觀察間隔，未包括用戶按鍵、Proxy其他腿與實際播放。",
+        "用Telephony→VoIP Calls或SIP Flows選lab-a，看Flow Sequence確認四步與箭頭方向，再回原frame看關聯字段。工具可整理流程，但若抓包中途或經B2BUA不同腿，可能顯示多行；應根據實際字段關聯而不是只按起止IP猜一通電話。把原字段及過濾式留給下一位維護者，他纔可重建同樣判斷。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：從offer/answer算媒體該往哪裏送",
+      "paragraphs": [
+        "lab-a offer中c=IN IP4 192.0.2.10、m=audio 40000 RTP/AVP 0、a=rtpmap:0 PCMU/8000、a=sendrecv。意思是A願意雙向媒體，期待在A:40000接收PT0 PCMU。answer將地址改B=198.51.100.20、媒體Port40002，仍PT0和sendrecv。A發送的預期目的因此是B:40002，B發送預期目的是A:40000。",
+        "在檔中可見A:40000→B:40002 SSRC0x11111111，B:40002→A:40000 SSRC0x22222222，符合最小模型。SDP的媒體IP／Port與SIP的5060不同，不要把SIP過濾當媒體過濾。lab-b聲明A:41000/B:41002及SSRC0x33333333，應該單獨分析。",
+        "PT0與8000Hz告訴你如何解釋媒體負載與timestamp，但不保證payload含真人聲音。本套件160-byte全ff的PCMU教學資料爲靜音用途，不能做真實音質評價。若把PCMU按別的編碼解碼，就算網絡封包完整也可能無法得到預期音訊；協商格式、實際PT與解碼器三個位置應互相覈對。"
+      ],
+      "table": {
+        "caption": "誰宣告、誰接收、誰發送",
+        "headers": [
+          "SDP來源",
+          "宣告接收端點",
+          "對方預期發送目的"
+        ],
+        "rows": [
+          [
+            "A offer",
+            "192.0.2.10:40000",
+            "B→A:40000"
+          ],
+          [
+            "B answer",
+            "198.51.100.20:40002",
+            "A→B:40002"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "重傳、重複消息與再協商：時間線不是四條永久不變",
+      "paragraphs": [
+        "UDP沒有TCP的運輸確認，SIP自身交易計時器可重傳請求或響應；相同Call-ID、CSeq與Via branch的INVITE多次出現不一定代表用戶打多通電話。先按交易關聯，檢查是否得到響應及響應方向。消息相同而間隔變化提供重傳線索，但準確計時與狀態仍依實現及規範，不是固定「三次就故障」。",
+        "通話中可能re-INVITE或其他協商改變媒體地址、Port、方向與編碼，媒體分析應使用生效的那一版offer/answer。舊40002尚有封包、新42002已啓用時，若只按第一份SDP永久過濾，就會出現假性的媒體消失。要建立協議變更時間與媒體切換窗口，這把控制層狀態與媒體證據連接起來。",
+        "同樣無ACK，可能客戶端未收200、客戶端已收卻未發送、ACK在另一條路、當前觀察漏捕或抓包提早結束。初始篩選只留INVITE和200也會製造無ACK現象。診斷先補完整Call-ID集合與足夠窗，再看兩端；不要把「Flow圖沒有」自動等同「線上沒有」。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：先還原信令，再建立媒體方向表",
+      "paragraphs": [
+        "用mixed篩sip.Call-ID == \"lab-a@example.invalid\"，加sip.Call-ID、sip.CSeq.method、sip.CSeq.seq及時間列。四筆覈對INVITE、180、200、ACK與tag，導出一份小表。然後展開INVITE與200的SDP，抄每個c=、m=、rtpmap、方向，自己建立誰向哪個目的IP/Port發送的表。",
+        "清空信令filter，改看(udp.port == 40000 || udp.port == 40002)且限定A/B。依方向先確認有40筆，再覈對RTP標頭或用Analyze→Decode As對相應UDP端點指定RTP。若工具已由SDP自動識別，無需重複強制。變因改成41000/41002，確認這屬於lab-b，不能拼入lab-a。",
+        "驗收：lab-a四筆信令與30/40ms間隔、兩條預期媒體方向、實際SSRC分開；明確40筆不表示無缺口，也不表示人耳聽見。再將過濾改成僅5060，報告媒體被條件排除而非設備無聲，恢復完整集合。製作環境無GUI，解析自動關聯須在所用版本覈對，原SIP本文與UDP結構已覈驗。"
       ],
       "code": {
-        "title": "這份教學檔的篩選與辨識",
-        "text": "sip\nsip.Call-ID == \"training-call-001@example.invalid\"\n來源 A：192.0.2.10:5060\n目的 B：198.51.100.20:5060"
-      },
-      "note": "example.invalid 是保留用途的教學網域；這份 PCAP 不連到真實 SIP 伺服器。"
+        "title": "信令核心字段導出",
+        "text": "tshark -r wireshark-maintenance-mixed.pcap -Y sip -T fields -E header=y -e frame.time_relative -e sip.Call-ID -e sip.CSeq.seq -e sip.CSeq.method -e sip.Status-Code"
+      }
     },
     {
-      "heading": "把控制流程按時間排好",
+      "kind": "diagnostic-case",
+      "heading": "接通卻單向無聲：相同症狀的多種機制",
       "paragraphs": [
-        "本檔 A 發 INVITE，B 回 100 Trying、180 Ringing、200 OK，A 再發 ACK。稍後 A 發 BYE，B 回 200 OK。這是一份刻意簡化的直接端點示例；真實部署可能有 Proxy、Registrar、認證、轉送與更多回應。",
-        "SIP 的 200 OK 是對某個請求的回覆，必須看 CSeq 才知道是 INVITE 還是 BYE。不能把 BYE 的 200 OK 當成接通證據。"
-      ],
-      "flow": [
-        "A → B INVITE",
-        "B → A 100 Trying",
-        "B → A 180 Ringing",
-        "B → A 200 OK (INVITE)",
-        "A → B ACK",
-        "A → B BYE",
-        "B → A 200 OK (BYE)"
-      ],
-      "note": "180 Ringing 表示信令回覆，不保證對端實體喇叭真的響；200 OK 也不保證音訊可聽。"
+        "案例給定A聽不到B，雙方UI都InCall。候選包括B未採音／發送、answer/offer接收端點錯誤、路徑擋住B→A、A解碼或播放失敗。先把方向寫成B發送、A接收；不要因爲A聽不到就先查A麥克風。用當前SDP確定A宣告的接收地址，再看B發送與A捕捉的同媒體來源。",
+        "追加證據一：B確有向A:40000送RTP，A也在同端點看到匹配SSRC，序號持續。運輸缺資料不再是優先候選；接着查A實際PT與解碼器。若A日誌使用Opus卻本次協商PCMU，有限修正應讓解析映射遵循本次SDP，並檢查消息更新生命週期。不要先大範圍改防火牆。",
+        "另一個追加證據版本：B發到A:41000，但本次有效offer只宣告40000，A41000無接收程序。優先追B使用了另一通或舊SDP的端點。兩種修正不同，症狀相同；都需迴歸正常、重撥與再協商，確認雙向媒體和解碼播放。單純出現200不是任何一種修復的驗收。"
+      ]
     },
     {
-      "heading": "從 SDP 讀出預告的音訊路徑",
+      "kind": "maintenance",
+      "heading": "分開報告控制、協商、運輸與播放",
       "paragraphs": [
-        "在 INVITE 的訊息本文展開 Session Description Protocol（SDP），找 c= 的媒體位址與 m=audio 40000 RTP/AVP 0。B 的 200 OK (INVITE) 中，SDP 宣告 198.51.100.20 的音訊 Port 40002；本檔對應的 RTP 流量是 A:40000 → B:40002 和 B:40002 → A:40000。",
-        "SDP 是通話雙方協商或宣告的媒體資訊。它告訴你預期往哪裡送，不能單靠 SDP 證明資料真的到達或聲音可播放。"
-      ],
-      "table": {
-        "caption": "本檔兩個方向的媒體端點",
-        "headers": [
-          "方向",
-          "來源",
-          "目的"
-        ],
-        "rows": [
-          [
-            "A → B",
-            "192.0.2.10:40000",
-            "198.51.100.20:40002"
-          ],
-          [
-            "B → A",
-            "198.51.100.20:40002",
-            "192.0.2.10:40000"
-          ]
-        ]
-      },
-      "note": "本檔使用 PCMU/8000 作為可辨認的示意媒體格式，但負載全部是固定教學位元組，沒有錄製語音。"
-    },
-    {
-      "heading": "VoIP Calls 與 Flow Sequence 幫你畫時間線",
-      "paragraphs": [
-        "可在「電話 → VoIP Calls（Telephony → VoIP Calls）」尋找這通被辨識的 SIP 呼叫，選取後開「Flow Sequence」看訊息方向。若介面或版本未把它列出，仍可用 sip 篩選與 Call-ID 手動讀控制訊號；不要因此宣稱 PCAP 沒有 SIP。",
-        "VoIP Calls 視窗依可見訊號建立關聯。若擷取從通話中間開始、缺關鍵封包或 SDP，工具可能無法完整連結 RTP。此時應回到原始 SIP 與 UDP 欄位。"
-      ],
-      "steps": [
-        "套 sip，按 Time 讀 INVITE 到 BYE。",
-        "逐筆核對 Call-ID 與 CSeq。",
-        "嘗試用 VoIP Calls／Flow Sequence 顯示流程。",
-        "回到 INVITE 與 200 OK 的 SDP，核對音訊 Port。"
-      ],
-      "note": "不同 Wireshark 版本的選單翻譯可能不同；官方指南提供英文功能名稱。"
-    },
-    {
-      "heading": "能接通、能收到 RTP、能聽見聲音：要分開寫",
-      "paragraphs": [
-        "若看到 INVITE 的 200 OK 與 ACK，可支持這段 SIP 訊號流程完成；若看到 RTP，才有媒體封包出現的證據；若要宣稱使用者聽見聲音，還要檢查 Codec、解碼、程式音訊路徑與設備。",
-        "本檔沒有真實麥克風或喇叭，也不包含公司軟體、Ozeki API 或無線電鏈路。練習的是如何提出下一個證據，不是推測現場架構。"
-      ],
-      "table": {
-        "caption": "三種不同結論",
-        "headers": [
-          "觀察",
-          "可支持",
-          "仍需查"
-        ],
-        "rows": [
-          [
-            "SIP 200 OK (INVITE) + ACK",
-            "控制訊號已進入建立狀態",
-            "RTP 是否出現"
-          ],
-          [
-            "兩方向 RTP 封包",
-            "媒體資料在此觀測點出現",
-            "封包是否完整、可解碼"
-          ],
-          [
-            "播放端真的有聲",
-            "人耳／設備觀察到輸出",
-            "若品質差，查丟包、抖動與音訊處理"
-          ]
-        ]
-      },
-      "note": "SIP、SDP 與 RTP 的通用原理後續在 VoIP 主題可再深入；本篇只練 Wireshark 判讀。"
+        "一份可交接通話記錄按層寫：同一dialog的INVITE結果、有效SDP方向及端點、每方向RTP出現位置、解碼和播放日誌。已有哪層證據、哪層尚未觀測一目瞭然。不要只列Call-ID與status200讓讀者猜因果；要解釋爲什麼下一步查解碼而不是網絡。",
+        "實際加密SIP可隱藏SDP，加密媒體也不適合直接播放；你可能需要端點日誌或授權的解密條件。工具看不到字段時，先標觀察限制，並用能獲得的方向、長度、時序與程序階段推進。未知公司SDK不應被硬寫成標準SIP類型，標準與產品擴展分別記錄。",
+        "本章針對普通RTP/AVP最小模型建立機制，並未涵蓋所有SIP狀態機、認證、安全或媒體穿越。複雜場景仍用同樣方法：關聯正確會話，找當前協商，再對照實際數據路徑。將基礎觀念補齊後，新規範是可擴充的規則，不再是必須死記的另一套名詞。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "【數量】此檔共有幾筆，sip 篩選後預期幾筆？",
-      "answer": "總共 16 筆；sip 篩選後 7 筆控制訊號。"
+      "level": "foundation",
+      "question": "爲什麼兩通同A5060與B5060的SIP不能只按UDP stream區分？",
+      "answer": [
+        "端點相同只表示運輸對話相同，應用可在其上承載多通會話。",
+        "用Call-ID及From/To tag區分dialog，再以CSeq方法關聯響應。",
+        "跨Proxy或B2BUA還要識別不同信令腿，不能借別通200作爲本通結果。"
+      ]
     },
     {
-      "question": "【流程】把 INVITE、100、180、200 (INVITE)、ACK 排成順序，誰先發起？",
-      "answer": "A 發 INVITE，B 依序回 100 Trying、180 Ringing、200 OK，A 回 ACK。"
+      "level": "foundation",
+      "question": "200 OK (BYE)與200 OK (INVITE)爲何不能用同一接通結論？",
+      "answer": [
+        "CSeq方法表示回應的請求動作。INVITE成功與結束會話的BYE成功處於不同階段。",
+        "先看Call-ID、CSeq與上下文，INVITE的正常2xx建立另需ACK；BYE不套同一模式。",
+        "統計所有200只代表若干成功響應，不能證明當前通話接通或有聲。"
+      ]
     },
     {
-      "question": "【CSeq】最後的 200 OK 代表通話接通嗎？",
-      "answer": "不是。要看 CSeq；最後一筆是對 BYE 的 200 OK，屬結束流程。"
+      "level": "application",
+      "question": "陌生資料：A的offer c=10.3.0.5,m=audio 35000；B的answer c=10.3.0.9,m=audio 37000。算兩個發送目的。",
+      "answer": [
+        "A宣告自己接收35000，所以B→10.3.0.5:35000；B宣告接收37000，所以A→10.3.0.9:37000。",
+        "這些是協商預期目的，不保證實際Port綁定或路由可達。",
+        "覈對實際UDP方向與端點，再檢查PT與解碼；不拿5060當媒體Port。"
+      ]
     },
     {
-      "question": "【SDP】哪兩個 UDP Port 應該承載教學 RTP？",
-      "answer": "A 使用 40000，B 使用 40002；需在 INVITE 與 200 OK 的 SDP 核對。"
+      "level": "application",
+      "question": "陌生資料：同Call-ID INVITE CSeq12，收到200 CSeq11 OPTIONS。可以配成成功嗎？",
+      "answer": [
+        "不能，CSeq數字與方法都不匹配本次INVITE。",
+        "保留響應所屬的OPTIONS交易，繼續找12 INVITE最終結果。",
+        "擴大窗口或查另一端，不用不相干的200填補缺證據。"
+      ]
     },
     {
-      "question": "【證據】只看到 SDP 寫 40002，就能說 B 已收到音訊嗎？",
-      "answer": "不能。SDP 是宣告或協商；還要看實際 RTP／UDP 封包與 B 端觀測。"
+      "level": "application",
+      "question": "陌生資料：session級c=10.0.0.1，audio的媒體級c=10.0.0.2且m=audio36000。哪個地址用於audio？",
+      "answer": [
+        "媒體級c覆蓋該m的會話級連接地址，所以audio預期接收10.0.0.2:36000。",
+        "其他沒有媒體級覆蓋的m可能仍用10.0.0.1，需逐段讀。",
+        "實際抓包逐媒體覈對，不把第一行c套給全部。"
+      ]
     },
     {
-      "question": "【工具】VoIP Calls 視窗沒列出呼叫時，應直接說檔案沒有 SIP 嗎？",
-      "answer": "不能。先用 sip 篩選和 Call-ID 查原始訊號；可能因擷取不完整或解析設定使自動關聯失敗。"
+      "level": "application",
+      "question": "陌生資料：當前re-INVITE將B接收Port從39000改39200，filter仍只看39000，隨後零媒體。提出最先動作。",
+      "answer": [
+        "先確認新的offer/answer已生效及變更時間，更新查詢覆蓋39200與切換前後。",
+        "舊filter零筆可能是查詢未涵蓋新端點，不是設備停止發送。",
+        "迴歸檢查新方向、編碼及播放；保留舊窗說明遷移，不能永久使用初始SDP。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "A聽不到B，A端已收到相符SSRC/PT的RTP，A解碼成功。下一層候選與驗證？",
+      "answer": [
+        "運輸與解碼有證據，候選轉到播放緩衝、設備選擇、音量、靜音或音訊路由。",
+        "查實際輸出設備與播放樣本／緩衝記錄，用可控本機音源驗證輸出鏈。",
+        "修正具體裝置或路由後驗證B→A及反向，不能只重看SIP200。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "相同Call-ID和CSeq的INVITE出現三次，服務器只記一次處理，能說用戶發起三通嗎？",
+      "answer": [
+        "不能，可能SIP/UDP交易重傳；檢查Via branch、響應與時間。",
+        "服務器一次處理與相同交易字段支持重傳／去重機制，但需觀察窗口完整。",
+        "報告同一交易的多次傳輸，而不是三通電話；若不同tag或交易再查會話層。"
+      ]
     }
   ],
   "recap": [
-    "用 Call-ID、CSeq、時間與方向對齊同一通呼叫。",
-    "INVITE 的 200 OK 與 BYE 的 200 OK 意義不同。",
-    "SDP 宣告媒體端點，不保證媒體送達。",
-    "VoIP Calls 是整理工具，原始 SIP 欄位才是判斷基礎。",
-    "SIP 接通、RTP 出現與實際有聲需分開驗證。"
+    "能依Call-ID、標籤、CSeq與方法關聯同一通話的訊號。",
+    "能從SDP offer/answer推導雙向媒體目的端點與編碼。",
+    "能分開判讀訊號、協商、媒體及應用播放故障。"
   ],
   "sources": [
     {
-      "label": "Wireshark 官方指南：VoIP Calls 與 Flow Sequence",
+      "label": "Wireshark 官方：VoIP Calls 與 SIP Flow Sequence",
       "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
     },
     {
-      "label": "Wireshark 官方 SIP 欄位參考",
+      "label": "Wireshark 官方：SIP 欄位名稱及適用版本",
       "url": "https://www.wireshark.org/docs/dfref/s/sip.html"
     },
     {
-      "label": "RFC 3261：SIP",
-      "url": "https://www.rfc-editor.org/rfc/rfc3261.html"
+      "label": "IETF RFC 3261：SIP消息、Dialog與Transaction",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261.html#section-12"
     },
     {
-      "label": "RFC 8866：SDP",
-      "url": "https://www.rfc-editor.org/rfc/rfc8866.html"
+      "label": "IETF RFC 3264：Offer／Answer媒體協商",
+      "url": "https://www.rfc-editor.org/rfc/rfc3264.html#section-6"
+    },
+    {
+      "label": "IETF RFC 8866：SDP媒體字段",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866.html#section-5.14"
     }
-  ]
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
+      "label": "第二版混合流量 PCAP",
+      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-manifest.json",
+      "label": "可重現資料清單",
+      "description": "檔案雜湊、frame 的原始欄位與合成情境名稱；先獨立分析，再用清單核對。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      40,
+      60
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+  }
 }

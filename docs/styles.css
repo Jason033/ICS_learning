@@ -143,3 +143,25 @@ button { cursor: pointer; }
 .lesson-image img { display: block; width: 100%; height: auto; border: 1px solid #d9e7dd; border-radius: 10px; background: white; }
 .lesson-image figcaption { color: #698074; font-size: 11px; line-height: 1.6; margin: 8px 0 0; }
 @media (max-width: 480px) { .lesson-resources { padding: 16px; }.lesson-image img { min-width: 0; } }
+
+/* Long-form engineering lessons: task-based time and navigation. */
+.lesson-article { overflow-wrap: anywhere; }
+.estimate-details { color: var(--muted); font-size: 12px; line-height: 1.8; }
+.estimate-details summary { cursor: pointer; }
+.lesson-meta { flex-wrap: wrap; line-height: 1.8; }
+.chapter-state { white-space: normal; max-width: 235px; line-height: 1.7; }
+.lesson-toc .aside-sticky { max-height: calc(100vh - 130px); overflow-y: auto; padding-right: 5px; }
+.mobile-lesson-toc { display: none; background: #f0f4f1; border: 1px solid #dce7dd; border-radius: 10px; margin: 24px 0 32px; padding: 13px 18px; }
+.mobile-lesson-toc summary { cursor: pointer; font-weight: 700; color: var(--green); }
+.mobile-lesson-toc nav { margin-top: 12px; }
+.mobile-lesson-toc .toc-link { font-size: 14px; padding: 9px 0; }
+.prerequisite-box { margin: 24px 0; padding: 20px 24px; border: 1px solid #dce7dd; border-radius: 10px; }
+.prerequisite-box h2 { font-size: 17px; margin: 0 0 12px; }
+.prerequisite-box ul { margin: 0; padding-left: 20px; color: #465d53; font-size: 14px; line-height: 1.9; }
+.section-kind { color: #587963 !important; font-size: 11px !important; font-weight: 700; letter-spacing: .05em; }
+.time-basis { font-size: 12px; color: var(--muted); line-height: 1.8; }
+.code-example pre { white-space: pre; overflow-x: auto; overflow-wrap: normal; }
+.exercise-card details p { line-height: 1.95; margin: 0 0 15px; }
+.exercise-card details p:last-child { margin-bottom: 0; }
+@media (max-width: 1100px) { .mobile-lesson-toc { display: block; } }
+@media (max-width: 640px) { .chapter-state { max-width: none; } }

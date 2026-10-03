@@ -1,192 +1,267 @@
 {
-  "intro": "單看一行封包，常看不出完整對話。這篇把一條 TCP 串流與統計視窗接起來：Follow TCP Stream 看應用資料，Conversations 看雙端對話，Endpoints 看出現過的端點，I/O Graphs 看流量隨時間變化。每個工具都只是不同視角，不能取代細節欄位。",
-  "plan": [
-    {
-      "label": "追一次 TCP 串流",
-      "minutes": 10
-    },
-    {
-      "label": "讀 Conversations 與 Endpoints",
-      "minutes": 9
-    },
-    {
-      "label": "看 I/O Graphs 與時間窗",
-      "minutes": 9
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 12
-    }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/wireshark-first-capture.pcap",
-      "label": "下載：第一次抓包練習檔（PCAP）",
-      "description": "用來追 GET /status 與 200 OK，並查看端點／對話。"
-    },
-    {
-      "path": "./assets/labs/wireshark-tcp-cases.pcap",
-      "label": "下載：TCP 故障練習檔（PCAP）",
-      "description": "時間跨度約 5 秒，適合比較 SYN 嘗試與另一條 TCP 對話。"
-    }
+  "contentVersion": 2,
+  "intro": "面對成千上萬封包，逐筆讀會迷失；直接看總流量又會錯把大流當故障。你需要不同尺度：端點找誰在活動、對話找哪兩端互動、串流讀應用資料、時間圖找變化。本章說清每種統計的計數對象與限制，並用重傳和觀測遺漏展示為何「包數多」不是「處理多」。",
+  "prerequisites": [
+    "知道 IP 是主機位址、Port 是應用端點；本章遇到傳輸與擷取新概念會從機制解釋。",
+    "可以使用自己電腦上的 Wireshark 開檔；未安裝時可先讀本章完整資料與推導，再進行操作。"
   ],
   "goals": [
-    "能從封包開啟 Follow TCP Stream，讀出兩端的應用資料方向。",
-    "能用 Conversations 與 Endpoints 分清「一條對話」和「一個端點」。",
-    "能用 I/O Graphs 找出流量何時出現，同時理解時間區間限制。",
-    "能在統計數字之外回到原始封包驗證。"
+    "能區分端點、對話、TCP串流與應用請求，不混用識別範圍。",
+    "能解釋Follow如何重建bytes及何時不完整。",
+    "能用方向、區間與統計層級比較故障，而非只按流量排序。"
   ],
   "sections": [
     {
-      "heading": "Follow TCP Stream：把同一條 TCP 的位元組放在一起看",
+      "kind": "concept",
+      "heading": "Endpoint、Conversation、Stream、Request各代表什麼",
       "paragraphs": [
-        "打開第一份 PCAP，選第 6 筆 HTTP GET，對該封包使用「分析 → 追蹤 → TCP 串流（Analyze → Follow → TCP Stream）」。視窗會把同一條 TCP 連線兩方向的應用位元組排在一起；此檔可見 GET /status 與 HTTP/1.1 200 OK。",
-        "Follow 工具通常會順便套用只顯示該串流的顯示篩選。關掉視窗後若封包列表只剩部分封包，先看上方篩選欄，不要誤以為原檔被刪。"
-      ],
-      "steps": [
-        "先選第 6 筆，確認它屬於 TCP 54000 ↔ 8080。",
-        "開 Follow TCP Stream，找出請求、回覆及各自方向。",
-        "關閉視窗，檢查上方是否留下 tcp.stream 條件。",
-        "清除篩選，再確認總數仍是 13 筆。"
-      ],
-      "note": "Follow 顯示的是重新整理後的串流資料，不等於原本封包邊界；加密流量也不會憑空變明文。"
+        "Endpoint是某層的一個端點：Ethernet可按MAC，IP可按地址，TCP/UDP通常還包括Port。Conversation把兩個端點之間的交互合起來統計，方向A→B與B→A仍可分開。它適合回答誰跟誰交換多少資料，不會自動辨認「切換成功」或「第幾次查詢」。同一主機可有很多應用端點，同一對主機也可同時跑不同協定。",
+        "TCP Stream代表一條被工具識別的連線。四元組是來源IP、來源Port、目的IP、目的Port，協定使它構成常說的五元組；長時間檔案還可能出現端點重用，所以握手、初始序號及時間範圍有助區分不同生命週期。tcp.stream是Wireshark檔案內的索引，不是原始封包欄位；重新裁檔後索引可能改變。",
+        "Request是應用協定的單次操作，例如q17。長連線可傳很多request，一個request也可能有多次重試或經多個服務。這是為何把「這條stream有回覆」直接當作「我的q18有回覆」會出錯。從對話統計找候選後，還要用應用ID、格式及時間關係去關聯，最後才讀回覆內容。"
+      ]
     },
     {
-      "heading": "Conversations：一對端點之間的對話",
+      "kind": "mechanism",
+      "heading": "Follow TCP Stream：依序號恢復資料，不是原封包播放器",
       "paragraphs": [
-        "「統計 → 對話（Statistics → Conversations）」可依 Ethernet、IPv4、TCP、UDP 等層次列出成對端點與封包／位元組數。第一份 PCAP 的 TCP 對話是 192.0.2.10:54000 與 198.51.100.20:8080；DNS 是另一條 UDP 對話。",
-        "對話視窗可幫你快速找到最活躍的配對，但它的封包數只統計這個擷取檔內、目前設定下可計入的資料；不等於對端真實總流量。"
+        "TCP把程式寫入的bytes切成傳輸片段，接收時再組成連續流；單次send與單個segment或recv沒有一對一關係。Follow依捕捉到的序號範圍重建各方向資料，將重送與亂序的傳輸細節整理成較接近應用讀到的內容。所以你可用它讀全文，但不能用全文的排版推導每次send大小或封包到達順序。",
+        "若同一13-byte區間送兩次，TCP正常接收不應將它當兩個應用請求交付；Follow通常也不重複拼入同樣範圍。若應用真的重送REQ q17，其第二次可能使用新的TCP序號，是新bytes但同request ID。前者是傳輸重傳，後者是業務重試；統計丟包與檢查重複執行時要分清兩種機制。",
+        "捕捉缺一段時，工具不能憑空填回內容；開始抓在連線中途時，也可能缺最初格式、協商或資料。以ASCII顯示看到點號常是不可列印bytes，例如長度前綴，不代表每個點號都是遺失。要看二進位協定選Hex Dump或Raw，並回到原始seq核對連續範圍。加密資料即使重組完整，也仍是加密bytes。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：重送為何有26bytes流量卻只有一個請求",
+      "paragraphs": [
+        "在mixed用tcp.port == 51004隔離q19：客戶端.530和.830各送13bytes，兩次原seq都是5001，bytes完全相同。依序號區間，兩段都佔5001～5013；第二次不是新資料5014以後。若把tcp.len直接相加得到26，只代表捕捉到26bytes的傳輸副本，不是應用收到兩個13-byte請求。",
+        "後續ACK5014確認連續到5013，服務器.850回15-byte RSP q19 READY。Follow選擇客戶端方向，應讀到一份00 0b加REQ q19 GET；服務器方向一份15-byte回覆。這與packet列表的兩條13-byte發送不矛盾，它們計數對象不同。報告可以同時保存「可見傳輸payload26」與「唯一序號範圍13」。",
+        "接收端reference沒有.530第一份，只有.830副本；兩端聯合說明本合成情境第一份未在接收觀測出現。實務仍要確認抓包未丟棄、位置正確和時鐘關係，才能支持兩點之間的遺失假說。Follow摘要無法指出第一份在哪消失，所以仍要保留packet視圖作爲傳輸證據。"
       ],
       "table": {
-        "caption": "統計視窗各自回答什麼",
+        "caption": "同一串資料的三種計量",
         "headers": [
-          "工具",
-          "你可先看",
-          "不能直接推出"
+          "計量",
+          "q19觀測值",
+          "用途"
         ],
         "rows": [
           [
-            "Conversations",
-            "哪兩個端點互相通訊、檔案內有多少資料",
-            "對端程式成功處理"
+            "發送捕捉tcp.len總和",
+            "26 bytes",
+            "可見負載含重送"
           ],
           [
-            "Endpoints",
-            "檔案出現過哪些 MAC／IP／Port",
-            "每個端點必定是一個獨立設備"
+            "唯一Seq覆蓋範圍",
+            "13 bytes",
+            "TCP新資料量"
           ],
           [
-            "I/O Graphs",
-            "流量在哪些時間區間出現",
-            "尖峰一定由網路故障造成"
+            "應用本文",
+            "11 bytes",
+            "協定命令內容"
           ]
         ]
-      },
-      "note": "多張網卡、NAT、代理或擷取點不同時，同一業務的端點外觀可能變化。"
+      }
     },
     {
-      "heading": "Endpoints：先盤點，再聚焦",
+      "kind": "worked-example",
+      "heading": "例題二：Follow看不到回覆，ACK卻已確認它",
       "paragraphs": [
-        "「統計 → 端點（Statistics → Endpoints）」可列出檔案中被辨認的端點。以 IPv4 分頁看，第一份檔案應能找到 A 192.0.2.10、DNS 192.0.2.53 與 B 198.51.100.20。",
-        "端點清單像通訊錄，對話清單像通話紀錄：前者回答「出現過誰」，後者回答「誰和誰有交換」。兩者仍需搭配時間與封包細節。"
-      ],
-      "flow": [
-        "Endpoints 找參與者",
-        "Conversations 找配對",
-        "Follow Stream 讀內容",
-        "回原始封包核對"
-      ],
-      "note": "Wireshark 的名稱解析設定可能讓位址改顯示為名稱；比對時先確認實際 IP。"
+        "在mixed用tcp.port == 51005找q20，客戶端.630請求13bytes，服務器.640 ACK6014；隨後客戶端.660 ACK9016，但這份檔沒有服務器seq9001～9015的15-byte回覆。ACK9016說明客戶端TCP聲稱已連續收到該區間；它與「服務器從未送」這個簡單解釋衝突。不能因Follow服務器方向爲空就斷定沒有回覆。",
+        "打開reference同端點，.650能找到seq9001 len15 RSP q20 READY，客戶端確認與原檔一致。合成模型的差異是mixed漏存了這一筆，不是協議真的沒發送。Follow只能使用當前檔，無法跨文件猜內容；換reference後纔有完整資料。將兩個文件的端點、seq和payload對照，解釋比截圖Follow空白更有力。",
+        "真實現場可能是抓包遺漏、只抓單方向、截斷、重複鏡像或文件時間窗不足，reference本身也可能不完整。合理結論是本檔存在ACK覆蓋未捕獲bytes的證據，需查觀測完整性；不是在第一次看到ACK就直接認定設備狀態爲READY。ACK確認運輸bytes而非應用已解析，仍需應用層證據。"
+      ]
     },
     {
-      "heading": "I/O Graphs：用時間看流量，不只看總數",
+      "kind": "mechanism",
+      "heading": "Conversations：誰大、誰久、哪個方向，不是哪個最壞",
       "paragraphs": [
-        "「統計 → I/O 圖表（Statistics → I/O Graphs）」把符合條件的封包按時間區間計數或累加。第一份 PCAP 全部不到一秒，若使用 1 秒區間，大多落在同一區；改看第二份 TCP 案例，較容易看出 0、1、3、5 秒附近有封包。",
-        "圖表能指出事件時段，不能單靠一條曲線判定丟包或程式原因。請記錄圖表的顯示篩選、區間大小和量測單位，再回封包列表看代表性封包。"
-      ],
-      "steps": [
-        "開第二份 PCAP，清除既有顯示篩選。",
-        "開 I/O Graphs，觀察大約 0、1、3、5 秒的封包出現時點。",
-        "套 tcp.port == 7000，只看三次 SYN 嘗試。",
-        "回列表確認這三筆沒有在檔案內看到回覆。"
-      ],
-      "note": "圖表的「沒有流量」只表示這份檔案／觀測點／篩選在那個區間沒有顯示封包。"
+        "在Statistics→Conversations選擇TCP，可按包數、Bytes、Duration排序。排序適合發現候選：短時大量建立可能是重試，長時高字節可能是正常媒體或文件傳送。統計列通常計frame或協議相關的包長，不等於應用有效bytes。若要比較有效負載，明確導出tcp.len；若要比較捕捉流量，明確使用frame.len，並納入重傳。",
+        "雙向不平衡不自動異常。DNS常是小查詢大回復，媒體可能單向廣播，控制協議可能大部分時間只有心跳。先建立正常對話預期，再看偏離。q18的客戶端發送與服務器純ACK可以形成有包數、有bytes的雙向對話，卻沒有業務回覆；對話存在只能證實網絡互動，不保證功能正常。",
+        "Limit to display filter等選項影響統計樣本，開窗時記當前filter與選項狀態。有些視圖顯示全集，也有只計符合條件；不能看一張截圖猜範圍。建議先清空過濾取得全集基準，再應用已驗證的目標集合，比較統計。拿兩個文件做對照時，時間窗、端點範圍和計量單位都應一致。"
+      ]
     },
     {
-      "heading": "統計視窗常見誤判",
+      "kind": "mechanism",
+      "heading": "I/O Graphs：桶寬、單位與平均會改變故事",
       "paragraphs": [
-        "總封包多不等於品質好，沒有 RTP 也不等於沒有聲音：可能抓錯位置、被加密、不是此協定，或只截到部分時間。Follow Stream 看得到文字，也不代表對方最終設備已完成動作。",
-        "有用的工作順序是：先用統計工具縮小候選端點與時間，再回到原始封包讀協定欄位，最後和應用程式 log 對齊。"
+        "時間圖把數據分到固定時間區間，稱爲bucket。若bucket寬1秒，1.00至1.99的突發會合成一根；寬100ms可顯現更細變化，但噪聲也會更明顯。Y軸可以是包數、bytes、bit率或字段聚合等，必須記錄實際選項。每秒包數是傳輸事件頻度，每秒bytes是可見流量，二者對小包與大包會呈現不同印象。",
+        "本套件DNS噪聲每50ms一筆，而q19重傳相隔300ms。若畫所有包數，DNS可能掩蓋目標重傳；若先篩到51004，圖會顯現握手、發送與等待間隔。圖只能幫助你定位時間段；用寬bucket看到某秒20包不能說明每50ms準時一包，也不能代替逐筆相鄰間隔。",
+        "比率要有分母，區間也要有意義。假設一個200ms窗口內有10包，總1000bytes，簡單平均是50packets/s、5000bytes/s；改用1秒包含閒置後會變成10packets/s與1000bytes/s。這不是系統性能真的改變，是窗口不同。報表必須寫清時間範圍、是否包含閒置、樣本數與單位，才能單看結論瞭解前因後果。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題三：兩個方向各20筆，仍可有遺失與重複",
+      "paragraphs": [
+        "媒體A→B seq100～119有20筆；B→A原本seq300～319，但mixed未收錄305，又多了一份312，所以這方向仍有20筆。Endpoints或Conversations包數看似對稱，並不能保證序號連續。對相同SSRC，實際唯一序號數19，聲明範圍20。需要按方向、來源與序號去重後才能區分觀察的缺口。",
+        "如果總計frame bytes一樣，更會讓人誤說完全正常，因爲每筆音頻封包長相同。實際一個預期幀沒在當前檔出現、另一個重複出現，合計數量抵消。這個例子讓統計有正確定位：先發現規模與方向，再用協議規則驗證完整性；不是證明統計沒用，而是別用總和回答順序和內容的問題。",
+        "另一路lab-b SSRC0x33333333只有8筆，但它的時間窗較短且是一條獨立呼叫。把它跟A的另一方向加總更會扭曲結果。需要把集合與窗口選擇寫在統計旁，再決定某指標應怎樣比較。媒體質量還要考慮晚到、解碼和播放，單憑接收數量不足以下結論。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：同一資料建立流、負載和時間三份摘要",
+      "paragraphs": [
+        "打開mixed，先在Conversations記錄51000、51003、51004、51005、51006等TCP端點，並導出或抄錄方向、包數與持續範圍。然後Follow 51000與51004，選擇Hex查看前綴，分別保存各方向的可見應用bytes。保存內容時註明重組文件，不把它命名爲原始單封包。",
+        "建立兩張I/O Graphs：全集包數圖與tcp.port == 51004目標圖，先選100ms間隔再換1秒，記錄差異。變因只改bucket，不改數據或端點。隨後導出51004原始seq、tcp.len與時間，計算總26和唯一13；換reference覈對第一份.530不存在。再對51005用ACK與reference找出缺失回覆。",
+        "驗收需提交三種不同尺度的摘要，每一份說明用途與侷限；q19總傳輸payload26、唯一13、回應15；q20當前檔缺15但ACK9016覆蓋該區間。圖的單位、範圍、過濾式與bucket均記錄。若Follow顯示不可列印點號，改Hex確認，不把點號當異常。GUI尚未在製作環境測試，原始值以獨立解析覈驗。"
       ],
-      "table": {
-        "caption": "看到結果後下一步",
-        "headers": [
-          "觀察",
-          "合理下一步"
-        ],
-        "rows": [
-          [
-            "Conversations 有一條 TCP 對話",
-            "選該對話封包，檢查握手與應用回覆"
-          ],
-          [
-            "I/O Graphs 某秒升高",
-            "查看那一秒的協定與方向"
-          ],
-          [
-            "Follow Stream 只有請求",
-            "查是否有回覆封包、解密限制與擷取完整性"
-          ]
-        ]
-      },
-      "note": "本章所有統計只對教學檔成立，不是現場設備的實測值。"
+      "code": {
+        "title": "不用假設固定stream索引的欄位匯出",
+        "text": "tshark -r wireshark-maintenance-mixed.pcap -Y \"tcp.port == 51004\" -T fields -E header=y -E separator=, -e frame.time_relative -e tcp.stream -e tcp.seq_raw -e tcp.ack_raw -e tcp.len"
+      }
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "流量最大的那條不是根因：用競爭假說取證",
+      "paragraphs": [
+        "症狀是q18在500ms期限內無業務回應，畫全局圖恰有DNS持續流量。候選一是網絡擁塞，候選二是服務器應用排隊；圖上DNS最多不直接支持擁塞，它可能一直是正常背景。先與正常q17及ACK時序比較：q18請求後的純ACK只相隔10ms，運輸能收到並回確認，但沒有應用資料。",
+        "補充服務器log顯示q18已解析並進入depth8隊列，完成發生在期限後；若同窗口q17及其他TCP都穩定，應用排隊比全網擁塞更符合證據。有限修正應針對隊列服務能力或非必要工作，不先把所有DNS關掉。即使暫時關DNS後成功，也可能是偶然時段變化而非因果。",
+        "驗證需在相同負載與請求範圍記錄隊列長度、處理時間、TCP重傳與業務回覆時間，比較修正前後。圖用來定位變動窗口，log解釋應用狀態，協議字段說明運輸。三者各有用途，組合後才構成工程結論；只貼最大流量排名沒有因果說明。"
+      ]
+    },
+    {
+      "kind": "maintenance",
+      "heading": "導出的摘要必須保留計數對象與原檔路徑",
+      "paragraphs": [
+        "交接時不要只給CSV一列Bytes。至少註明過濾式、起止時間、端點方向、工具版本、單位層級與是否計重送。附上原檔與關鍵frame範圍，下一人才能重算。不同統計視圖得出不同byte總數時，先查對象是否frame、payload或唯一數據，不馬上認定工具bug。",
+        "每個複雜問題先建立一張連接地圖：TCP用端點和生命週期，UDP媒體用協商端點和SSRC，應用用請求ID。三種ID互相鏈接但不互相替代。未知協議不需要硬套HTTP或SIP，使用實際格式定義；工具暫時只識別Data時仍可按端點和bytes排查。",
+        "統計也是取樣：觀測窗太短會遺漏故障前狀態，過濾只保留重傳會失去原發送，開始抓在中途會破壞流索引與重組。保留足夠上下文後再製作重點視圖。能夠解釋爲什麼某數變了，比宣稱「這個工具說異常」更有維護價值。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "在第一份 PCAP 選 HTTP GET 追蹤 TCP 串流，應看到哪兩個主要應用訊息？",
-      "answer": "A 發送 GET /status，B 回 HTTP/1.1 200 OK，內容包含 {\"status\":\"ready\"}。"
+      "level": "foundation",
+      "question": "同一TCP長連接有q30與q31，stream有回覆是否足以說q31成功？",
+      "answer": [
+        "不夠，stream是傳輸連接而request是單次業務操作。",
+        "應解析回應ID、格式與發生時間，確認屬於q31而非q30。",
+        "再依協議成功語義驗證；傳輸數據存在與業務成功不同。"
+      ]
     },
     {
-      "question": "關閉 Follow TCP Stream 後，列表只剩 TCP 封包，原本 DNS 被刪了嗎？",
-      "answer": "沒有。Follow 可能留下 tcp.stream 顯示篩選；清掉後原本 DNS 仍在檔案。"
+      "level": "foundation",
+      "question": "Follow中點號與packet列表兩筆相同數據分別怎樣解釋？",
+      "answer": [
+        "點號可表示不可列印byte，例如長度前綴，應換Hex覈對。",
+        "相同payload兩筆可能同seq重傳，也可能新seq的業務重試；先比較範圍。",
+        "Follow是重建流不是逐筆播放器，不能由文本重複與否反推所有傳輸事件。"
+      ]
     },
     {
-      "question": "Endpoints 與 Conversations 的差別是什麼？",
-      "answer": "Endpoints 盤點出現過的端點；Conversations 列出成對交換。兩者都不是應用成功的證明。"
+      "level": "application",
+      "question": "陌生資料：seq2001 len30；seq2001 len30再次；seq2031 len10。算可見payload總量與唯一範圍。",
+      "answer": [
+        "總量30＋30＋10＝70bytes。前兩筆佔同一2001～2030區間，第三筆2031～2040。",
+        "唯一連續範圍2001～2040共40bytes；第二筆是重複覆蓋30。",
+        "若是同方向同連接，ACK2041可確認連續40；這些計算不證明有幾個業務請求，仍需framing。"
+      ]
     },
     {
-      "question": "第一份檔案的 IPv4 Endpoints 預期有哪三個位址？",
-      "answer": "192.0.2.10、192.0.2.53、198.51.100.20。這些是教學保留位址。"
+      "level": "application",
+      "question": "陌生資料：400ms窗口8包共1600bytes；另外600ms閒置。分別按活動窗與整秒算packets/s和bytes/s。",
+      "answer": [
+        "活動窗.4秒：8/.4＝20packets/s，1600/.4＝4000bytes/s。",
+        "整秒：8/1＝8packets/s，1600/1＝1600bytes/s。",
+        "註明窗口與閒置是否包含，不能拿兩種分母直接比較機器效率。"
+      ]
     },
     {
-      "question": "第二份 PCAP 中 tcp.port == 7000 的三筆 SYN 分別在 0、1、3 秒附近。I/O Graphs 的空白可證明 B 沒收到嗎？",
-      "answer": "不能。只表示這個擷取檔和目前條件下沒有看到回覆；仍需 B 端或路徑上的證據。"
+      "level": "application",
+      "question": "陌生資料：SSRC X序號10、11、13、13、14，SSRC Y序號900、901。總7筆是否說明X完整？",
+      "answer": [
+        "X獨立範圍10～14應有5個不同序號，實際唯一4缺12，13重複一次。",
+        "Y是獨立來源，不能補X的缺口；總包數只是計量。",
+        "報告X觀測缺口與重複，需另一觀測點確認未發送、路徑遺失或抓包遺漏。"
+      ]
     },
     {
-      "question": "Follow Stream 能看到 STATUS? 卻沒有文字回覆，就能說 B 程式壞了嗎？",
-      "answer": "不能。需確認擷取完整、B 程式是否收到與處理，以及是否走其他回覆路徑。"
+      "level": "application",
+      "question": "陌生資料：當前檔沒有seq7001～7020的服務器data，卻有客戶端ACK7021。下一步該補何證據？",
+      "answer": [
+        "ACK覆蓋該20-byte區間，支持客戶端TCP已收到連續到7020的聲明，與從未發送不一致。",
+        "覈對連接基準、時間窗與雙向抓包，查reference同區間，排除選錯連接或捕捉遺漏。",
+        "不能憑ACK猜內容，若需正文必須取得完整觀測或應用log。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "對話Bytes最高的是備份服務，故障是PTT首音延遲；如何避免錯誤歸因？",
+      "answer": [
+        "高流量只產生候選，不證明擁塞；比較故障時段的目標流延遲、重傳、隊列或丟棄。",
+        "對照無備份時和有備份時的相同PTT操作，保持其他條件，記錄端點與時間。",
+        "若目標網絡穩定卻音頻緩衝增長，轉查應用媒體鏈；有限修正後用同一指標迴歸。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "導出只含重傳的PCAP之後Follow亂碼，與原檔正常。可能因何？",
+      "answer": [
+        "衍生檔缺原發送、其他區間或應用頭；重組上下文不足可導致內容不完整。",
+        "回原檔用完整stream或足夠窗口導出，保留雙向與握手。",
+        "比較seq覆蓋範圍及bytes，驗收是恢復完整數據；不是修改發送端協議來遷就不完整衍生檔。"
+      ]
     }
   ],
   "recap": [
-    "Follow TCP Stream 讓你看同一條連線的應用位元組，會影響顯示篩選。",
-    "Conversations 看配對，Endpoints 看參與者。",
-    "I/O Graphs 看時段，須說明區間、條件和單位。",
-    "統計視窗只在檔案可見範圍內計算。",
-    "用統計找線索，回原始封包與 log 驗證。"
+    "能區分端點、對話、TCP串流與應用請求，不混用識別範圍。",
+    "能解釋Follow如何重建bytes及何時不完整。",
+    "能用方向、區間與統計層級比較故障，而非只按流量排序。"
   ],
   "sources": [
     {
-      "label": "Wireshark 官方指南：Follow Protocol Streams",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvFollowStreamSection.html"
+      "label": "Wireshark 官方：Conversations 統計",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChStatConversations.html"
     },
     {
-      "label": "Wireshark 官方指南：I/O Graphs",
+      "label": "Wireshark 官方：I/O Graphs 的統計量",
       "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChStatIOGraphs.html"
     },
     {
-      "label": "Wireshark 官方使用指南：Conversations 與 Endpoints",
-      "url": "https://www.wireshark.org/docs/wsug_html/"
+      "label": "Wireshark 官方：追蹤協定串流",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvFollowStreamSection.html"
+    },
+    {
+      "label": "Wireshark 官方：TCP 與應用資料重組",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvReassemblySection.html"
+    },
+    {
+      "label": "Wireshark 官方：TShark 讀檔、篩選與匯出",
+      "url": "https://www.wireshark.org/docs/man-pages/tshark.html"
     }
-  ]
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
+      "label": "第二版混合流量 PCAP",
+      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
+      "label": "第二版對照觀測 PCAP",
+      "description": "172 個合成 frame；與混合檔的遺漏位置不同，可練習觀測不完整的推理。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-manifest.json",
+      "label": "可重現資料清單",
+      "description": "檔案雜湊、frame 的原始欄位與合成情境名稱；先獨立分析，再用清單核對。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      40,
+      60
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+  }
 }

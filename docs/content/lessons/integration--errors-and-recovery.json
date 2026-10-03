@@ -1,160 +1,254 @@
 {
-  "intro": "錯誤處理的目標不是把畫面改成綠色，而是保留已知、未知和可安全採取的下一步。本章用虛構錯誤碼與五種本機模擬情況比較，練習逾時、重試、晚到與重連。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "錯誤處理不是把所有失敗包進catch再重連。你必須知道失敗發生在哪一階段、操作是否可能已執行、當前觀察還是否有效。這章建立例外、拒絕、逾時與未知的基本模型，再推導安全重試、晚到結果、恢復與清理。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      13,
+      23
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 recovery 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能依錯誤發生層次選檢查。",
-    "能說明逾時後遠端結果可能未知。",
-    "能避免重連後由舊事件覆蓋新狀態。"
+    "按操作階段分類例外、拒絕與逾時，不把觀察失敗當任務沒執行。",
+    "寫出可解釋的等待、取消、重試與重連政策。",
+    "從錯誤路徑保存上下文和所有權，驗證恢復後不會重復或串舊狀態。"
   ],
   "sections": [
     {
-      "heading": "先分類錯誤在哪一層",
+      "heading": "失敗有階段，恢復動作由階段決定",
+      "kind": "concept",
       "paragraphs": [
-        "輸入驗證失敗、通道無法建立、身分被拒絕、Session 失效、命令格式錯、設備忙碌、等待結果逾時，各需要不同證據。",
-        "DemoCtrl-A 的 `E_AUTH`、`E_FORMAT`、`E_BUSY` 只是虛構文件卡例子，不是通用廠商錯誤碼；真實代碼必須查相符版本。"
+        "參數錯誤可在本地驗證時阻止發送；本地入隊錯誤可能尚未外送；部分傳輸失敗可能已經送出一部分；遠端拒絕說明對應操作被明確拒絕；響應失去則操作可能已經執行。它們都讓用戶沒看到成功，但事實與可安全動作不同。維護不能把所有情況壓成false再無條件重復實體命令。",
+        "建立階段表可以把恢復選擇具體化：NotSent可修輸入後新操作，Rejected可查規則與原因，Accepted但無終態是Unknown需查詢/等待/去重契約。一個例外類型也不總唯一決定階段；IOException可能來自寫前或寫中，需實現/紀錄告訴你送到哪。Adapter應保留原始錯誤與階段資訊，controller才有依據。",
+        "恢復措施與根因修正又不同。重啓能釋放殘留資源，可能暫時恢復；若重復訂閱與錯誤所有權仍在，運行一陣又壞。記錄恢復是恢復，不直接聲稱找到原因。反過來，修UI讓錯誤可見不代表遠端拒絕已解決。清楚描述事實，才使後續維護可連續推進。"
+      ]
+    },
+    {
+      "heading": "例外是控制流跳轉，不只是一個錯誤字符串",
+      "kind": "concept",
+      "paragraphs": [
+        "C#throw使當前正常路徑中止，沿呼叫堆疊尋找匹配catch；finally即使異常傳播也通常用於必需清理。調用者若未捕捉，異常會繼續到外層。catch應在知道如何恢復或補上下文的邊界，不能每層都吞掉返回成功。驗證型錯誤也可用明確返回值表示，關鍵是契約一致。",
+        "重新拋出同一異常用throw;可保留原傳播資訊，throw ex;會重新建立拋出點而損失有用堆疊。包裝成新的領域例外時，應保存InnerException與操作身份，避免只剩“設備失敗”。異常的Message供人讀，不適合靠英文子串作長期分類，能用型別/錯誤碼與階段就明確使用。",
+        "finally或Dispose不等於所有業務結束。若設備動作已發，清本地物件不會保證撤回；若共享資源由root擁有，控制器錯誤不能Dispose整個共享adapter。錯誤路徑仍要遵守所有權與狀態規則。LabController在Send拋錯後標LocalException並重新拋，保留可觀察失敗，不偽裝Accepted；真實是否NotSent需當前實現說明。"
+      ]
+    },
+    {
+      "heading": "逾時是本地期限，不是遠端失敗的證明",
+      "kind": "concept",
+      "paragraphs": [
+        "等500ms沒看到結果，只能說觀察期限內沒有足夠完成證據。設備可能還沒收、正在做、已經做完但結果丟了，或handler/佇列晚處理。你需要區分每次嘗試timeout與整次操作deadline；一個總2秒預算不應因每層重試各2秒變成幾分鐘。",
+        ".NET經過時間常用Stopwatch或適合deadline的單調時基，不用可被校時改變的牆鐘。計時起點也需定義：用戶入口、本地入隊或真正發送，包含的等待不同。timeout若從發送起算而UI排隊很久，用戶整體等待更長；報“設備慢”之前先分各段。",
+        "取消本地等待與撤回外部動作不同。CancellationToken是合作請求，監聽者決定響應，不保證設備已停止。關閉或重連可能讓舊結果不再應用當前狀態，但應保留舊任務Unknown並按契約解決。本LabTimeout只把Pending改Unknown且不重送，當前合法晚到Completed可解析結果；這是明確教學政策，真實接口需核對。"
+      ]
+    },
+    {
+      "heading": "例題一：Unknown怎樣被當前晚到結果解析",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入SetLevel50獲Accepted，模型結果Pending。controller.Timeout後Unknown，adapter.Sent仍1，說明沒有因為等待過期執行第二次。注入同request/session的Completed後，結果Completed、Applied1。這條時間線不是說所有晚到必須接受，而是按本Lab契約，當前有效觀察可以補足事實。",
+        "如果期間Reconnect到session2，舊session1完成不能更新當前；舊歷史可在恢復紀錄保留。若你把Timeout直接寫Failed且下次無條件新ID重送，就可能兩次執行。例題先讓你看到狀態“未確認”與“失敗”不同，再考慮怎樣查詢/去重，不用記一條所有設備通用Retry規則。",
+        "完整C#輸出比較結果與發送數。驗收還應測試重復晚到只應用一次，拒絕不能由完成覆蓋，關閉後不復活。用戶顯示可寫“結果未確認，正在查證”，而不是要求用戶反復點擊製造更多不確定任務。"
       ],
-      "table": {
-        "caption": "不同層的第一個檢查",
-        "headers": [
-          "現象",
-          "優先看",
-          "不宜直接判定"
-        ],
-        "rows": [
-          [
-            "無法連線",
-            "端點、服務、網路",
-            "帳密一定錯"
-          ],
-          [
-            "驗證被拒",
-            "憑證、權限、版本",
-            "設備一定忙"
-          ],
-          [
-            "格式錯",
-            "欄位、編碼、版本",
-            "網路慢"
-          ],
-          [
-            "結果逾時",
-            "請求／事件及遠端狀態",
-            "一定沒執行"
-          ]
-        ]
+      "code": {
+        "title": "完整Lab逾時與晚到；對應recovery",
+        "text": "using var adapter = new LabScriptedAdapter();\nusing var c = new LabController(adapter);\nstring id = c.Submit(\"SetLevel\", 50);\nc.Timeout(id);\nConsole.WriteLine(c.Results[id]); // Unknown\nConsole.WriteLine(adapter.Sent.Count); // 1\nadapter.Emit(new LabCompletion(id, c.Session, \"Completed\"));\nConsole.WriteLine(c.Results[id]); // Completed\nadapter.Emit(new LabCompletion(id, c.Session, \"Completed\"));\nConsole.WriteLine(c.Applied); // 1"
       }
     },
     {
-      "heading": "方法返回錯誤也要看送出多少",
+      "heading": "重試需要操作語義，不是所有Send都有相同風險",
+      "kind": "concept",
       "paragraphs": [
-        "若本地驗證就拒絕，可能未外送；若 Adapter 送出後才報錯，遠端是否收到與執行可能未知。不同 API 的錯誤語意要按文件解釋。",
-        "不要把所有 exception 都當成可重試。驗證失敗與格式錯誤通常需要先修條件，盲目重試只會重複故障。"
+        "讀狀態通常不改變實體結果，但仍會增加負荷；設置絕對值可設計為同值重復效果不變；Toggle翻轉、開門脈衝或開始發射可能重復就產生額外作用。冪等描述重復同意圖是否有相同最終效果，不能只從HTTP方法或C#名稱猜。真實接口需定義重復期間、ID範圍、緩存與結果處理。",
+        "去重鍵通常對應同一業務意圖。超時重試每次新ID可能繞過去重，復用ID卻換參數則可能衝突。服務端需約定同鍵同參數如何返回，保存多久以及部分失敗怎麼恢復；客戶端只能承擔自己這一邊，不能憑一個Dictionary宣稱網路端ExactlyOnce。本Lab沒有真實副作用或服務端去重，只驗證不會自動重送與結果去重。",
+        "退避與抖動減輕同步重試壓力，但不解決重復實體作用。用戶、controller、adapter各重試三次，最壞可放大27次外送；需要選擇合理重試層、上限、預算與觀察。發生持續拒絕或參數錯誤，重復通常不會自己變好。恢復政策必須依據階段、操作語義和當前狀態，而不是catch(Exception){Reconnect();}。"
       ]
     },
     {
-      "heading": "逾時是「到期前沒拿到足夠證據」",
+      "heading": "部分成功為甚麼不能靠本地回滾復原",
+      "kind": "concept",
       "paragraphs": [
-        "練習程式 timeout 案例：5 ms 收 accepted，50 ms 未等到有效狀態事件，標 `unknown`。這不證明遠端沒有處理。",
-        "若命令有副作用，重試前先查請求 ID 的權威結果或產品提供的查狀態方法；否則可能做兩次。"
+        "一次工作可能同時改本地狀態並送外部動作。先把畫面寫成功再外送，發送失敗後畫面可還原，卻不代表外部一定沒執行；先外送再寫資料，外部成功而本地寫失敗，也不能單靠資料交易撤回設備。數據庫交易通常只涵蓋參與的資料邊界，不會自動涵蓋任意SDK或電台。",
+        "因此需要明確定義各階段事實、可補償動作與補償失敗的處理。把SetLevel恢復舊值是否安全，取決於期間有沒有其他操作；Toggle再Toggle可能改變第二個使用者的意圖。補償也是一次新工作，有身份、結果和風險，並非時間倒轉。維護代碼應保留已做與未確認步驟，恢復時以當前權威狀態和契約決定，不用catch內簡單把字段改回舊值宣稱完整回滾。"
       ]
     },
     {
-      "heading": "晚到事件要看是否仍屬目前狀態",
+      "heading": "等待預算與退避可逐步算清",
+      "kind": "concept",
       "paragraphs": [
-        "late 案例 50 ms 逾時、80 ms 收到 READY；此教學程式不直接改 UI，而提示重新查當前狀態。這是保守的示例策略。",
-        "真正產品要看事件是否含序號、時間、Session 和完成語意；不能宣稱所有晚到事件都應丟棄或全部套用。"
+        "假設總預算2000ms，每次允許500ms，失敗後分別等100/200/400ms。三次嘗試最壞500×3+100+200=1800ms，第四次至少再400+500，超預算。等待是在嘗試之間，不是所有退避都加最後一次；如果某次很快失敗，還可按剩餘預算選擇，但不能先宣告無限重試。",
+        "指數退避base×2^n需上限，抖動可在一個範圍取等待以分散同一時刻啓動的客戶端。整數乘法還需考慮溢位，Task.Delay需合作取消；代碼不能在UI線程Thread.Sleep等待。數字是策略模型，不是公司固定timeout。要求和真實延遲分布、負荷決定參數，先記量測和驗收範圍再選。",
+        "重試時還要跟蹤同一業務operation與各attempt。operation deadline限制整體，attempt ID方便觀察每次發送，服務端去重鍵仍依契約同一意圖。把operation/attempt/request全部叫id會讓紀錄無法判斷是重復結果還是新嘗試。完整上下文支持診斷與安全，而不是只為了漂亮trace。"
       ]
     },
     {
-      "heading": "重連後重新建立觀測",
+      "heading": "例題二：本地例外不能偷偷變成成功",
+      "kind": "worked-example",
       "paragraphs": [
-        "stale-session 案例在 12 ms 換新 Session，20 ms 舊 Session 事件不能直接確認新狀態。重連後還應查事件訂閱、未完成請求、設備狀態和 UI 快取。",
-        "若回覆不帶 Session 標籤，就要看文件提供的關聯方式；若缺少關聯保證，結論維持不確定。"
+        "輸入adapter.ThrowOnSend=true，controller.Submit會先建立Pending，adapter.Send拋IOException，catch把該請求改LocalException後throw傳播。調用者捕捉輸出錯誤型別，Sent.Count=0，Results里有LocalException。這在Lab明確發生於入隊前；真實IOException是否部分送出要用實際實現確認。",
+        "如果catch吞錯並返回請求ID且狀態Pending，用戶會一直等一個模型根本沒有發送的任務；若直接改Completed，用戶誤認成功。正確邊界保存失敗與上下文，UI作合理表達，業務決定下一步。修異常不應釋放借用adapter使其他控制器失敗，也不能在catch里遞歸Submit無限重試。",
+        "下面完整程式可觀察傳播與資源仍由using/root釋放。驗收包含恢復ThrowOnSend=false後新請求成功、之前LocalException不能被偽造完成覆寫。與例題一Unknown不同，它有明確本地錯誤，不應把兩個階段混成同一種Timeout。"
+      ],
+      "code": {
+        "title": "完整例外傳播與狀態保留",
+        "text": "using var adapter = new LabScriptedAdapter { ThrowOnSend=true };\nusing var c = new LabController(adapter);\ntry { c.Submit(\"QueryState\", 0); }\ncatch (IOException ex) { Console.WriteLine(ex.GetType().Name); }\nConsole.WriteLine(adapter.Sent.Count); // 0\nConsole.WriteLine(c.Results.Values.Contains(\"LocalException\")); // True\nadapter.ThrowOnSend=false;\nstring id=c.Submit(\"QueryState\",0);\nadapter.Emit(new LabCompletion(id,c.Session,\"Completed\"));\nConsole.WriteLine(c.Results[id]); // Completed"
+      }
+    },
+    {
+      "heading": "重連與清理各有順序和範圍",
+      "kind": "concept",
+      "paragraphs": [
+        "恢復連接可能需要新adapter或同物件Reconnect；無論如何，舊回呼和pending不能被無聲搬成新session。先撤銷當前准入、處理/標記舊操作、建立新觀察、驗證身份與設備狀態，再接受新動作；具體順序由協議前提決定。只把Connected=true無法證明Auth/Ready有效。",
+        "資源清理採用自己owner範圍與可重復入口。停止訂閱防未來通知，內部Closed/generation防已排隊工作，Dispose釋放資源；這些動作不能互相替代。某一步失敗要記錄並盡量執行必要其餘清理，避免finally里第二個例外覆蓋最初故障卻不留資料。生產清理設計需可看出主錯誤與清理錯誤。",
+        "恢復狀態也需對用戶解釋。可以把控制功能暫時禁用、保留只讀觀察、提示當前操作結果未確認；退化策略必須符合實體安全與需求，不能教材自行給公司系統決定“失敗就繼續發射”。模型提供判斷方法，實際策略需邊界和業務准則。"
       ]
     },
     {
-      "heading": "做一份小型恢復紀錄",
+      "heading": "追碼實作：四類結果不可寫成同一個false",
+      "kind": "lab",
       "paragraphs": [
-        "記故障發生時間、最後已確認的層、待定請求、重連前後 Session／端點、重新訂閱與新狀態查詢結果。",
-        "這讓下一位維護者知道是「已恢復到哪一層」，而非只有 `Reconnect OK` 四個字。"
+        "執行recovery與icd，整理LocalException、Rejected、Unknown、Completed的不同起點和數據。故障變因把Timeout額外Submit相同SetLevel，預期timeout_does_not_resend失敗；復原後在catch不標LocalException，預期local_exception_is_visible失敗。兩項改變不同語義，不能僅把終態綠燈作為驗收。",
+        "接著算2000ms預算的三次嘗試，增加一層adapter重試，解釋最壞外送次數和預算為何可能擴大。自制Lab不自動retry、不測真實網路，範圍明確。你可以在紙上設計查詢/去重/人工確認三種恢復，並寫適用操作與必要契約，避免盲目選擇最自動的方式。",
+        "復原all，通過後寫恢復卡：原操作身份、失敗階段、是否可能執行、允許動作、阻止的新請求、如何查結果、何時恢復准入與回歸。公司具體接口取得後把未知行為填入，不用教學預設替代規範。完整概念讓讀者能主動問正確問題，而不是只能等待新代碼樣板。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：重試後設備動作兩次",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "候選甲第一次已執行但結果丟失，客戶端超時新ID重送；候選乙controller與adapter各重試；候選丙事件handler重復訂閱導致同一點擊路徑兩次外送。先統計業務入口、attempt、adapter發送與設備執行身份，不能只數“成功紀錄”兩條就確定重復執行。",
+        "資料甲只有一筆入口兩次attempt，設備記錄兩新ID，修同意圖去重/查詢或禁止不安全重送；資料乙每次controller調用又三次adapter.Send，修重試責任與預算；資料丙一入口調用兩個handler，修訂閱生命週期。三案需不同代碼與契約，抖動不能解決重復訂閱，也不能證明實體動作一次。",
+        "驗收在響應延遲/丟失、重復回報、斷線重連、快速重復按鍵和正常失敗下觀測效果次數。若服務端無去重，報告本地限制重復風險與未解決網路不確定性，不誇稱完全ExactlyOnce。恢復後的結果應可復核，而不是只降低紀錄數量。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【分類】格式錯應先重試還是查欄位和版本？",
-      "answer": "先查欄位、編碼與版本。"
+      "question": "【基礎】Rejected、LocalException、Unknown各說明甚麼？",
+      "level": "foundation",
+      "answer": [
+        "Rejected是明確未接受/拒絕的契約結果；LocalException是本地控制流失敗；Unknown是目前完成事實不足。",
+        "各自是否已外送需階段證據，尤其真實例外可能部分發送。",
+        "恢復策略不能統一成再試一次。"
+      ]
     },
     {
-      "question": "【逾時】Accepted 後逾時可證明沒有執行嗎？",
-      "answer": "不能；遠端結果未知。"
+      "question": "【基礎】throw;與throw ex;維護價值有何區別？",
+      "level": "foundation",
+      "answer": [
+        "在catch內throw;重新傳播原異常，可保留原堆疊資訊。",
+        "throw ex;會重新建立拋出點而損失有用來源；包裝應保留InnerException。",
+        "記錄operation與階段，不只Message字符串。"
+      ]
     },
     {
-      "question": "【副作用】未知結果的操作可無條件重送嗎？",
-      "answer": "不可；先查請求 ID 或權威狀態與產品重試規則。"
+      "question": "【基礎】Cancel/Timeout能證明設備未執行嗎？",
+      "level": "foundation",
+      "answer": [
+        "不能，本地等待或合作取消不必然撤回已送動作。",
+        "保留身份與Unknown，按契約查詢或去重解決。",
+        "終止觀察者與外部任務事實分別驗收。"
+      ]
     },
     {
-      "question": "【晚到】80 ms 的 READY 到了能無條件覆蓋所有當前畫面嗎？",
-      "answer": "不能；需核對 Session、時序與最新狀態。"
+      "question": "【應用】預算1500ms，每次400ms，等待100/200/400。最多完整嘗試幾次？",
+      "level": "application",
+      "answer": [
+        "三次最壞400×3+100+200=1500ms，恰等於預算。",
+        "第四次再需400等待與400執行，超預算。",
+        "實際剩餘預算可按已用時計算，但不能給每層獨立無限預算。"
+      ]
     },
     {
-      "question": "【舊事件】舊 Session 事件可直接確認新 Session 嗎？",
-      "answer": "不能；需產品契約或重新查證。"
+      "question": "【應用】UI重試2次、controller3次、adapter4次，“次數”均總嘗試，最壞外送？",
+      "level": "application",
+      "answer": [
+        "最壞2×3×4=24次，假設各層對每次失敗全部重做。",
+        "將總嘗試與重試額外次數分清，統一重試責任/預算。",
+        "依據操作語義與去重驗證效果，退避僅減壓力不消副作用。"
+      ]
     },
     {
-      "question": "【錯碼】`E_BUSY` 是公司統一錯誤碼嗎？",
-      "answer": "不是；它只存在於虛構文件卡。"
+      "question": "【應用】R1 Unknown、同session晚Completed；R2 Rejected後Completed，Lab應如何？",
+      "level": "application",
+      "answer": [
+        "R1合法晚結果可解Unknown成為Completed。",
+        "R2已明確拒絕，完成通知不能覆寫Rejected，應忽略。",
+        "測試兩條各自身份與當前世代，避免統一“所有完成都接受”。"
+      ]
     },
     {
-      "question": "【恢復】Connect OK 後還要查什麼？",
-      "answer": "驗證、Session、事件訂閱、待定請求與權威狀態。"
+      "question": "【診斷】設備兩次動作，入口一次；adapter每次Send實際內部重試3遍。先改甚麼？",
+      "level": "diagnosis",
+      "answer": [
+        "證據支持重試放大，先核對adapter契約、操作是否允許重復與上層策略。",
+        "統一責任和次數/預算，不能只增加UI等待或隱藏紀錄。",
+        "回歸延遲/丟失/明確拒絕，設備效果次數需實際觀測。"
+      ]
     },
     {
-      "question": "【表述】timeout 最精確的說法？",
-      "answer": "在本次設定期限內沒有收到足夠的完成證據；遠端結果仍待確認。"
+      "question": "【診斷】清理finally拋錯覆蓋原Send失敗，另controller也壞。需查哪兩個機制？",
+      "level": "diagnosis",
+      "answer": [
+        "保留主異常與清理異常，避免只見最後錯誤而丟根因。",
+        "另查是否Dispose了共享借用adapter，owner越界會破壞其他使用者。",
+        "修清理範圍與錯誤記錄，回歸主錯誤、清理錯誤、其他controller持續與root關閉。"
+      ]
     }
   ],
   "recap": [
-    "錯誤先按層分類。",
-    "逾時後不自動推定遠端未做。",
-    "重連後用新證據恢復狀態。"
-  ],
-  "sources": [
-    {
-      "label": "Microsoft Learn：C# async／await 與 Task",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/asynchronous-programming/"
-    },
-    {
-      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
-    },
-    {
-      "label": "Microsoft Learn：IDisposable 與資源所有權",
-      "url": "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose"
-    }
+    "恢復依據階段、語義與所有權，不依據一個籠統false。",
+    "逾時保留未知，重試需去重/預算/副作用契約。",
+    "例外傳播、清理和重連都應保留上下文並驗證舊工作邊界。"
   ],
   "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
     {
       "label": "下載虛構 API 事件追蹤程式",
       "path": "./assets/labs/integration-trace-lab.py",
       "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 recovery，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    }
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：例外最佳實踐",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/exceptions/best-practices-for-exceptions"
+    },
+    {
+      "label": "Microsoft：合作取消",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/threading/cancellation-in-managed-threads"
+    },
+    {
+      "label": "AWS：冪等API與重試",
+      "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
+    },
+    {
+      "label": "Google SRE：重試與級聯過載",
+      "url": "https://sre.google/sre-book/addressing-cascading-failures/"
+    },
+    {
+      "label": "Microsoft：Stopwatch",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch"
     }
   ]
 }

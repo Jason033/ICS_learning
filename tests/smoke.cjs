@@ -22,11 +22,30 @@ for (const topic of catalog.topics) {
       readyCount += 1;
       assert(fs.existsSync(file), `缺少可閱讀教材：${file}`);
       const lesson = JSON.parse(fs.readFileSync(file, 'utf8'));
-      for (const field of ['intro', 'goals', 'sections', 'exercises', 'recap']) assert(lesson[field]?.length, `${file} 缺少 ${field}`);
+      assert.equal(lesson.contentVersion, 2, `${file} 尚未重編`);
+      assert.equal(chapter.contentVersion, 2);
+      assert.deepEqual(chapter.studyTime, lesson.studyTime);
+      assert(!('minutes' in chapter), `${file} 不應沿用固定總分鐘`);
+      assert(!lesson.plan, `${file} 不應沿用舊的學習分鐘表`);
+      for (const field of ['intro', 'prerequisites', 'goals', 'sections', 'exercises', 'recap']) assert(lesson[field]?.length, `${file} 缺少 ${field}`);
+      for (const field of ['reading', 'practice', 'exercises']) {
+        const range = lesson.studyTime[field];
+        assert.equal(range.length, 2);
+        assert(range.every(Number.isFinite) && range[0] > 0 && range[0] <= range[1]);
+      }
+      assert(lesson.studyTime.basis, `${file} 缺少估計依據`);
+      assert(lesson.sources.length >= 3);
       for (const source of lesson.sources || []) assert.match(source.url, /^https:\/\//);
       for (const resource of lesson.resources || []) {
-        assert.match(resource.path, /^\.\/assets\/labs\/[a-z0-9-]+\.(?:pcap|py)$/);
+        assert.match(resource.path, /^\.\/assets\/labs\/[A-Za-z0-9/-]+\.(?:pcap|pcapng|py|cs|json|csv|zip|txt|md)$/);
         assert(fs.existsSync(path.join(docs, resource.path.slice(2))), `${file} 缺少練習檔 ${resource.path}`);
+      }
+      assert(lesson.exercises.length >= 8);
+      for (const exercise of lesson.exercises) {
+        assert(['foundation', 'application', 'diagnosis'].includes(exercise.level));
+        assert(exercise.question?.length && exercise.answer?.length);
+        const paragraphs = Array.isArray(exercise.answer) ? exercise.answer : exercise.answer.split(/\n\s*\n/);
+        assert(paragraphs.length >= 2 && paragraphs.every(p => typeof p === 'string' && p.trim()), `${file} 解答缺少分段說明`);
       }
       for (const section of lesson.sections) {
         if (!section.image) continue;
@@ -43,141 +62,6 @@ for (const topic of catalog.topics) {
 }
 assert.equal(catalog.topics.length, 16);
 assert.equal(readyCount, 83);
-assert.equal(catalog.topics[0].chapters.length, 10);
-for (const chapter of catalog.topics[0].chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `networking--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 4, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 5, `${chapter.id} 練習不足`);
-}
-
-assert.equal(catalog.topics[1].chapters.length, 8);
-for (const chapter of catalog.topics[1].chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `wireshark--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 5, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 5, `${chapter.id} 練習不足`);
-  assert(lesson.resources.length >= 1, `${chapter.id} 缺少實作 PCAP`);
-}
-
-assert.equal(catalog.topics[2].chapters.length, 7);
-for (const chapter of catalog.topics[2].chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `ozeki--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 5, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 7, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少官方來源`);
-  for (const source of lesson.sources) assert.match(source.url, /^https:\/\/(?:www\.)?voip-sip-sdk\.com\//);
-}
-
-const serialTopic = catalog.topics.find((topic) => topic.id === 'serial');
-assert.equal(serialTopic.chapters.length, 7);
-assert.equal(serialTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 330);
-let serialExerciseCount = 0;
-for (const chapter of serialTopic.chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `serial--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 5, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 7, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
-  serialExerciseCount += lesson.exercises.length;
-}
-assert.equal(serialExerciseCount, 50);
-
-const radioTopic = catalog.topics.find((topic) => topic.id === 'radio');
-assert.equal(radioTopic.chapters.length, 8);
-assert.equal(radioTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 420);
-let radioExerciseCount = 0;
-for (const chapter of radioTopic.chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `radio--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
-  radioExerciseCount += lesson.exercises.length;
-}
-assert.equal(radioExerciseCount, 65);
-
-const pttTopic = catalog.topics.find((topic) => topic.id === 'ptt');
-assert.equal(pttTopic.chapters.length, 8);
-assert.equal(pttTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 425);
-let pttExerciseCount = 0;
-for (const chapter of pttTopic.chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `ptt--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
-  pttExerciseCount += lesson.exercises.length;
-}
-assert.equal(pttExerciseCount, 65);
-
-const socketTopic = catalog.topics.find((topic) => topic.id === 'sockets');
-assert.equal(socketTopic.chapters.length, 8);
-assert.equal(socketTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 425);
-let socketExerciseCount = 0;
-for (const chapter of socketTopic.chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `sockets--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
-  socketExerciseCount += lesson.exercises.length;
-}
-assert.equal(socketExerciseCount, 65);
-
-const voipTopic = catalog.topics.find((topic) => topic.id === 'voip');
-assert.equal(voipTopic.chapters.length, 9);
-assert.equal(voipTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 500);
-let voipExerciseCount = 0;
-for (const chapter of voipTopic.chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `voip--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
-  voipExerciseCount += lesson.exercises.length;
-}
-assert.equal(voipExerciseCount, 73);
-
-const integrationTopic = catalog.topics.find((topic) => topic.id === 'integration');
-assert.equal(integrationTopic.chapters.length, 9);
-assert.equal(integrationTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 510);
-let integrationExerciseCount = 0;
-for (const chapter of integrationTopic.chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `integration--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
-  integrationExerciseCount += lesson.exercises.length;
-}
-assert.equal(integrationExerciseCount, 73);
-
-const reliabilityTopic = catalog.topics.find((topic) => topic.id === 'reliability');
-assert.equal(reliabilityTopic.chapters.length, 9);
-assert.equal(reliabilityTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 510);
-let reliabilityExerciseCount = 0;
-for (const chapter of reliabilityTopic.chapters) {
-  assert.equal(chapter.contentType, 'full');
-  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `reliability--${chapter.id}.json`), 'utf8'));
-  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
-  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
-  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
-  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
-  reliabilityExerciseCount += lesson.exercises.length;
-}
-assert.equal(reliabilityExerciseCount, 73);
-
 const elements = new Map();
 function element(selector) {
   if (!elements.has(selector)) {
@@ -217,181 +101,74 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   assert.match(element('#main').innerHTML, /規劃中/);
   assert(element('#explore-topics').listeners.click, '首頁探索按鈕未綁定');
 
-  context.location.hash = '#/topic/wireshark';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /第一次抓包/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/wireshark\/first-capture/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/wireshark\/filters/);
-  assert.match(element('#main').innerHTML, /完整教材/);
-
-  context.location.hash = '#/lesson/wireshark/first-capture';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /wireshark-first-capture\.pcap/);
-  assert.match(element('#main').innerHTML, /wireshark-three-panes\.svg/);
-  assert.match(element('#main').innerHTML, /練習 06/);
-  context.location.hash = '#/lesson/wireshark/evidence-and-logs';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 07/);
-
-  const first = catalog.topics[0].chapters[0];
-  const firstLesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons/networking--one-conversation.json'), 'utf8'));
-  assert.equal(first.contentType, 'full');
-  assert.equal(firstLesson.plan.reduce((sum, part) => sum + part.minutes, 0), first.minutes);
-  assert(firstLesson.sections.length >= 10);
-  assert(firstLesson.exercises.length >= 8);
-  context.location.hash = '#/lesson/networking/one-conversation';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /建議學習節奏/);
-  assert.match(element('#main').innerHTML, /<table class="lesson-table">/);
-  assert.match(element('#main').innerHTML, /模擬封包摘要/);
-  assert.match(element('#main').innerHTML, /練習 09/);
-  assert.match(element('#main').innerHTML, /下一篇/);
-
-  context.location.hash = '#/lesson/networking/network-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /案例三：TCP 已建立/);
-  assert.match(element('#main').innerHTML, /練習 07/);
+  for (const topic of catalog.topics) {
+    context.location.hash = `#/topic/${topic.id}`;
+    await vm.runInContext('renderRoute()', context);
+    assert(element('#main').innerHTML.includes(topic.title));
+    for (const chapter of topic.chapters.filter(chapter => chapter.status === 'ready')) {
+      context.location.hash = `#/lesson/${topic.id}/${chapter.id}`;
+      await vm.runInContext('renderRoute()', context);
+      const html = element('#main').innerHTML;
+      assert(html.includes(chapter.title), `無法呈現 ${topic.id}/${chapter.id}`);
+      assert.match(html, /閱讀與動手時間分開估計/);
+      assert.match(html, /本章會補足的前置概念/);
+      assert.match(html, /mobile-lesson-toc/);
+      assert.match(html, /練習 08/);
+      assert.match(html, /查看解答與判斷過程/);
+      assert(!html.includes('href="#" download'), `下載連結被拒絕 ${topic.id}/${chapter.id}`);
+      assert(!html.includes('[object Object]'), `解答陣列未正確呈現 ${topic.id}/${chapter.id}`);
+    }
+  }
 
   context.location.hash = '#/lesson/ozeki/read-a-call';
   await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /Softphone/);
-  assert.match(element('#main').innerHTML, /ozeki-roles\.svg/);
-  assert.match(element('#main').innerHTML, /練習 07/);
-  assert.match(element('#main').innerHTML, /查看解答與判斷過程/);
   const button = element('#complete-button');
   assert(button.listeners.click, '完成按鈕未綁定');
   button.listeners.click({ currentTarget: button });
   assert.deepEqual(JSON.parse(storage.get('learning-site-completed-v1')), ['ozeki/read-a-call']);
-
   context.location.hash = '#/topic/ozeki';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /<strong>1<span> \/ 7<\/span><\/strong>/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/ozeki\/registration/);
-  assert.match(element('#main').innerHTML, /✓ 已完成/);
+  context.location.hash = '#/lesson/ozeki/read-a-call';
+  await vm.runInContext('renderRoute()', context);
+  element('#complete-button').listeners.click({ currentTarget: element('#complete-button') });
+  assert.deepEqual(JSON.parse(storage.get('learning-site-completed-v1')), []);
 
-  context.location.hash = '#/lesson/ozeki/media';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /ozeki-media-path\.svg/);
-  context.location.hash = '#/lesson/ozeki/evidence-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 08/);
+  storage.set('learning-site-completed-v1', 'broken-json');
+  assert.equal(vm.runInContext('getCompleted().size', context), 0);
+  storage.set('learning-site-completed-v1', '{"invalid":true}');
+  assert.equal(vm.runInContext('getCompleted().size', context), 0);
+  assert.equal(vm.runInContext('safeAsset("./assets/labs/../../private.txt")', context), '#');
+  assert.equal(vm.runInContext('safeLink("javascript:alert(1)")', context), '#');
+  assert.equal(vm.runInContext('safeAsset("./assets/labs/networking-maintenance-lab.zip")', context), './assets/labs/networking-maintenance-lab.zip');
+  const rendered = vm.runInContext('renderAnswer({answer:["<script>bad()</script>", "a & b"]})', context);
+  assert(rendered.includes('&lt;script&gt;') && rendered.includes('a &amp; b'));
+  assert(!rendered.includes('<script>'));
 
-  context.location.hash = '#/topic/serial';
+  // An older, slower fetch must not replace the chapter the reader selected later.
+  const normalFetch = context.fetch;
+  let releaseOld;
+  context.fetch = relative => relative.includes('networking--one-conversation')
+    ? new Promise(resolve => { releaseOld = async () => resolve(await normalFetch(relative)); })
+    : normalFetch(relative);
+  context.location.hash = '#/lesson/networking/one-conversation';
+  const oldRoute = vm.runInContext('renderRoute()', context);
+  context.location.hash = '#/lesson/ozeki/read-a-call';
   await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /#\/lesson\/serial\/electrical-and-wiring/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/serial\/serial-troubleshooting/);
-  context.location.hash = '#/lesson/serial/serial-layers';
+  await releaseOld();
+  await oldRoute;
+  assert(element('#main').innerHTML.includes(catalog.topics.find(t => t.id === 'ozeki').chapters[0].title));
+  context.fetch = normalFetch;
+  context.location.hash = '#/%broken-encoding';
   await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /serial-layers\.svg/);
-  assert.match(element('#main').innerHTML, /練習 07/);
-  context.location.hash = '#/lesson/serial/tools-and-loopback';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /serial-loopback\.py/);
-  context.location.hash = '#/lesson/serial/serial-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 08/);
+  assert.match(element('#main').innerHTML, /網址格式無法辨識/);
 
-  context.location.hash = '#/topic/radio';
+  context.location.hash = '#/about';
   await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /#\/lesson\/radio\/parameters/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/radio\/radio-troubleshooting/);
-  context.location.hash = '#/lesson/radio/tx-rx-path';
+  assert.match(element('#main').innerHTML, /照自己的問題/);
+  context.location.hash = '#/topic/no-such-topic';
   await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /radio-path\.svg/);
-  assert.match(element('#main').innerHTML, /練習 08/);
-  context.location.hash = '#/lesson/radio/rssi-snr';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /radio-quality\.svg/);
-  context.location.hash = '#/lesson/radio/radio-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 09/);
-
-  context.location.hash = '#/topic/ptt';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /#\/lesson\/ptt\/state-machine/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/ptt\/ptt-troubleshooting/);
-  context.location.hash = '#/lesson/ptt/press-to-tx';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /ptt-evidence-ladder\.svg/);
-  assert.match(element('#main').innerHTML, /練習 08/);
-  context.location.hash = '#/lesson/ptt/interface-box';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /ptt-interface-box\.svg/);
-  context.location.hash = '#/lesson/ptt/audio-timing';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /ptt-audio-timeline\.svg/);
-  context.location.hash = '#/lesson/ptt/ptt-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 09/);
-
-  context.location.hash = '#/topic/sockets';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /#\/lesson\/sockets\/socket-flow/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/sockets\/socket-troubleshooting/);
-  context.location.hash = '#/lesson/sockets/socket-flow';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /socket-roles\.svg/);
-  assert.match(element('#main').innerHTML, /socket-tcp-lab\.py/);
-  context.location.hash = '#/lesson/sockets/message-boundaries';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /socket-framing\.svg/);
-  assert.match(element('#main').innerHTML, /練習 08/);
-  context.location.hash = '#/lesson/sockets/socket-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 09/);
-
-  context.location.hash = '#/topic/voip';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /#\/lesson\/voip\/call-vs-audio/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/voip\/voip-troubleshooting/);
-  context.location.hash = '#/lesson/voip/call-vs-audio';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /voip-evidence-path\.svg/);
-  assert.match(element('#main').innerHTML, /wireshark-sip-rtp\.pcap/);
-  context.location.hash = '#/lesson/voip/audio-path';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /voip-audio-chain\.svg/);
-  assert.match(element('#main').innerHTML, /voip-tone-lab\.py/);
-  context.location.hash = '#/lesson/voip/voip-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 09/);
-
-  context.location.hash = '#/topic/integration';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /#\/lesson\/integration\/trace-an-action/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/integration\/integration-troubleshooting/);
-  context.location.hash = '#/lesson/integration/trace-an-action';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /integration-trace\.svg/);
-  assert.match(element('#main').innerHTML, /integration-trace-lab\.py/);
-  context.location.hash = '#/lesson/integration/read-an-icd';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /integration-document-check\.svg/);
-  context.location.hash = '#/lesson/integration/sessions-and-state';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /integration-state\.svg/);
-  context.location.hash = '#/lesson/integration/correlate-evidence';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /integration-evidence\.svg/);
-  context.location.hash = '#/lesson/integration/integration-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 09/);
-
-  context.location.hash = '#/topic/reliability';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /#\/lesson\/reliability\/timeouts/);
-  assert.match(element('#main').innerHTML, /#\/lesson\/reliability\/reliability-troubleshooting/);
-  context.location.hash = '#/lesson/reliability/timeouts';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /reliability-deadlines\.svg/);
-  assert.match(element('#main').innerHTML, /reliability-timeline-lab\.py/);
-  context.location.hash = '#/lesson/reliability/concurrency';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /reliability-race-lab\.py/);
-  assert.match(element('#main').innerHTML, /練習 08/);
-  context.location.hash = '#/lesson/reliability/reliability-troubleshooting';
-  await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /練習 09/);
+  assert.match(element('#main').innerHTML, /這個主題目前不在清單中/);
 
   context.location.hash = '#/lesson/systems/find-evidence';
   await vm.runInContext('renderRoute()', context);

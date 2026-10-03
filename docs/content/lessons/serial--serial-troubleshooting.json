@@ -1,255 +1,310 @@
 {
-  "intro": "最後把分層方法放進五個完全虛構的維修情境：找不到埠、無回應、亂碼、只收到半筆、換介面後偶發失敗。每題先寫「看到什麼」，再寫尚未排除的原因和下一個檢查；不能把練習答案當成公司設備結論。",
-  "plan": [
-    {
-      "label": "建立排查地圖",
-      "minutes": 10
-    },
-    {
-      "label": "讀五個案例",
-      "minutes": 22
-    },
-    {
-      "label": "寫故障報告",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 13
-    }
+  "contentVersion": 2,
+  "intro": "從正確的字元和訊息模型出發，才有辦法把「串列不通」分成可驗證的問題。本章用兩組完整推導與多輪案例，把資源、電氣、UART、parser、時序與業務狀態連成維護流程。",
+  "prerequisites": [
+    "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
+    "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
+  "studyTime": {
+    "reading": [
+      10,
+      17
+    ],
+    "practice": [
+      20,
+      40
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+  },
   "goals": [
-    "能依症狀選擇要查作業系統、電氣接線、UART 設定、命令或讀取邏輯。",
-    "能比較正常與異常紀錄，避免只靠「有送出」或「沒看到回覆」下結論。",
-    "能寫出外行人也看得懂的故障紀錄與後續測試。"
+    "定義成功與正常契約，預測各層應出現的資料。",
+    "用有效設定、HEX、讀取狀態及時間分開故障候選。",
+    "以第二輪證據選擇有限修正，並驗證恢復與邊界。",
+    "撰寫無需熟悉術語也能理解的故障記錄。"
   ],
   "sections": [
     {
-      "heading": "先把「不通」翻成可觀測症狀",
+      "kind": "concept",
+      "heading": "先建立正常關係，才知道異常在哪裡",
       "paragraphs": [
-        "找不到埠、埠被佔用、能開埠但無 TX、TX 有紀錄卻無 RX、有 RX 但亂碼、回覆只到一半、收到完整錯誤碼，是不同問題。先定位第一個與正常基準不同的地方。",
-        "下表是通用檢查順序，不是任何公司系統的實際拓撲。對實體設備要另外核對安全條件與正式手冊。"
+        "裝置卡包含電氣/方向、UART字元、訊息格式、交易語意四條契約。正常輸入先編碼成bytes、按UART時序轉成邏輯、經收發器變線路電平；接收反向恢復，應用parser組訊息、執行並回覆。每個階段都應有明確預期，故障是資料或狀態偏離某條關係，不是看到timeout就換線。",
+        "「成功」也有層次：資源Open、資料進入本機write、遠端字元正確、訊息透過校驗、命令受理與動作完成。診斷要選擇本次實際需要的結果。例如查詢READY需要相符回覆；啟用動作還可能要後續狀態。把Accepted誤當完成會讓報表與現場看起來矛盾，這不是一定線路失敗，而是成功定義不同。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "候選必須提供不同可觀測預測",
+      "paragraphs": [
+        "無RX可能是COM錯、電氣/方向錯、flow阻擋、裝置等終止符、deadline太短或APP讀者競爭。H1缺CRLF預測裝置已收可見文字但parser等待；H2硬體flow不滿足預測TX緩衝有資料但外側不持續輸出；H3讀者競爭預測線路完整而bytes分散到兩個消費路徑。不同預測指導不同下一步，不先把全部候選逐一改一遍。",
+        "觀測本身要驗證：工具HEX是否實際送出的bytes、時間戳在APP還是線路、serialterminal是否改變引數、抓取是否少一方向、logs是否漏記。對比正常/異常時用同adapter/例項、設定、訊息與期限；COM號重用不證明同裝置。錯誤歸類可減少重複工作：資源取得失敗尚未測試裝置命令，完整合法Busy回覆則已走到應用狀態層。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "從錯誤字元到錯誤命令的因果層次",
+      "paragraphs": [
+        "若字元全錯但仍有邊緣，先看電氣、取樣/引數與編碼，不立即查裝置業務；若字元正確但checksum失敗，比較完整原始幀和parser範圍，確認不是自己漏讀；若frame正確卻欄位拒絕，核對command/版本；若裝置回Accepted而沒完成，查後續狀態與執行條件。不同症狀可以沿機制逐層推進，而不是每次從頭列所有名詞。",
+        "有些錯誤只在特定負載或狀態出現：buffer overrun隨服務不足積壓，半雙工方向錯誤隨長訊息或baud改變，地址衝突隨第二節點加入，遲到關聯隨timeout後新請求。重現條件就是機制線索。將最有區分度的變數作為實驗，可比盲目重複同一正常短命令更快縮小範圍。",
+        "修正的邊界要說清楚。Parser改好說明任意合法分段可組訊息，不證明真實電氣沒噪聲；更換相容bridge說明介面條件成立，不證明所有命令語意；deadline調寬說明某些等待被允許，不提高執行安全性。報告把這些範圍連線到裝置與程式碼責任，工程結論才不會隨一次成功過度擴張。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：完整正常查詢的數量與時間",
+      "paragraphs": [
+        "Device-Lab-A為RS-232、9600 8N1、none flow、STATUS? CRLF；回覆OK,READY CRLF。請求9bytes、90bits、9.375ms；回覆10bytes、100bits、10.4167ms。裝置從收完請求至開始回覆20ms，假設其他延遲0，下界39.7917ms。設教學環境交易deadline200ms，不代表所有裝置建議200，而是留給此條件的明確比較門檻。",
+        "APP t=0開始write，線路請求t=2到11.375，裝置t=31.375開始回應至41.7917，APP t=50才讀到10bytes，這些時間可合理共存，因為橋/排程有延遲。裝置處理=20ms，整APP=50ms；50−39.7917不是全部網路延遲，因為起點與觀測層不同。記錄每段才能看懂同一個回覆在工具與APP不同timestamp。"
       ],
       "table": {
-        "caption": "症狀與優先查的證據",
+        "caption": "例題一：完整正常查詢的數量與時間",
         "headers": [
-          "症狀",
-          "先查",
-          "避免直接說"
+          "事件",
+          "t(ms)",
+          "含義"
         ],
         "rows": [
           [
-            "找不到埠",
-            "裝置列舉、轉接器、驅動、當次名稱",
-            "設備命令錯"
+            "APP write begin",
+            "0",
+            "本地開始"
           ],
           [
-            "埠存在卻打不開",
-            "權限、佔用、驅動與埠是否變更",
-            "線路壞"
+            "wire TX",
+            "2–11.375",
+            "90bit請求"
           ],
           [
-            "TX 後無 RX",
-            "觀測點、電氣、方向、流量控制、命令",
-            "設備一定壞"
+            "device response starts",
+            "31.375",
+            "請求後20ms"
           ],
           [
-            "RX 亂碼",
-            "完整 UART 設定、編碼、原始 HEX",
-            "程式只是顯示錯"
+            "wire RX ends",
+            "41.7917",
+            "100bit回覆"
           ],
           [
-            "RX 不完整",
-            "LEN／終止符、分段讀取、deadline",
-            "對端一定只發一半"
+            "APP full read",
+            "50",
+            "批次/排程後取得"
           ]
         ]
       }
     },
     {
-      "heading": "案例一：昨日的 COM3 今天不見了",
+      "kind": "worked-example",
+      "heading": "例題二：二進位分段為何仍是同一訊息",
       "paragraphs": [
-        "虛構紀錄：昨晚 COM3 可開；今天程式報「port not found」，裝置管理員顯示同型號轉接器在 COM8。這支持埠號變更；不能說設備的 RS-232 接線壞。",
-        "下一步核對程式是否把 COM3 寫死、目前轉接器識別資訊與 COM8 是否被授權測試程序使用。"
+        "Lab-B LEN規則1–32，輸入AA 03 90 01 02 90。LEN3包括CMD90與兩DATA，所以總長6；CHK03 XOR90=93，XOR01=92，再XOR02=90，符合。若APP讀2、1、3bytes，buffer依序2、3、6，前兩次仍等，第三驗證成功；不能因第一次只有AA03就報長度錯誤。",
+        "若最後byte91，checksum失敗，parser應報告損壞並按恢復政策找後續，而不是回READY。即使90校驗正確，DATA01 02的業務意義仍需Lab-B欄位表與交易物件；本例只驗證frame，不能虛構兩個byte代表真實裝置的哪個狀態。串列字元正確、frame正確與語意正確依次成立，避免把校驗當萬能成功。"
       ],
       "code": {
-        "title": "虛構紀錄 A",
-        "text": "前次：adapter=USB-SERIAL-A port=COM3 open=OK\n本次：APP open COM3 -> not found\n本次：Device Manager adapter=USB-SERIAL-A port=COM8"
-      },
-      "note": "COM8 是本例虛構值，不代表你的電腦目前使用 COM8。"
-    },
-    {
-      "heading": "案例二：能開埠，也記了 TX，設備不回",
-      "paragraphs": [
-        "虛構紀錄：COM8 以 9600,8,N,1 開啟；應用記 TX 53 54 41 54 55 53 3F；教學設備卡要求 STATUS? + CR LF。此時原始 TX 缺少 0D 0A，是優先檢查的候選原因。但因沒有設備端觀測，仍不能排除線材或其他設定。",
-        "下一步在授權測試環境中只補正終止符，保持其餘條件不變，比對 RX 與設備端狀態。"
-      ],
-      "table": {
-        "caption": "案例二的證據界線",
-        "headers": [
-          "已知",
-          "尚未知",
-          "下一步"
-        ],
-        "rows": [
-          [
-            "COM8 可開",
-            "外側線材與設備是否收到",
-            "核對介面／觀測點"
-          ],
-          [
-            "TX 有 STATUS?",
-            "設備是否等待 CR LF",
-            "只改終止符重測"
-          ],
-          [
-            "RX 未見",
-            "設備是否回、程式是否漏讀",
-            "記完整 deadline 與 RX"
-          ]
-        ]
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "RX1 AA 03      -> LEN=3, expected total=6, buffered=2\nRX2 90         -> buffered=3, incomplete\nRX3 01 02 90   -> buffered=6, CHK=90 valid\nAlternative RX3 01 02 91 -> CHK invalid\nTrace records instance, monotonic time, actual count, raw HEX and parser decision."
       }
     },
     {
-      "heading": "案例三：RX 有資料但都是亂碼",
+      "kind": "code-reading",
+      "heading": "從Read路徑到錯誤分類，避免丟失關鍵資訊",
       "paragraphs": [
-        "虛構設備卡要求 19200,7,E,1；程式記錄 19200,8,N,1。鮑率相同不代表字元格式相同。先改成與文件一致，再保留原始 HEX 與可讀文字比較。",
-        "若仍是亂碼，查文字編碼、電氣、雜訊與觀測工具設定；不要一口氣換線、改鮑率和改命令。"
+        "若程式碼catch所有異常只寫「serial error」，會合並resource、timeout、EOF/關閉、parity/driver、message corruption及業務拒絕。讀程式時把每類發生的位置標在轉換鏈，並儲存原錯誤code及phase。最大read count和實際n分開，message total/已收bytes分開，deadline起點和remaining分開，才不會報告虛假的「裝置只回一半」。",
+        "下方是原創日誌模型不是SerialPort API；真實專案把例項與交易ID連到自己的owner。timestamp與單調耗時用於不同目的，老事件若不屬當前例項需顯式標記discard reason。不要把回呼exception吞掉後繼續使用受汙染buffer，恢復需按protocol定義。"
       ],
       "code": {
-        "title": "虛構紀錄 C",
-        "text": "設備：19200,7,E,1\n程式：19200,8,N,1\nRX HEX：F2 7E ...（示意，不能從這兩 bytes 推回唯一原因）"
-      },
-      "note": "示意 HEX 不代表任何真實設備，也不能單靠兩個位元組推定校驗錯。"
-    },
-    {
-      "heading": "案例四：回覆只到 AA 02 90",
-      "paragraphs": [
-        "虛構 Device-Lab-B 的 LEN=02，因此完整回覆應有 AA 02 90 01 93 共 5 bytes。程式第一次 read(5) 得到 3 bytes 就判「壞封包」，卻沒有等後續 2 bytes。若 timeout 設定容許，應先累積至完整長度再驗證 CHK；逾過交易 deadline 才報不完整。",
-        "要記清楚每次 read 的時間與內容。若後續兩 bytes 從未到達，還要查對端是否真的發完整、流量控制與觀測點。"
-      ],
-      "table": {
-        "caption": "案例四的兩次讀取",
-        "headers": [
-          "時間",
-          "讀到",
-          "目前判斷"
-        ],
-        "rows": [
-          [
-            "0 ms",
-            "AA 02 90",
-            "尚缺 DATA 及 CHK"
-          ],
-          [
-            "18 ms",
-            "01 93",
-            "完整後可驗 CHK = 93"
-          ]
-        ]
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "record LabSerialTrace(string Instance, string Request, long ElapsedMs,\n                      string Phase, int ActualBytes, string Hex, string Decision);\nvar rows = new[] {\n    new LabSerialTrace(\"P8\", \"Q9\", 0, \"write\", 9, \"5354415455533F0D0A\", \"queued\"),\n    new LabSerialTrace(\"P8\", \"Q9\", 40, \"read\", 3, \"4F4B2C\", \"incomplete\"),\n    new LabSerialTrace(\"P8\", \"Q9\", 50, \"read\", 7, \"52454144590D0A\", \"message-complete\"),\n};\nforeach (var r in rows) Console.WriteLine(r);\n// Acceptance/Completion depends on the defined application reply, not read count."
       }
     },
     {
-      "heading": "案例五：改用 RS-485 後偶發錯誤",
+      "kind": "diagnostic-case",
+      "heading": "案例A：昨日COM3，今日Open不到",
       "paragraphs": [
-        "虛構紀錄：原設備文件寫 2 線半雙工 RS-485，轉接器已更換，但在多節點下偶爾回覆被截斷。這不能單靠「RS-485 速度太快」解釋；需查線對、拓撲、終端／偏置、驅動方向切換、節點位址、傳送時序與原始位元組。",
-        "與案例一到四不同，這次優先比較同一物理總線上正常與異常交易，記錄是哪個節點、哪一段時間開始不同。"
-      ],
-      "table": {
-        "caption": "案例五的待查線索",
-        "headers": [
-          "候選",
-          "需要的證據"
-        ],
-        "rows": [
-          [
-            "方向切換太早",
-            "驅動使能與 RX 起始時間"
-          ],
-          [
-            "終端／線材問題",
-            "實際拓撲與手冊建議、授權量測"
-          ],
-          [
-            "多節點同時送",
-            "節點地址、時序及總線觀測"
-          ],
-          [
-            "程式讀取不完整",
-            "各次 read 的時間與 HEX"
-          ]
-        ]
-      }
+        "第一輪APP配置COM3、Open not-found；裝置列舉同類橋COM8。候選包括COM重新列舉、接錯實體橋、原橋不在。請先決定應取得什麼身份資料，不因COM8存在就直接寫為目標。",
+        "第二輪已授權的例項識別與序號對應原橋，程式將COM3固定寫死；而COM8無其他owner。練習需提出有限配置修正與識別回歸。此故障尚未執行裝置命令，不能用更改checksum修復。"
+      ]
     },
     {
-      "heading": "最後寫一份可決策的報告",
+      "kind": "diagnostic-case",
+      "heading": "案例B：Open/Write成功卻沒有回覆",
       "paragraphs": [
-        "報告先寫症狀與測試條件，再把已知、未知和下一步分開。不要只丟原始 CSV 或一張端子照片；讀的人需要知道事件前因後果與為什麼選這個檢查。",
-        "記錄中若涉及公司設備，不應直接公開 pinout、命令、現場位址或未授權資料。本網站所有案例使用自製假資料。"
+        "第一輪Lab-A Read200ms空，TX raw53 54 41 54 55 53 3F，無終點。候選含缺CRLF與線路/flow問題。第二輪裝置UART取得相同7bytes，parser明確waiting-CRLF且引數一致。請在練習中說明機制、最小改動與為何不能套所有裝置。",
+        "再一個變體TX完整9bytes但外側無輸出，CTS false且handshake RequestToSend；它與前一故障同樣APP timeout，機制不同。需要對端control語意與傳送完成證據，不把兩個情境都靠加CRLF處理。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例C：第二回合收到上一回合的成功",
+      "paragraphs": [
+        "Q1在deadline200仍3/5，尾2在210完成；Q2於205傳送同類查詢，APP以「下一完整frame」歸Q2。候選H1裝置錯回物件、H2遲到未相關、H3舊instance事件。第二輪記錄同一port例項，原請求及回覆格式無transaction ID。請先畫200/205/210時間線，說明現在無法安全區分哪回合。",
+        "修正政策可需限制同類交易並行、等待/隔離未決結果或按裝置支援增加相關機制；不是任意丟buffer即可回滾Q1。真實動作如果可能已執行，重試還涉及副作用。練習要求明確有限方案與回歸，不承諾模型能替未知裝置實現exactly-once。"
+      ]
+    },
+    {
+      "kind": "maintenance",
+      "heading": "修正與恢復驗收必須覆蓋機制邊界",
+      "paragraphs": [
+        "修了missing CRLF，就測完整、任意分段、兩訊息合併、錯誤終點與deadline；修了flow，就測暫停/恢復及buffer容量；修了半雙工方向，就測最後stop、對端最早回應、不同長短/速率；修了instance識別，就測重插/重新列舉/舊回呼。回歸與機制對應，而非每次固定「跑20回合」就宣稱完整。",
+        "正式修改前保留effective settings、原bytes、版本與恢復步驟，只在授權測試範圍變動。多個故障可串聯，Open修好後才顯出parser錯誤；把階段改善記錄清楚，不認為整個系統只有一個根因。報告包含外行可理解的因果和關鍵證據，原始HEX/CSV作附證而非結論替代。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：做一份獨立可讀的維護報告",
+      "paragraphs": [
+        "執行diagnose/diagnose --fault和frames --fault，用表比較輸入、完成條件、結果與恢復。選擇案例A/B/C之一寫症狀、正常契約、候選預測、下一項、第二輪推理、有限修正、回歸與限制；先自己寫再看解答。模型只輸出固定資料，不做硬體。",
+        "驗收不是抄模板，而是其他人單看報告能知道哪些層已有證據、機制為何成立、修正改變什麼、還有何風險。包含至少一組新資料手算與一項會反證你假設的觀測。復原模型，保留原失敗資料，不刪超時回合美化結果。"
       ],
-      "code": {
-        "title": "可重用的故障紀錄模板",
-        "text": "症狀：在＿＿環境，以＿＿設定執行＿＿時出現＿＿。\n正常基準：＿＿（版本／設備／時間／觀測點）。\n已知：從＿＿看到 TX＿＿、RX＿＿；這支持＿＿。\n未知：尚無＿＿的證據，所以不能認定＿＿。\n下一步：只改＿＿，在＿＿觀測點與基準比較＿＿。"
-      },
       "steps": [
-        "寫清楚設備、轉接器、埠、參數、測試時間與觀測點。",
-        "附原始 HEX 與解碼，但先給一段白話摘要。",
-        "把每個推論連到某項證據，未知就明寫未知。",
-        "選一個能區分最多候選原因的最小下一步。"
+        "按裝置卡先畫正常四層轉換。",
+        "給每個候選具體預測與最有辨識力的測點。",
+        "執行固定資料、記錄第二輪如何改變判斷。",
+        "提出機制對應的回歸表，寫白話結論與未驗證範圍。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【案例一】COM3 不見、轉接器在 COM8，先查線材還是程式的埠名？",
-      "answer": "先查程式是否仍開 COM3，並核對裝置身分與當次 COM8；目前沒有線材故障證據。"
+      "level": "foundation",
+      "question": "Open失敗時為何不優先算訊息checksum？",
+      "answer": [
+        "還沒取得本機資源，尚未進入字元/訊息傳輸階段。",
+        "先核對裝置、名稱、佔用與driver錯誤類別。",
+        "後續Open成立再按協議測試，避免跨階段猜。"
+      ]
     },
     {
-      "question": "【案例二】TX 只有 STATUS? 的 HEX，教學設備要求 CR LF，最小變因是什麼？",
-      "answer": "只補 0D 0A 終止符並保持其他條件不變，再比較 RX。"
+      "level": "foundation",
+      "question": "正確frame但回Busy意味哪層已透過、哪層需查？",
+      "answer": [
+        "字元及訊息格式可有證據，Busy是上層裝置/操作狀態。",
+        "查成功語意與前條件，不憑它否定線路。",
+        "用正常狀態對照驗證業務，而非改baud。"
+      ]
     },
     {
-      "question": "【案例三】19200,7,E,1 對 19200,8,N,1，哪裡不一致？",
-      "answer": "資料位元與同位檢查不同；先按設備文件調整完整字元設定。"
+      "level": "application",
+      "question": "新19200 8E1、TX10/RX6bytes、處理8ms，下界？",
+      "answer": [
+        "每字元11bits，TX110/19200=5.7292ms，RX66/19200=3.4375。",
+        "總5.7292+8+3.4375=17.1667ms。",
+        "橋/flow/排程另計，非所有交易deadline。"
+      ]
     },
     {
-      "question": "【案例四】read(5) 只拿到 AA 02 90，能直接判壞包嗎？",
-      "answer": "不能。可先按 LEN 等待其餘兩 bytes，直到完整或交易 deadline。"
+      "level": "application",
+      "question": "AA 02 91 04的CHK該多少？總長？",
+      "answer": [
+        "LEN2→CMD+DATA2，總長5。",
+        "02 XOR91=93，XOR04=97；完整AA02910497。",
+        "按本模型檢frame，業務欄位仍需協議。"
+      ]
     },
     {
-      "question": "【案例四校驗】後續讀到 01 93，依教學規則 CHK 正確嗎？",
-      "answer": "正確，02 XOR 90 XOR 01 = 93；這只證明符合虛構框架規則。"
+      "level": "diagnosis",
+      "question": "案例A需要怎麼修與回歸？",
+      "answer": [
+        "已確認例項身份且COM名改變，修目標配置或按正式例項識別策略選擇資源。",
+        "不只選任意COM8，保留身份核對與佔用檢查。",
+        "測重插/重新列舉與錯誤裝置拒絕，成功後再測真實命令。"
+      ]
     },
     {
-      "question": "【案例五】RS-485 偶發截斷時，為何要查方向切換？",
-      "answer": "半雙工需要按時啟用與停用驅動；切換時序不合可能影響回覆，但仍需總線與程式證據驗證。"
+      "level": "diagnosis",
+      "question": "案例B缺CRLF有限修正怎樣驗證？",
+      "answer": [
+        "裝置收到7bytes且等CRLF，補0D0A而保留其他條件。",
+        "驗證完整回覆/業務READY，再測分段與合併。",
+        "此終點是Lab-A契約，不套未知binary協議。"
+      ]
     },
     {
-      "question": "【報告】只寫「RS-232 不通」為何不夠？",
-      "answer": "沒有說明失敗在哪一層、測試條件、觀測點與原始資料，無法選下一個檢查。"
+      "level": "diagnosis",
+      "question": "案例B完整TX卻CTS false，先改哪裡？",
+      "answer": [
+        "啟用flow可能等待允許輸出，先核對control線功能與狀態。",
+        "取得線路傳送與正式handshake契約，不從APP write數目斷言已經出線。",
+        "正規flow恢復後測停止/續傳，不能永久強制繞過。"
+      ]
     },
     {
-      "question": "【界線】教材的 Device-Lab-A/B/C 可直接代替公司設備手冊嗎？",
-      "answer": "不能。它們全是自製練習資料；真實介面、pinout、命令與安全條件都要用授權的正式手冊與實測確認。"
+      "level": "diagnosis",
+      "question": "案例C能把210的frame直接歸Q2嗎？",
+      "answer": [
+        "缺transaction ID且Q1未決，時間近不保證屬於Q2。",
+        "限制新請求/遲到管理需按協議，動作結果可能已發生。",
+        "測timeout/晚到/重連，不以清buffer假裝取消遠端。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新Read回n3而buffer32，程式碼把32送parser，可能發生什麼？",
+      "answer": [
+        "29舊/未填bytes汙染stream，可能產生假sync/壞length。",
+        "僅消費前n3並保留累積狀態。",
+        "測不同n與buffer內容，驗證未讀區不會影響輸出。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "同時換線、改baud、補終點後成功，可判線壞嗎？",
+      "answer": [
+        "三個變因同時改變，無法分離唯一貢獻。",
+        "在隔離條件逐一對照並取得電氣/字元/parser證據。",
+        "若無法安全重現，報告已改善但未確定根因，別編結論。"
+      ]
     }
   ],
   "recap": [
-    "先找到第一個與正常基準不同的觀測點。",
-    "沒有完整回覆時，分清設備沒送與程式漏讀。",
-    "結論要讓外行人知道症狀、證據、限制與下一步。"
+    "定義成功與正常契約，預測各層應出現的資料。",
+    "用有效設定、HEX、讀取狀態及時間分開故障候選。",
+    "以第二輪證據選擇有限修正，並驗證恢復與邊界。",
+    "撰寫無需熟悉術語也能理解的故障記錄。"
   ],
   "sources": [
     {
-      "label": "NI：串列通訊參數與除錯",
-      "url": "https://www.ni.com/docs/es-ES/bundle/labview/page/serial-port-communication.html"
+      "label": "Analog Devices：UART字元與非同步傳送",
+      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
     },
     {
-      "label": "pySerial：讀取與 timeout",
-      "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
+      "label": "Analog Devices：RS-232電氣、訊號與介面",
+      "url": "https://www.analog.com/en/resources/technical-articles/fundamentals-of-rs232-serial-communications.html"
     },
     {
-      "label": "Analog Devices：RS-485／422 實作",
+      "label": "Analog Devices AN-960：RS-422/485實作原理",
       "url": "https://www.analog.com/en/resources/app-notes/an-960.html"
+    },
+    {
+      "label": "Microsoft：SerialPort.Read實際回傳數",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.read?view=netframework-4.6"
+    },
+    {
+      "label": "Microsoft：DataReceived時序與執行緒",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived?view=dotnet-plat-ext-8.0"
+    },
+    {
+      "label": "pySerial：引數、讀取與timeout",
+      "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/serial-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/Program.cs",
+      "label": "串列C#概念與解析模型",
+      "description": "本章用diagnose模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/README.md",
+      "label": "獨立.NET10模型操作說明",
+      "description": "本章用diagnose模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
     }
   ]
 }

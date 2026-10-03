@@ -1,171 +1,278 @@
 {
-  "intro": "遇到陌生廠商介面，先確認手上是什麼文件、適用哪個版本，再依「連線、欄位、時序、錯誤」讀。教材中的 DemoCtrl-A v1.0 是虛構的文件卡，不是任何產品可執行命令。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 20
-    }
+  "contentVersion": 2,
+  "intro": "介面文件的價值不是列一串命令，而是讓兩端對輸入、結果、時間與失敗有相同理解。這章從接口與契約開始，區分API簽章、資料格式與行為語義，逐項讀一份虛構Lab介面卡，學會把不完整規格轉成可驗證問題。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      14,
+      24
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 icd 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能區分 SDK 手冊、API Manual、ICD、Protocol Specification。",
-    "能找出協定欄位、時序、錯誤、版本與雙方責任。",
-    "能發現文件欠缺的資訊並列成待查問題。"
+    "分清API參考、協定格式、ICD與操作手冊各提供何種資訊。",
+    "將欄位、單位、範圍、身份與結果語義轉成可測規則。",
+    "辨認「解析成功但語義錯」與版本不相容，提出最小修正與驗收。"
   ],
   "sections": [
     {
-      "heading": "四種文件回答不同問題",
+      "heading": "接口是一條需要雙方同意的邊界",
+      "kind": "concept",
       "paragraphs": [
-        "SDK 手冊常教程式如何使用套件；API Manual 說方法、參數、回傳與事件；ICD 描述兩端界面的責任和條件；Protocol Specification 細述線上訊息格式與狀態規則。實際名稱不統一，要看內容而非封面。",
-        "OpenAPI 主要描述 HTTP API；AsyncAPI 可描述事件訊息。它們只是文件格式範例，不表示公司的設備使用 HTTP 或訊息平台。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/integration-document-check.svg",
-        "alt": "先核對文件版本，再依端點、欄位、時序、錯誤、驗證逐項讀取。",
-        "caption": "閱讀未知介面的檢查順序；不暗示 DemoCtrl-A 是真實產品。"
-      }
-    },
-    {
-      "heading": "先核版本和範圍",
-      "paragraphs": [
-        "看文件編號、修訂日期、適用韌體／SDK／協定版本、支援平台、變更紀錄與已知限制。兩份名稱相同但版本不同的文件不能直接拼起來。",
-        "若只拿到簡介而缺協定附錄，就不要猜命令碼或錯誤碼；把缺少的部分列出，向有權限的維護人員核對。"
+        "兩套程式或設備交換資料，需要同意操作名稱、欄位、順序、類型、含義、時間與失敗行為。interface control document（ICD）記錄邊界的約定與相關責任；並非所有產品都叫ICD，SDK參考、協議手冊和項目設計文件可共同承擔這些內容。名字不是關鍵，關鍵是能否回答雙方怎樣交互與怎樣判定正確。",
+        "C#方法簽章告訴你Send接受LabCommand並回LabReceipt，但沒有自動說明Value是百分比還是原始電壓、Accepted是本地入隊還是設備完成、通知會不會重復。網路格式說明byte如何編碼與封包，卻也未必說明操作順序和狀態前提。操作手冊通常面向人，可能只寫點哪個按鈕，不能替代機器邊界的錯誤和併發規則。",
+        "維護者應先把手頭文件分類，再補欠缺部分。若只有一頁字段表，不能猜預設值和重試政策；若只有完整SDK宣告，不能猜每個enum對實體動作的影響。NASA界面管理說明管理接口定義與變化的目的；本章用這個思路建立可追問的閱讀卡，不把NASA流程強套成公司文書制度。"
       ]
     },
     {
-      "heading": "把介面讀成六個問題",
+      "heading": "語法、型別和語義是三層不同的正確",
+      "kind": "concept",
       "paragraphs": [
-        "誰先連？要認證嗎？如何建立 Session？命令欄位是什麼？同步回覆與非同步事件各表示什麼？錯誤和逾時怎麼處理？",
-        "再補上重連、版本相容、最大長度、字元編碼及安全要求。若文件沒寫，不可從一般慣例推定。"
+        "語法正確表示資料可按格式解析。例如JSON花括號合法，數字75是number。類型正確表示它可放進期望的C#int或string。語義正確表示75在此字段表示允許的百分比、應用到正確目標與狀態。JSON解析成功不能證明輸入合法，int可容納101也不能證明SetLevel允許101。",
+        "欄位缺失也與零不同。若協議允許0百分比但Value是必填，資料沒Value不能預設為0就接受，否則“漏值”被改成“關至零”。某些反序列化設定可讓未設屬性留下預設，另一些required設置會失敗；必須按實際類型與序列化選項核對。維護程式應在邊界驗證需要的存在性、類型、範圍和跨字段條件，而不是所有錯誤都靠最後的設備拒絕。",
+        "單位是語義的一部分。毫秒/秒、伏特/millivolt、百分比/0到1比例、十進位/hex都能傳相同數字卻代表不同動作。文件必須明確，代碼變量名與轉換也應體現。例如輸入0.8若指80%，需乘100並處理整數範圍；輸入80若已經百分比，則再乘100是錯誤。理解轉換規則，才能解釋為甚麼通信正常而設備效果不對。"
+      ]
+    },
+    {
+      "heading": "把欄位讀成一組可驗證條件",
+      "kind": "concept",
+      "paragraphs": [
+        "本Lab輸入包含RequestId、Session、Action、Target、Value。RequestId在控制器範圍內唯一並加owner前綴，Session標當前世代，Action區分SetLevel/QueryState，Target用於目標關聯，Value在SetLevel是整數百分比0–100。模型adapter實際驗證Action與Value範圍；沒有真實設備存在性檢查，也沒有網路序列化，這些邊界必須寫明。",
+        "欄位的“必填”“可選”“預設”和“允許未知”會影響兼容性。新增可選字段若舊端忽略可能可兼容，但新增必填或改變同名字段單位通常不能假定兼容。不同版本還可能復用錯誤碼，故紀錄需保留適用版本與原始輸入。文件內容必須與實現核對：說大小寫敏感，代碼卻ToLower後接受，是行為差異，需要明確修哪一方。",
+        "規範用語也需讀來源。RFC2119的MUST/SHOULD/MAY在聲明採用該約定的規範內有特定強度；一份公司中文文件的“建議”不一定等同RFC的SHOULD。不要用大寫英文提高自己推測的強度。將規則轉成測試輸入，才有可審查的含義：-1、0、100、101及大小寫錯誤分別應該得到甚麼結果。"
       ],
       "table": {
-        "caption": "讀一份 ICD 時的空白查核表",
+        "caption": "Lab介面卡的具體欄位規則",
         "headers": [
-          "要找的項目",
-          "要確認的具體問題",
-          "缺失時標記"
+          "欄位",
+          "含義",
+          "需要驗證"
         ],
         "rows": [
           [
-            "端點與傳輸",
-            "位址／Port／實體介面／方向",
-            "未知"
+            "RequestId+Session",
+            "操作歸屬",
+            "與結果匹配，不跨世代"
           ],
           [
-            "驗證與 Session",
-            "誰發起、憑證、有效期限",
-            "未知"
+            "Action",
+            "區分操作",
+            "大小寫和支持集合"
           ],
           [
-            "命令與回覆",
-            "欄位、型別、單位、Accepted 語意",
-            "未知"
+            "Target",
+            "目標記錄",
+            "Lab不驗證真實設備存在"
           ],
           [
-            "事件與錯誤",
-            "來源、關聯 ID、超時與重送",
-            "未知"
+            "Value",
+            "SetLevel百分比",
+            "整數，0–100含邊界"
           ],
           [
-            "版本",
-            "文件與產品版本對應",
-            "未知"
+            "Accepted",
+            "模型接收",
+            "不能提升為Completed"
           ]
         ]
       }
     },
     {
-      "heading": "DemoCtrl-A v1.0 虛構文件卡",
+      "heading": "順序、完成和錯誤決定接口能否長期使用",
+      "kind": "concept",
       "paragraphs": [
-        "教學卡定義：`GetStatus(session_id=S1, request_id=q17)`；立即回 `Accepted(q17)`，若完成，之後可能回 `StatusReport(q17, READY)`。此設計只是讓你練分辨回覆層級。",
-        "文件若沒有說 `Accepted` 是何種程度的接受，就不能推定已執行。`READY` 在此模型是虛構狀態，也不證明音訊、射頻或任何外部動作。"
-      ],
-      "code": {
-        "title": "虛構 DemoCtrl-A v1.0，不可對實機發送",
-        "text": "REQUEST GetStatus {session_id: S1, request_id: q17}\nREPLY   Accepted  {request_id: q17}\nEVENT   StatusReport {request_id: q17, state: READY}\n# 傳輸方式、真實編碼與 Port：本教材未定義"
-      }
-    },
-    {
-      "heading": "規範用語要按原文件讀",
-      "paragraphs": [
-        "在採用 RFC 2119 等規範用語的文件中，MUST、SHOULD、MAY 含義不同；沒有宣告使用這套用語的文件，仍須看作者定義。",
-        "例如「事件 MAY arrive」不能寫成事件每次必到。若重試或順序規則沒寫，列成待查，不補成通用保證。"
+        "除了欄位，接口還要說明何時可呼叫。Connected、Authenticated、DeviceReady可能分別成立；只因網路連接就SetLevel，未必符合業務。Accepted是同步回傳，Completed是後續事件，它們需要配對身份。若操作沒有最終通知，需約定查詢、超時或取消，不能由客戶端隨意重送實體動作。",
+        "結果亂序、重復、丟失與晚到都屬於行為契約。SetLevel絕對值可能設計為重復設置安全，但Toggle每次翻轉就不是同一機制；客戶端生成新ID也可能讓設備當新操作。去重範圍、期限與保存結果決定重復請求如何處理，不是只有一個RequestId字段就得到“只執行一次”。ICD必須能解釋失敗後如何知道結果和恢復。",
+        "錯誤碼也應按階段：參數無效未接受、已入隊但執行拒絕、執行中斷結果未知、本地例外可能尚未送出。錯誤要給應用足夠資訊決定准入和提示；不要讓所有狀態都只有0/1而沒有階段。若真實文件不完整，先列一個明確問題與測試，別拿教學模型的Accepted含義認定公司接口相同。"
       ]
     },
     {
-      "heading": "做一次最小交叉驗證",
+      "heading": "例題一：邊界值與大小寫的完整判讀",
+      "kind": "worked-example",
       "paragraphs": [
-        "用與版本相符的公開或授權範例查方法簽章，再對照實際程式如何傳參、如何解析回覆，最後在可控測試環境比對 log。",
-        "NASA 的 ICD 概念可幫你理解文件目的；真正產品文件才定義該介面的欄位與責任。不要用此虛構卡去測未知設備。"
+        "輸入四筆SetLevel：-1、0、100、101。LabAdapter只接受0/100，拒絕越界；拒絕不會加入Sent。再傳setlevel小寫，收到UnsupportedAction。方法返回不是最終完成，每筆Accepted仍待事件。這個例子把範圍與操作名稱規則拆成不同錯誤，方便用戶修輸入與維護者修映射。",
+        "以下完整代碼在icd情境同類邏輯中執行，預期OutOfRange、Accepted、Accepted、OutOfRange，Sent=2。如果反向條件寫成value<=0||value>=100，合法端點會被拒絕；只測試50不會發現。因此邊界測試來自明確語義，不是為湊測試數量。若真規格0不合法，必須修文件與代碼，不能套我們的端點規則。",
+        "同症狀“設備沒改變”可能因OutOfRange根本未接受，也可能Accepted後未完成。先讀Receipt與Sent，再讀事件，才能區分。報告應說拒絕輸入或等待任務，不把兩者都寫網路失敗。參數核對是工程基礎，它讓你知道哪種資料已經可合法進入下一層。"
+      ],
+      "code": {
+        "title": "完整Lab邊界例題",
+        "text": "using var adapter = new LabScriptedAdapter();\nforeach (int value in new[] { -1, 0, 100, 101 })\n{\n    var reply = adapter.Send(new LabCommand($\"R{value}\", 1, \"SetLevel\", \"D1\", value));\n    Console.WriteLine($\"{value}: {reply.Accepted} {reply.Code}\");\n}\nvar typo = adapter.Send(new LabCommand(\"RX\", 1, \"setlevel\", \"D1\", 20));\nConsole.WriteLine(typo.Code); // UnsupportedAction\nConsole.WriteLine(adapter.Sent.Count); // 2"
+      }
+    },
+    {
+      "heading": "例題二：JSON合法，卻缺少Value",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入兩份JSON：第一份只有Action，第二份有Value=0。若只反序列化到Value為int且沒規定required的型別，兩者可能看起來都有預設0；這樣缺值被誤當合法零。完整例題用JsonDocument檢查欄位存在、number類型及整數，然後範圍0–100。第一份MissingValue，第二份Valid:0。",
+        "這段屬於獨立.NET10格式練習，不是LabAdapter的網路實現，也不暗示公司協議用JSON。它教你在任何編碼邊界區分語法與語義。字符串“0”、小數0.5、巨大整數與缺值需按契約處理；不能因為轉換函數“盡量轉了”就讓錯誤輸入進入實體動作。不同配置是否接受數字字符串，應明確而非偶然。",
+        "修正要有限：若協議Value必填，補存在性驗證或required機制，並維持合法0；若文件定義可選且預設0，處理可正確，但需寫預設的業務影響。驗收包括缺值、零、最大、越界、類型錯與正常值，證明修正不把合法零一起拒絕。"
+      ],
+      "code": {
+        "title": "完整獨立C#解析/語義例題",
+        "text": "using System.Text.Json;\nforeach (string text in new[] { \"\"\"{\"Action\":\"SetLevel\"}\"\"\", \"\"\"{\"Action\":\"SetLevel\",\"Value\":0}\"\"\" })\n{\n    using var doc = JsonDocument.Parse(text);\n    var root = doc.RootElement;\n    if (!root.TryGetProperty(\"Value\", out var field)) { Console.WriteLine(\"MissingValue\"); continue; }\n    if (field.ValueKind != JsonValueKind.Number || !field.TryGetInt32(out int value)) { Console.WriteLine(\"InvalidType\"); continue; }\n    Console.WriteLine(value is >= 0 and <= 100 ? $\"Valid:{value}\" : \"OutOfRange\");\n}"
+      }
+    },
+    {
+      "heading": "如果是網路/序列資料，還要有encoding和framing",
+      "kind": "concept",
+      "paragraphs": [
+        "方法內物件已經由C#類型界定邊界，網路/序列位元組流卻需要定義如何組成一條消息。encoding說明文字怎麼變byte，framing說明哪裡開始結束、長度如何讀、校驗與逃逸如何處理。TCP是位元組流，讀一次不等於一條完整消息；RS232同樣不能憑一次讀取就當完整命令。ICD應明示長度、分隔、byte order和版本標記等適用規則。",
+        "格式完整仍需資源限制。宣稱長度65535但輸入只來10byte、永遠無結束符、未知版本或校驗失敗時，接收程式需決定等多久、最大緩存多少、是否丟棄/重同步。沒有上限會讓錯誤輸入耗盡資源；沒有錯誤恢復會把後續正確包全解析錯。這裡不能為公司自造包格式，只能把必要問題列到閱讀卡。",
+        "字數與byte數不能混用。長度字段若記錄UTF-8 byte數量，含中文文字就不能拿C# string.Length代替；UTF-16中的char與編碼後的byte有不同單位。編碼器輸出的實際長度才適合填寫該格式長度。反過來若規範長度指包含表頭還是只負載，也必須一致；多算表頭會讓接收端等待不存在的資料，少算會把剩餘byte當下一包。每種情況都能產生“首條成功、第二條解析壞”的長期症狀。測試應含空負載、ASCII與中文、最大長度和拆成多次接收，確認邊界不隨一次Read大小改變。",
+        "如果SDK已封裝格式，應用需瞭解它提供的錯誤與邊界，不一定自己重寫parser。讀取廠商庫的Send方法時，要追它是否只是序列化、是否已外送、是否線程安全與有沒有回覆配對。理解文件層次可避免在業務controller修底層framing，同時也避免以“SDK處理了”掩蓋實際缺少的錯誤資訊。"
+      ]
+    },
+    {
+      "heading": "版本差異應記錄行為差異，不只列版本號",
+      "kind": "concept",
+      "paragraphs": [
+        "假設v1規定Value=0–100百分比，v2改成0–1000千分比但字段還叫Value。若客戶端發送80，兩邊都解析成功，v1理解80%、v2理解8%。這不是通信沒通，而是語義不相容。版本號只有在雙方核對並選擇相容規則時才起作用；盲目更新客戶端可能把正常設備調小十倍。",
+        "另一個差異是Accepted從“設備已執行”變成“本地佇列接收”。客戶端原本直接顯示完成，在新版本需要等待事件。簽章同樣LabReceipt(bool,Code)並不能檢測語義變化。因此遷移清單應列字段單位、範圍、狀態、完成與錯誤行為，並用正常/失敗基準比較，不僅驗證可以編譯。",
+        "保持相容可以通過明確adapter轉換，但必須檢查比例、邊界與溢位，保留使用的協議版本。遇不支持版本應給可追查拒絕，而不是猜一個最近似格式。校對文件與實現後，外行也能讀懂結論：“值被另一單位解釋，雖收到但效果錯”，不用堆協議術語。"
+      ]
+    },
+    {
+      "heading": "追碼實作：把介面卡變成測試表",
+      "kind": "lab",
+      "paragraphs": [
+        "下載integration-demo-icd閱讀卡，執行icd。先不運行，逐行給-1/0/100/101與小寫action寫預期Receipt及Sent數，再進adapter.Send核對。變因把範圍條件改為排除0/100，應讓lower/upper_boundary_valid失敗；復原後改Action大小寫規則，說明文件與實現哪一方發生變化。",
+        "再在獨立Console執行JSON例題，增加Value字符串、缺Action、負數和101。例題只驗證Value，你須標明Action與身份規則還未實現，不能聲稱完整schema通過。嘗試在紙上補一份“必需檢查集合”，分開解析、語義與狀態前提。驗收是每條規則有對應輸入、結果和代碼位置。",
+        "最後選一次版本變化，寫兩個行為差異和遷移測試：單位倍率與完成語義。不要改既有公司文件或盲目調用設備；可先用本機模型證明轉換與錯誤分支。閱讀文件的目標是建立完整規則，再能在真實接口中精准找缺口。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：收到Accepted但設備效果不對",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "候選甲把0–1比例0.8轉int直接變0而未乘100；候選乙伺服器期待千分比，客戶端按百分比傳80；候選丙Accepted只是本地接收，設備執行實際失敗。三案通信方法都可返回接受，不能直接判硬件壞。先記錄原始輸入、轉換中間值、協議版本與完成事件。",
+        "資料甲實際Value=0，修應用轉換並驗證捨入/範圍，不能把設備最小值改成1；資料乙實際Value=80、目標規範千分比，修adapter版本映射或明確拒絕不相容；資料丙Value=80正確但最終Failed，查執行失敗層而不是轉換。各案必須以字段與階段證據區分，有限改一個已確認機制。",
+        "驗收用0、約80%、100%和越界；遷移測試包含舊/新版與失敗通知。效果變化需外部讀回/觀測而不是按鈕顯示。報告寫“哪份契約、哪項語義、哪個轉換點”才能讓別人復核；沒有設備時如實寫Lab轉換已驗證，實體執行仍未測。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【文件】API Manual 一定包含線路封包格式嗎？",
-      "answer": "不一定；可能需另查 Protocol Specification 或 ICD。"
+      "question": "【基礎】API簽章與ICD行為契約有何差異？",
+      "level": "foundation",
+      "answer": [
+        "簽章說明可調用成員與類型，行為契約說明字段意義、狀態前提、完成、時間與錯誤。",
+        "相同簽章可有不同Accepted或單位，編譯不能驗證這些。",
+        "讀取兩層並把規則轉成輸入/結果測試。"
+      ]
     },
     {
-      "question": "【格式】OpenAPI 範例能證明公司設備用 HTTP 嗎？",
-      "answer": "不能；只是文件格式範例。"
+      "question": "【基礎】JSON合法、int有效、百分比合法為甚麼不是同一個判斷？",
+      "level": "foundation",
+      "answer": [
+        "格式解析驗證語法，int轉換驗證表示範圍，0–100驗證此操作語義。",
+        "101能是合法JSON與int，卻不是Lab SetLevel合法百分比。",
+        "依序拒絕並保留階段，避免誤報通信故障。"
+      ]
     },
     {
-      "question": "【版本】SDK 版本與文件不符時能直接照範例呼叫嗎？",
-      "answer": "不應；先核對相容性和變更紀錄。"
+      "question": "【基礎】字段可缺並預設0，與必填且允許0，業務結果為何不同？",
+      "level": "foundation",
+      "answer": [
+        "前者缺值被明示定義為0，後者缺值是錯誤而0是合法輸入。",
+        "不檢查存在性可能把錯誤資料執行成關閉/最低值。",
+        "按契約寫缺值與零兩項測試，不用value==0統一拒絕。"
+      ]
     },
     {
-      "question": "【欄位】讀 ICD 至少確認哪些？",
-      "answer": "端點／傳輸、驗證／Session、欄位、回覆／事件、錯誤／逾時、版本。"
+      "question": "【應用】v1 0–100百分比，v2 0–1000千分比，業務35%各應送甚麼？",
+      "level": "application",
+      "answer": [
+        "v1送35，v2送350，倍率10。",
+        "以版本選擇轉換，邊界0/100%對應0/100或0/1000。",
+        "驗證中間值與實際版本，不能因字段同名就直接復用。"
+      ]
     },
     {
-      "question": "【語意】Accepted(q17) 能證明 READY 嗎？",
-      "answer": "不能；本模型另等 StatusReport。"
+      "question": "【應用】JSON {\"Value\":\"75\"}，範例檢查Number與TryGetInt32，結果？",
+      "level": "application",
+      "answer": [
+        "Value類型是String，Number條件失敗，輸出InvalidType。",
+        "這是選擇的嚴格契約，不是聲稱所有JSON設置都不接受數字字串。",
+        "若要轉換，應明示規則與錯誤，並測試非數字、溢位與缺值。"
+      ]
     },
     {
-      "question": "【語意】READY 能證明有音訊嗎？",
-      "answer": "不能；狀態名稱不等於音訊路徑證據。"
+      "question": "【應用】values=-1,0,99,100,101，錯誤代碼拒value<=0||value>=100。有哪些誤拒？",
+      "level": "application",
+      "answer": [
+        "0與100是合法端點，卻被條件排除；-1/101正確拒，99接受。",
+        "改為<0或>100才符合本Lab含端點規則。",
+        "測試端點與越界，不能僅試50。"
+      ]
     },
     {
-      "question": "【用語】文件說 MAY 能寫成一定會發生嗎？",
-      "answer": "不能；先按文件的規範用語解讀。"
+      "question": "【診斷】方法Accepted、無完成事件與最終Failed，是否相同恢復動作？",
+      "level": "diagnosis",
+      "answer": [
+        "前案結果未知，需要查詢、等待或按契約超時策略；後案已有失敗結果需查執行原因。",
+        "不能把兩者都無條件重送，實體動作副作用與去重不同。",
+        "驗證階段、ID與版本，設計各自的恢復及驗收。"
+      ]
     },
     {
-      "question": "【缺件】文件沒有重連規則，應如何處理？",
-      "answer": "標成待查，不能自行編造公司行為。"
+      "question": "【診斷】客戶端期望80%，紀錄Value80、遠端顯示8%，雙端都無語法錯誤。優先查甚麼？",
+      "level": "diagnosis",
+      "answer": [
+        "支持單位/版本語義差異，先比雙方ICD和轉換中間值。",
+        "若遠端0–1000而客戶端0–100，則80對應8%，需映射800或明確協議選擇。",
+        "驗收0/80/100%與越界，再讀回效果，不能改網路來解決語義錯誤。"
+      ]
     }
   ],
   "recap": [
-    "先辨文件種類和版本，再讀欄位與時序。",
-    "虛構文件卡不等於產品協定。",
-    "Accepted、狀態回報與業務結果各有範圍。"
+    "接口正確包含語法、型別、語義與時序，不只是解析成功。",
+    "單位、身份、Accepted/Completed與錯誤階段必須有明確規則。",
+    "把文件轉成邊界測試與版本差異，才可維護和遷移。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 icd，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    },
+    {
+      "path": "./assets/labs/integration-demo-icd.md",
+      "label": "Lab 整合介面契約 v2",
+      "description": "原創教學契約，定義輸入、回傳、通知、身分、終態與生命週期，非公司介面。"
+    }
   ],
   "sources": [
     {
-      "label": "NASA：介面管理與 ICD 的用途",
+      "label": "NASA：Interface Management與定義/變化",
       "url": "https://www.nasa.gov/reference/6-3-interface-management/"
     },
     {
-      "label": "OpenAPI Initiative：HTTP API 描述規格（僅作文件類型範例）",
-      "url": "https://spec.openapis.org/oas/v3.1.2.html"
+      "label": "RFC2119：規範用語適用範圍",
+      "url": "https://www.rfc-editor.org/rfc/rfc2119.html"
     },
     {
-      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
-      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
+      "label": "Microsoft：System.Text.Json反序列化行為",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/deserialization"
     },
     {
-      "label": "IETF RFC 2119：MUST、SHOULD、MAY 的規範用語",
-      "url": "https://www.rfc-editor.org/rfc/rfc2119"
+      "label": "RFC8259：JSON資料模型",
+      "url": "https://www.rfc-editor.org/rfc/rfc8259.html"
     }
   ]
 }

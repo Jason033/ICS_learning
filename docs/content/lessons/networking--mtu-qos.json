@@ -1,166 +1,277 @@
 {
-  "intro": "有時小封包可以通，大資料卻卡住；有時總頻寬夠，語音仍斷續。這篇分清 MTU、封包分段與 DSCP／QoS：前者關乎一筆資料能否沿路傳送，後者關乎網路繁忙時如何處理不同流量。",
-  "plan": [
-    {
-      "label": "理解 MTU 與封包大小",
-      "minutes": 10
-    },
-    {
-      "label": "理解路徑 MTU",
-      "minutes": 8
-    },
-    {
-      "label": "理解 DSCP／QoS",
-      "minutes": 9
-    },
-    {
-      "label": "讀故障案例與練習",
-      "minutes": 8
-    }
+  "contentVersion": 2,
+  "intro": "小查詢正常、大回覆卡住，與繁忙時即時資料延遲，是兩種常見卻不同的機制。本章從每層長度、路徑瓶頸及佇列服務方式推導MTU、MSS、分片、PMTUD與QoS。",
+  "prerequisites": [
+    "本章以無options頭長作基準，新增開銷在例題明算。",
+    "需會bytes×8轉bits，速率與時間單位在QoS節推導。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      18
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+  },
   "goals": [
-    "說出 MTU 與應用訊息大小的差別。",
-    "解釋為何小資料可通不代表大資料也可通。",
-    "知道 DSCP 是標記，QoS 的效果需看整條路徑策略。",
-    "能提出 MTU 或排隊問題的基本查證步驟。"
+    "按標頭口徑計算IP、TCP、UDP與ICMP資料上限。",
+    "解釋IPv4分片、DF與路徑MTU反饋。",
+    "區分TCP分段、IP分片及應用訊息切割。",
+    "用排隊與速率解釋DSCP、整形、警管及優先服務的限制。"
   ],
   "sections": [
     {
-      "heading": "MTU 是鏈路能承載的封包上限之一",
+      "kind": "concept",
+      "heading": "MTU限制的是某一層能一次承載多大",
       "paragraphs": [
-        "MTU 指某個網路介面或鏈路允許的最大傳送單位，常以位元組計。應用程式傳送的「一筆資料」不是必然等於一個 IP 封包；TCP 會把位元組流切成適合傳輸的片段，UDP 應用則要格外留意單筆資料報過大。",
-        "一條路徑上的各段鏈路可能允許不同大小。最小的一段限制會影響可順利通過的封包大小；另外還有 IP、TCP／UDP 及封裝標頭要占空間。"
-      ],
-      "flow": [
-        "應用資料",
-        "傳輸層封裝／切分",
-        "IP 封包",
-        "路徑上的各段 MTU"
-      ],
-      "note": "常見 Ethernet MTU 是 1500，但不是所有路徑都固定 1500；VPN、隧道或其他封裝可能改變可用大小。"
+        "Ethernet常見IP MTU1500表示該鏈路可承載的IP packet長度上限，不是應用能送1500bytes，也不是整個frame含所有頭的長度。IP裡面還要放TCP/UDP頭，TCP裡才是應用資料。網路由多段鏈路組成，每段限制可能不同；Path MTU是該路徑最小可用IP大小。VPN、隧道封裝又加外層頭，在同樣外層鏈路上減少內層可用長度。",
+        "TCP segmentation是傳輸層把byte stream分段；IP fragmentation是將一份IP資料分成多份IP fragment；應用自行切訊息則是業務協議機制。三個層次的重新拼合規則不同。TCP send10KB不表示網線上會有10KB單packet，OS通常按MSS/路徑限制切；一個很大的UDP datagram若被IP分片，任何分片不足可能令整筆無法重組，不能把每fragment當獨立應用資料包。"
+      ]
     },
     {
-      "heading": "路徑 MTU 問題常表現為「小的可以，大的失敗」",
+      "kind": "mechanism",
+      "heading": "MSS與PMTUD怎樣減少途中分片",
       "paragraphs": [
-        "IPv4 某些情況可分片，但分片會增加複雜度；若設了不允許分片，路徑上遇到較小 MTU，設備應提供相關錯誤訊息。IPv6 的路由器不替來源端分片，來源端需調整封包大小。",
-        "若必要的錯誤回饋被擋，可能出現握手成功、少量資料成功，大資料卡住的現象。這不是唯一原因；也可能是程式訊息邊界、緩衝或對端處理。要用不同大小測試與雙端封包佐證。"
+        "MSS是TCP握手選項表明可接收的資料段大小；實際傳送還要考慮IP/TCP options及路徑資訊，不能把MSS當全部IP長度。IPv4設定DF（禁止分片）且packet大於某路由出口MTU時，不能普通分片轉送，路由器會按規則丟棄並回ICMP fragmentation-needed，來源據此調整。若該反饋被阻擋，可能出現握手小包成功，大資料不斷重傳卻卡住的PMTU black hole。",
+        "IPv6路由器不做IPv4式途中分片，Packet Too Big回報幫助來源選擇大小；來源若需要分片使用IPv6機制。傳統PMTUD依反饋，PLPMTUD等方法可用傳輸層探測輔助。實際系統是否啟用與怎樣調整需查平臺，不把ping一次測值當所有協議/路由永恆上限。路徑變化後此前估計也可能過時。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "長訊息與小packet怎樣共同成立",
+      "paragraphs": [
+        "應用要傳64KB狀態檔案，不需要把應用長度壓成1460才使用TCP；TCP將byte stream切成多段，再在接收端按序交給應用，應用仍以自己的64KB訊息邊界收齊。相反，UDP若協議規定一datagram一完整訊息，應用不能未經協議設計就拆成多個datagram，否則接收者不知道順序、總長與完成條件。MTU策略要尊重上層訊息契約。",
+        "優先排程還會改變觀察分佈：高優先小packet可能排隊較少，低優先bulk更容易積壓；這不是鏈路變快，而是時間資源重新分配。若只看高優先改善而不看低優先飢餓、丟棄及恢復，就不能聲稱整體可靠性提升。容量不足時明確捨棄或延期何種資料，是設計決策，也是維護報告需要說明的工程後果。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：1500與1400兩種路徑下能放多少",
+      "paragraphs": [
+        "假設IPv4無options20bytes、TCP無options20、UDP8、ICMP echo頭8。MTU1500時TCP資料上限1500−20−20=1460；UDP payload上限1500−20−8=1472；Windows ping -l設的是ICMP資料，所以不分片探測的資料1472加28共1500。若路徑MTU1400，相同假設下分別1360、1372、1372。",
+        "加入12bytes TCP options時，以同1500 IP上限可用TCP資料變1448。隧道若外層增加60bytes且外層MTU1500，模型內層IP上限1440，再扣內層IPv4/UDP28，payload1412。這是巢狀長度運算，先清楚外層/內層。不是看到TCP advertised MSS1460就忽略所有options與隧道約束。"
       ],
       "table": {
-        "caption": "觀測與可能方向",
+        "caption": "例題一：1500與1400兩種路徑下能放多少",
         "headers": [
-          "觀察",
-          "可能相關",
-          "尚不能直接判定"
+          "條件",
+          "IP上限",
+          "TCP資料，無options",
+          "UDP/ICMP echo資料"
         ],
         "rows": [
           [
-            "小資料正常、大資料逾時",
-            "路徑 MTU／分片／封裝",
-            "一定是 MTU 故障"
+            "普通鏈路",
+            "1500",
+            "1460",
+            "1472"
           ],
           [
-            "只在 VPN 路徑出現",
-            "額外封裝造成可用大小變小",
-            "VPN 設備必然故障"
+            "較小路徑",
+            "1400",
+            "1360",
+            "1372"
           ],
           [
-            "收到太大／需分片訊息",
-            "路徑大小限制",
-            "應用程式已正確重試"
+            "60byte隧道教學模型",
+            "1440內層",
+            "1400",
+            "1412"
           ]
         ]
-      },
-      "note": "測試封包大小時要考慮工具所報的大小是否包含 IP／ICMP 標頭。"
+      }
     },
     {
-      "heading": "DSCP 是標記；QoS 是網路如何處理流量",
+      "kind": "worked-example",
+      "heading": "例題二：IPv4分片的offset為什麼用8bytes",
       "paragraphs": [
-        "DSCP 位於 IP 標頭的區分服務欄位，可讓網路設備依政策對不同流量做分類、排隊或丟棄選擇。標記本身不保證高優先權；每一段網路都要有相應且一致的配置。",
-        "若鏈路不擁塞，改 DSCP 也未必看得出差異；若某段設備改寫或忽略標記，端點設定再漂亮也不能保證效果。讀封包時要在不同觀測點比對 DSCP 值與實際延遲／丟包。"
+        "本例給原IPv4 payload2000bytes（含上層頭），IP頭20，總長2020，出口MTU1500，允許分片。第一片可放floor((1500−20)/8)×8=1480bytes，IP total1500；第二片放2000−1480=520bytes，IP total540。第一offset0、MF=1；第二offset1480/8=185、MF=0。兩片有相同Identification等重組資訊，第二片不會再有新UDP頭。",
+        "最後片長度可不是8倍數，其餘片需要按8byte offset可定位。接收端需等待所有必需片才能重組原payload。如果第二片缺失，UDP應用不會得到「前1480bytes的半資料包」作為完整結果；重組失敗發生在應用接收前。把MTU改1400，第一資料1376（而非1380），第二624，offset172，這可驗證向下取8倍數規則。"
       ],
-      "table": {
-        "caption": "標記和結果不能混為一談",
-        "headers": [
-          "你看到",
-          "能支持",
-          "還需確認"
-        ],
-        "rows": [
-          [
-            "封包 DSCP 已設定",
-            "發送端標了某個值",
-            "沿路設備是否採用／保留"
-          ],
-          [
-            "設備有 QoS 規則",
-            "某點有分類與排隊策略",
-            "規則是否命中、整條路徑是否一致"
-          ],
-          [
-            "語音品質改善",
-            "某次測試結果較好",
-            "負載、路徑與其他變因是否相同"
-          ]
-        ]
-      },
-      "note": "不要在不清楚網路政策時自行修改正式環境 DSCP；先用現有設定與量測查證。"
+      "code": {
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "int mtu = 1500;\nint ipHeader = 20;\nint originalIpPayload = 2000; // includes upper-layer header\nint firstData = ((mtu - ipHeader) / 8) * 8;\nint lastData = originalIpPayload - firstData;\nConsole.WriteLine($\"first total={firstData+ipHeader} offset=0 MF=1\");\nConsole.WriteLine($\"last total={lastData+ipHeader} offset={firstData/8} MF=0\");\n// 1500 -> 1480+20; second 520+20, offset 185\n// 1400 -> 1376+20; second 624+20, offset 172"
+      }
     },
     {
-      "heading": "案例：控制命令正常，較大的檔案傳送會卡住",
+      "kind": "mechanism",
+      "heading": "QoS處理的是競爭時誰先服務，不會增加容量",
       "paragraphs": [
-        "假設同一對端點，短命令總能回覆，檔案傳送在特定大小後停住。先確認兩者是否真的走同一協定、路徑與封裝；若條件相同，再看封包大小、ICMP 回饋、重傳與接收端程式紀錄。",
-        "另一個案例是業務尖峰時語音斷續，低負載時正常。這提示排隊與負載值得查，但不能只憑一次觀察就認定 QoS 錯誤；需把時間、帶寬、丟包與 DSCP 政策放在一起比較。"
+        "兩份frame同時需要同一出口時會排隊。Serialization delay是把一份資料的bits序列推出所需時間，1500bytes在10Mbit/s為1500×8/10,000,000=1.2ms；這裡只計IP長度，真實鏈路開銷再加。若前面排10份同樣大小，約12ms等待。即使優先佇列很高，正在傳送的一份frame一般仍需先完成，優先順序不能倒退已經開始的傳送。",
+        "DSCP佔IP服務欄位6bits，標記可讓支援的節點選per-hop behavior；另2bits為ECN，不應把整個byte都當DSCP。標記只是請求/分類資料，網路可能重標記、忽略或不信任；跨邊界不保證端到端時限。Priority、加權排程決定服務順序；shaping以緩衝延後符合速率，policing可對超額資料丟棄或重標記。只有標籤，沒有相應佇列/排程與容量設計，不能解決飽和。"
+      ]
+    },
+    {
+      "kind": "maintenance",
+      "heading": "分配容量時要同時看突發、時效與丟棄",
+      "paragraphs": [
+        "假設鏈路10Mbit/s，長期輸入12Mbit/s，任何排程都不能永遠完整即時轉送全部。QoS可以讓高優先2Mbit/s得到相應服務，但低優先10Mbit/s只剩最多8Mbit/s，需排隊/限速/丟棄。嚴格優先若高類不受限，可能餓死其他流量；加權與整形可以明確保留資源。工程問題是業務能忍哪些延遲與丟棄，不是給每個流量都最高優先。",
+        "對於控制命令，丟棄與重試可能改變操作語意；對於即時聲音，排很久的舊包即使到達也無用。需先說明資料型別與期限，再選擇策略。增大buffer減少短burst丟棄但增加最大等待；縮小buffer保護時效可能增加丟棄。維護測量應把佇列深度、丟棄計數、實際DSCP、流量速率及應用期限一起看，而不是只看ping平均。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "程式應記錄長度與協議，不只記錄send成功",
+      "paragraphs": [
+        "下面為原創長度分析片段，不執行發包。Inputs的header長度必須符合本次packet，否則校驗結論沒有基礎；IPv6、options、加密與隧道都改變開銷。一個應用message可以跨很多TCP段，所以messageBytes>allowed不應簡單報應用錯誤，若協議是UDP單datagram則大訊息要考慮不同後果。",
+        "維護程式碼若以Socket.SendBufferSize當MTU，是混淆本機緩衝容量與鏈路一次承載大小。Send成功也不等於沒有途中分片或得到業務結果。應記message長度、選擇TCP/UDP、解析規範、應用分片策略及實際端點，再從抓包查段/片證據。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "int ipMtu = 1400;\nint ipv4Header = 20;\nint udpHeader = 8;\nint messageBytes = 1450;\nint datagramIpLength = ipv4Header + udpHeader + messageBytes;\nbool exceedsLabPath = datagramIpLength > ipMtu;\nConsole.WriteLine($\"udpPayload={messageBytes} ipLength={datagramIpLength} pathMtu={ipMtu} exceeds={exceedsLabPath}\");\n// 1478 > 1400. This calculation alone does not decide platform behavior.\n// UDP error, fragmentation or configured DF policy must be checked.\n// TCP can split the same application message across multiple segments."
+      }
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：改變MTU，驗證長度與分片邊界",
+      "paragraphs": [
+        "執行 mtu 1500與mtu 1400，先手算上限、first fragment長度、第二offset與MF，再對照程式。模型固定IPv4頭20、payload2000、允許分片，不模擬DF或ICMP；把資料改成20-byte以觀察單片，說明真正不超限時無需稱為分片。復原後再讀不同協議上限。",
+        "Windows選做在自己授權本機目標使用ping -f -l N判斷IPv4 echo是否因大小失敗；本機回環不能代表遠端路徑MTU，未知公司目標不在實驗範圍。不要設定網卡MTU或QoS為匹配教材。驗收為兩個長度表、兩個分片表與排隊算式；再寫哪些引數改變會令當前答案失效。"
       ],
       "steps": [
-        "固定來源、目的、協定與測試時間，記錄大小和負載。",
-        "比對成功與失敗流量的封包大小、封裝及路徑。",
-        "檢查路徑 MTU 回饋、重傳與對端接收紀錄。",
-        "若是品質問題，再看排隊、丟包、DSCP 標記與設備規則。"
-      ],
-      "note": "示例只供分析，實際壓力測試要在有權限的測試環境進行。"
+        "按三種協議列header和payload單位。",
+        "跑兩個MTU，核對offset必須是原payloadbyte位置除8。",
+        "計算10Mbit/s前方排5個1500-bytepacket的等待，區分傳送與排隊。",
+        "復原，並讀diagnostic的反饋與限制，不把模型當真實路徑量測。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：握手正常，大回覆反覆重傳",
+      "paragraphs": [
+        "A可完成小查詢，但大回覆停住；候選H1PMTU反饋缺失、H2應用parser長度上限、H3擁塞丟包。第二輪B發出的IPv4 total1500 DF=1，隧道路由出口MTU1400，路由器記too-big drop；A/B未收到相應ICMP，parser亦沒有完整bytes。這是H1具體路徑解釋，與只改應用read期限不同。",
+        "授權測試修正反饋政策或按正式隧道要求調整相應MTU/MSS策略，見傳送IP大小符合路徑、大回覆完整、重傳不再重複卡同範圍。回歸小請求、大回復、反方向與併發負載，確認業務結果和時效；MSS修正僅針對TCP，不能宣稱UDP同樣修好了。若忙時仍慢，再用佇列/速率分開H3，不將所有效能問題歸MTU。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "短命令成功、較大資料逾時，能直接認定 MTU 是唯一原因嗎？",
-      "answer": "不能。MTU 值得檢查，但程式分段、緩衝、逾時與路徑差異也可能造成。需比較封包大小與雙端觀測。"
+      "level": "foundation",
+      "question": "MSS、MTU與應用message length哪裡不同？",
+      "answer": [
+        "MSS是TCP可接收資料段大小，MTU為路徑某層的一次承載上限，message由應用協議定義。",
+        "TCP可跨段搬運一message，UDP一datagram保有邊界。",
+        "按協議頭與層次推導，不能把三者直接設為相等。"
+      ]
     },
     {
-      "question": "A 封包有高優先權 DSCP 標記，就保證全路徑優先傳送嗎？",
-      "answer": "不保證。沿路設備可能忽略或改寫，還要看分類與排隊政策是否命中。"
+      "level": "foundation",
+      "question": "DSCP標高優先就能保證全路徑低延遲嗎？",
+      "answer": [
+        "DSCP是標記；每節點須配置、信任並有服務容量。",
+        "中間可能重標記或忽略，已進行傳送的frame也要佔時間。",
+        "驗證實際標記、佇列與負載下延遲，不能只看本機設定。"
+      ]
     },
     {
-      "question": "VPN 加上一層封裝後，原本大小的封包可能出現什麼問題？",
-      "answer": "額外標頭占空間，實際可用大小可能降低；若未調整，可能需分片或遇到路徑 MTU 問題。"
+      "level": "application",
+      "question": "IPv4 MTU1280，IP20、UDP8，payload上限多少？同條件TCP20多少？",
+      "answer": [
+        "UDP=1280−20−8=1252bytes。",
+        "TCP無options資料=1280−20−20=1240。",
+        "明確這不是IPv6計算，頭長度不同需重算。"
+      ]
     },
     {
-      "question": "看到 TCP 重傳，就能宣稱網路鏈路一定丟包嗎？",
-      "answer": "不能。還要看抓包位置、延遲、接收端行為與 ACK；重傳本身是症狀。"
+      "level": "application",
+      "question": "payload3000、IP20、MTU1500允許分片，各片data與offset？",
+      "answer": [
+        "前兩片各1480，末片3000−2960=40。",
+        "offset分別0、185、370；IP total1500、1500、60。",
+        "MF分別1、1、0；此payload含上層頭，不能每片再加UDP頭。"
+      ]
     },
     {
-      "question": "比較 QoS 效果時，為什麼要固定負載與路徑？",
-      "answer": "若同時改變負載或路徑，品質改善可能來自其他因素，無法歸因於 DSCP 或排隊設定。"
+      "level": "application",
+      "question": "1200bytes在8Mbit/s的傳送時間，前面排4筆同長等待多少？",
+      "answer": [
+        "每筆=1200×8/8,000,000=0.0012s=1.2ms。",
+        "前4筆約4.8ms等待，自己的傳送再1.2ms。",
+        "未計鏈路開銷與其他佇列機制，須註明簡化口徑。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "外層MTU1500、隧道開銷80、內IPv420/UDP8，內UDP payload上限？",
+      "answer": [
+        "內IP上限=1500−80=1420。",
+        "payload=1420−20−8=1392bytes。",
+        "確認80是全部外層額外開銷，不能重複扣已包含的頭。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "網卡MTU1500，傳送側抓包TCP大於1500卻服務正常，可立即判違規？",
+      "answer": [
+        "可能主機抓包在offload分段前，觀察不等於實體線上同樣大小。",
+        "核對工具位置、offload與另一端/線上抓包。",
+        "先驗證真實路徑packet再改設定，避免把表示差異當故障。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "輸入長期15Mbit/s，出口10，增大buffer後暫時正常再慢，為什麼？",
+      "answer": [
+        "長期淨積壓至少5Mbit/s，buffer只是提供暫時庫存。",
+        "排隊等待隨積壓增長，最終仍需限速/丟棄或增容量。",
+        "記錄速率與佇列驗證，按業務分類安排排程與負載，不把buffer永久加大當解法。"
+      ]
     }
   ],
   "recap": [
-    "MTU 關乎路徑上的封包大小，不等於應用訊息大小。",
-    "小資料可通、大資料卡住時應檢查路徑 MTU，也要排除程式問題。",
-    "DSCP 是標記，QoS 效果取決於設備政策與負載。",
-    "跨觀測點比對封包大小、標記、回饋與實際結果。",
-    "變更設定前先以相同條件重現與量測。"
+    "按標頭口徑計算IP、TCP、UDP與ICMP資料上限。",
+    "解釋IPv4分片、DF與路徑MTU反饋。",
+    "區分TCP分段、IP分片及應用訊息切割。",
+    "用排隊與速率解釋DSCP、整形、警管及優先服務的限制。"
   ],
   "sources": [
     {
-      "label": "RFC 1191：IPv4 路徑 MTU 發現",
+      "label": "IETF RFC 1191：IPv4 Path MTU Discovery",
       "url": "https://www.rfc-editor.org/rfc/rfc1191.html"
     },
     {
-      "label": "RFC 8200：IPv6 分片與封包",
+      "label": "IETF RFC 791：IPv4分片格式",
+      "url": "https://www.rfc-editor.org/rfc/rfc791.html"
+    },
+    {
+      "label": "IETF RFC 8200：IPv6 MTU與分片",
       "url": "https://www.rfc-editor.org/rfc/rfc8200.html"
     },
     {
-      "label": "RFC 2474：DS 欄位與 DSCP",
+      "label": "IETF RFC 2474：DSCP與服務欄位",
       "url": "https://www.rfc-editor.org/rfc/rfc2474.html"
+    },
+    {
+      "label": "IETF RFC 3246：EF逐跳服務",
+      "url": "https://www.rfc-editor.org/rfc/rfc3246.html"
+    },
+    {
+      "label": "Microsoft：ping -f/-l引數",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ping"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/networking-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
+      "label": "網路維護 C# 讀碼模型（Program.cs）",
+      "description": "本章使用 mtu 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/README.md",
+      "label": "實驗專案操作說明",
+      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
     }
   ]
 }

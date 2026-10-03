@@ -1,0 +1,117 @@
+COMMAND: flow
+id=Q17 connect-complete=20ms bytes=8 hex=5354415455533F0A
+id=Q17 TCP-ack=35ms
+id=Q17 parse-complete=40ms reply=OK,READY at=65ms
+PASS newline-framed request
+
+COMMAND: flow --fault
+id=Q17 connect-complete=20ms bytes=7 hex=5354415455533F
+id=Q17 TCP-ack=35ms
+id=Q17 parser-waiting-for-LF deadline=500ms result=UNKNOWN
+
+COMMAND: endpoints
+TCP local=127.0.0.1:7000 remote=* state=Listen pid=4100
+TCP local=192.0.2.10:54000 remote=198.51.100.20:7000 state=Established pid=4200
+TCP local=192.0.2.10:54001 remote=198.51.100.20:7000 state=Established pid=4200
+IPv6 endpoint=[2001:db8::10]:7000
+PASS two separate connections
+
+COMMAND: ethernet
+A 192.0.2.10/24 access-vlan=10 ARP who-has 192.0.2.1
+Gateway 192.0.2.1 access-vlan=10
+ARP reply mac=02:00:00:00:10:01; frame A-MAC->GW-MAC; IP A->B
+Router output: frame GW2-MAC->B-MAC; IP A->B; TTL 64->63
+PASS IPv4+TCP+payload=48 bytes
+
+COMMAND: ethernet --fault
+A 192.0.2.10/24 access-vlan=20 ARP who-has 192.0.2.1
+Gateway 192.0.2.1 access-vlan=10
+ARP no reply: different broadcast domains
+PASS IPv4+TCP+payload=48 bytes
+
+COMMAND: routes 10.24.6.77
+MATCH 0.0.0.0/0 via=192.0.2.1 metric=10
+MATCH 10.24.0.0/16 via=192.0.2.2 metric=5
+MATCH 10.24.6.0/24 via=192.0.2.3 metric=50
+MATCH 10.24.6.64/26 via=192.0.2.4 metric=100
+SELECT 10.24.6.64/26 via=192.0.2.4
+/26 network=10.24.6.64 broadcast=10.24.6.127
+PASS /26 includes .77
+PASS /26 excludes .130
+
+COMMAND: routes 10.24.6.130
+MATCH 0.0.0.0/0 via=192.0.2.1 metric=10
+MATCH 10.24.0.0/16 via=192.0.2.2 metric=5
+MATCH 10.24.6.0/24 via=192.0.2.3 metric=50
+SELECT 10.24.6.0/24 via=192.0.2.3
+/26 network=10.24.6.128 broadcast=10.24.6.191
+PASS /26 includes .77
+PASS /26 excludes .130
+
+COMMAND: routes 10.24.9.1
+MATCH 0.0.0.0/0 via=192.0.2.1 metric=10
+MATCH 10.24.0.0/16 via=192.0.2.2 metric=5
+SELECT 10.24.0.0/16 via=192.0.2.2
+/26 network=10.24.9.0 broadcast=10.24.9.63
+PASS /26 includes .77
+PASS /26 excludes .130
+
+COMMAND: tcp
+SYN seq=1000; first-data=1001; bytes=8; expected-ack=1009
+ack=1009 window=4096 in-flight=1000 may-send=3096
+read=3; buffered=3; message-complete=False
+read=5; buffered=8; message-complete=True
+PASS SYN consumes one sequence number
+PASS stream reassembly
+
+COMMAND: services
+DNS name=lab.example A=198.51.100.20 ttl=120 obtained=0s
+elapsed=30s cache-valid=True
+elapsed=120s cache-valid=False
+elapsed=150s cache-valid=False
+INSIDE Flow { Protocol = TCP, Src = 10.0.0.10, SrcPort = 54000, Dst = 198.51.100.20, DstPort = 7000 }
+OUTSIDE Flow { Protocol = TCP, Src = 203.0.113.5, SrcPort = 61000, Dst = 198.51.100.20, DstPort = 7000 }
+REPLY dst=203.0.113.5:61000 -> translated dst=10.0.0.10:54000
+PASS source NAT keeps destination in this model
+
+COMMAND: multicast
+group=239.1.2.3 ethernet=01:00:5e:01:02:03
+membership iface=12 group=239.1.2.3 receiver-port=5004
+incoming iface=12; app received=50 datagrams/s
+PASS two groups share MAC mapping
+
+COMMAND: multicast --fault
+group=239.1.2.3 ethernet=01:00:5e:01:02:03
+membership iface=12 group=239.1.2.3 receiver-port=5004
+incoming iface=18; membership mismatch; app received=0
+PASS two groups share MAC mapping
+
+COMMAND: mtu 1500
+IPv4-no-options mtu=1500 TCP-payload-max=1460 UDP-payload-max=1472 ping-data-max=1472
+fragment offset-units=0 data=1480 ip-total=1500 MF=True
+fragment offset-units=185 data=520 ip-total=540 MF=False
+serialization 1500 bytes at 10Mbit/s = 1.2ms (IP length only)
+
+COMMAND: mtu 1400
+IPv4-no-options mtu=1400 TCP-payload-max=1360 UDP-payload-max=1372 ping-data-max=1372
+fragment offset-units=0 data=1376 ip-total=1396 MF=True
+fragment offset-units=172 data=624 ip-total=644 MF=False
+serialization 1500 bytes at 10Mbit/s = 1.2ms (IP length only)
+
+COMMAND: metrics
+rtt-mean=56.4ms median=21ms maximum=200ms
+received=980 of sent=1000; loss=2.00% (matching IDs assumed)
+goodput=6.40Mbit/s (8MB completed in 10 seconds)
+BDP=20Mbit/s*0.05s/8=125000 bytes
+window-limit=65536*8/0.05=10.48576Mbit/s
+PASS mean includes tail event
+
+COMMAND: diagnose
+Q31 connect=OK TX=8 bytes peer-ACK=YES application=TIMEOUT
+SERVER read=3+5 parser=STATUS? LF reply=OK,READY
+VERIFY: request-id matched, application result READY, repeated 20 times
+
+COMMAND: diagnose --fault
+Q31 connect=OK TX=8 bytes peer-ACK=YES application=TIMEOUT
+SERVER read=3 parser-rejected-before-message-complete
+NEXT: repair incremental parser; recheck both fragmented and joined input

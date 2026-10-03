@@ -1,166 +1,247 @@
 {
-  "intro": "能讀懂二進位內容，不等於知道每個位元組的意思。接手未知系統時先找正式協定定義；本章只用虛構 Lab-A 練習「長度、欄位、位元組順序」的基本讀法。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀範例",
-      "minutes": 14
-    },
-    {
-      "label": "判讀紀錄",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "二進位協定不是把十六進位背下來，而是把每個 byte 的位置、數值、單位與含義連回共同規則。本章先建立 bit、byte、數值與文字編碼的關係，再教有邊界的解析。",
+  "prerequisites": [
+    "上一章的框架與本文界線；本章由bit與byte開始，不假定會讀十六進位。",
+    "知道陣列offset；對有號、單位、編碼和端序將逐項建立規則。"
   ],
   "goals": [
-    "能算出 00 07 對應的長度與字串 bytes。",
-    "能用明確格式打包／解包二位元組大端整數。",
-    "能指出版本、編碼、最大長度及錯誤處理需要協定明訂。"
+    "從欄位表讀出偏移、寬度、大小端序、符號與單位。",
+    "區分字元數、UTF-8 bytes 與框架長度。",
+    "將格式合法性、語意合法性和完整性驗證分開處理。"
   ],
+  "studyTime": {
+    "reading": [
+      13,
+      21
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      45
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+  },
   "sections": [
     {
-      "heading": "先畫欄位地圖，再讀十六進位",
+      "heading": "同一份資料可以有不同表示法",
+      "kind": "concept",
       "paragraphs": [
-        "Lab-A 的格式只有 2-byte unsigned length 和 payload。前綴 00 07 是大端序整數 7；後面恰好讀 7 bytes 才是完整一則。",
-        "若抓到 00 07 53 54 41，不足 7 bytes，不應把它解釋為完整 STATUS?。"
-      ],
-      "table": {
-        "caption": "Lab-A 請求的逐位元組讀法",
-        "headers": [
-          "Offset",
-          "Hex",
-          "含意"
-        ],
-        "rows": [
-          [
-            "0～1",
-            "00 07",
-            "payload 長度 7"
-          ],
-          [
-            "2～8",
-            "53 54 41 54 55 53 3F",
-            "ASCII STATUS?"
-          ],
-          [
-            "總計",
-            "9 bytes",
-            "2-byte 標頭＋7-byte 內容"
-          ]
-        ]
-      }
+        "一個 bit 只有0或1；八個 bit 組成一個 byte，可表示0..255。十六進位用0..9與A..F表示每一位0..15，兩位正好表示一個 byte。例如0x2A=2×16+10=42。十六進位只是人閱讀的寫法，線上傳的是位元組；顯示「2A」的兩個ASCII字元則是0x32、0x41，與單一byte 0x2A不同。",
+        "欄位的 bytes 必須搭配規則才有數值含義。0xFF可以是無號255、有號8位的-1、旗標全開或某種未設定值。協定會規定欄位寬度、是否有號與單位；不能因為字面超過127就猜是負數，也不能把所有值都解成文字。C# byte 是無號8位，sbyte有號8位，但線上byte本身沒有這個型別標籤。",
+        "對多byte數值，還需規定 byte順序。大端序把最高位byte放前面，01 02代表1×256+2=258；小端序則代表2×256+1=513。主機CPU如何儲存整數和協定線上格式可以不同。用 BinaryPrimitives 明確指定讀法，可避免 BitConverter 依主機端序而使程式只在某些機器碰巧正確。"
+      ]
     },
     {
-      "heading": "Big-endian 與 Little-endian",
+      "heading": "先畫欄位地圖，才對照十六進位",
+      "kind": "mechanism",
       "paragraphs": [
-        "同一個 16-bit 整數 258（十六進位 0x0102），大端是 01 02，小端是 02 01；不約定，兩端可能把長度讀錯。",
-        "Python struct 的 !H 代表 network byte order 的無號 16-bit 整數；C／C++ 在讀網路整數時常見 htons／ntohs 等轉換，仍要依協定定義確認。"
+        "假想資料格式是版本1 byte、型別1 byte、requestId2 bytes大端、值2 bytes大端無號，固定6 bytes。先列offset0版本、1型別、2..3ID、4..5值。格式檔案還應說明版本允許1，型別0x21代表狀態回覆，值單位為0.1°C且0xFFFF表示未知。這些是本章教學規則，不是Ozeki或公司裝置格式。",
+        "解析順序應先確定資料至少6 bytes，再讀固定欄位，檢查版本與型別，再解ID和數值，最後套用單位與特殊值。若資料長5，讀offset4兩bytes會越界；若長7，需依規則拒絕額外byte或由外層框架分離下一筆，不能默默讓偏移漂移。判讀時把每個原始欄位與結果一起寫下，保留可追溯性。",
+        "長度是另一種欄位，不只是數字。它可能包含標頭、本文、校驗甚至自身寬度。假設整框長度10且標頭4，本文6；若把10當本文，接收端就等4個不存在的bytes。上限、最小值與加法溢位也要在切片/配置前檢查，例如先比較length是否不大於available-headerSize，而非以未受控加法計算末端。"
+      ]
+    },
+    {
+      "heading": "有號、縮放與旗標需要各自的解釋規則",
+      "kind": "concept",
+      "paragraphs": [
+        "同樣兩bytes FF 9C，作為無號16位是65436；若協定規定有號16位二補數，則先讀原位模式，大於等於0x8000時減65536，得到-100。若單位為0.1°C，就是-10.0°C。這個例子與前面無號溫度協定不同，是為了說明規則決定結果；不能在實際協定裡憑負溫度需求自行改變型別。",
+        "定點縮放用整數乘以固定單位，避免每筆都傳完整浮點格式，但精度與範圍受寬度限制。例如0.1單位無法精確表示0.05，編碼要規定舍入策略及超界處理；浮點欄位又需規定IEEE格式、byte順序與NaN/Infinity允許性。看到4bytes並不能斷言它是float，可能是計數、時間或點陣圖。",
+        "旗標把各bit當獨立條件。教學旗標0x05=00000101，若bit0表示Busy、bit2表示Alarm，則兩者為真、bit1為假。檢查用(value & mask)!=0，而非value==mask，因為多個bit可以同時開。保留bit通常要記錄或按相容政策處理，不能擅自解釋為新功能。位號順序也需檔案明確，不從十六進位顯示方向猜。"
+      ]
+    },
+    {
+      "heading": "編解碼往返與已知樣本是兩種驗證",
+      "kind": "concept",
+      "paragraphs": [
+        "Encode後Decode得到同一個物件，稱為往返驗證，能發現許多丟欄位和長度錯誤，但若兩端同樣用錯端序，它們仍可能互相透過。因此還要有獨立的已知bytes樣本，例如ID42和值300應編碼00 2A 01 2C。把相同錯誤複製到測試預期，無法證明符合線上協定。",
+        "相容性驗證還需舊/新版本樣本、特殊值、非ASCII和長度邊界。未知公司格式應從其正式檔案、已有實現及對端抓包建立這些樣本，註明來源版本；教學習題不能代替供應商協定。每個欄位的讀法都應能夠在offset表和某個已知樣本找到理由。",
+        "最後區別格式有效與業務有效：數值範圍正確但requestId屬於舊請求，不應更新當前結果；狀態碼可識別但當前狀態轉移禁止，也應拒絕或記錄。二進位解析只建立內容的結構與意義，授權、關聯和狀態規則是後續門檻，不能因checksum與decode都透過就執行命令。"
+      ]
+    },
+    {
+      "heading": "多個可變欄位的偏移不能靠固定猜測",
+      "kind": "mechanism",
+      "paragraphs": [
+        "假想內文規定一byte nameLength、nameLength bytes UTF-8名稱、兩byte狀態值。若nameLength=3，則名稱佔offset1..3，狀態佔4..5；若名稱為空且規則允許0，狀態就佔1..2。解析器每讀取一個欄位更新cursor，並先檢查剩餘容量，不可以沿用第一次樣本的固定狀態offset。",
+        "這裡又要區分名稱byte長度與字元數。名稱「中」是3bytes，雖然看起來一字；nameLength=1會讓後兩個UTF-8 bytes被誤認為狀態。欄位級長度也需上限，即使外層框架合法，內部nameLength可能大於實際剩餘本文。外層驗證保護整框，不能代替內部每次切片檢查。",
+        "多個欄位累積偏移時，優先以remaining和合法範圍比較，再前進cursor，避免未受控的加法。未知擴充套件若有型別-長度-值格式，可以依已定義的相容規則跳過；沒有長度規則就無法可靠跳過。每個擴充套件點都需要版本和跳過契約，不是看到未知欄位就丟一byte猜下一個。"
+      ]
+    },
+    {
+      "heading": "文字不是字元個數那麼多bytes",
+      "kind": "mechanism",
+      "paragraphs": [
+        "C# string 以UTF-16碼元表示文字；string.Length計算碼元，並不普遍等於人看到的字數。UTF-8則把文字編碼成可變長bytes，ASCII一般一byte，許多中文每字三bytes，某些字元需四bytes。若協定以bytes定長度，必須使用實際GetBytes結果或GetByteCount，不能用string.Length作標頭。",
+        "教材溫度兩字編碼為E6 BA AB E5 BA A6，共6 bytes。長度字首為00 06，整框8。若寫00 02，接收端只取E6 BA作本文，這不是完整UTF-8序列；剩下AB E5會被誤當下一標頭，導致後續全亂。表面可能是中文亂碼或巨大長度，本質是字元數與byte數混用。",
+        "收到TCP切片時，不要對每片直接GetString後拼字串；片末可能只有多byte字元前半。可在完整框架後嚴格decode，或用有儲存狀態的Decoder逐片解碼。編碼出錯是資料格式事件，應保留錯誤位置與有限原始bytes；替換成問號會掩蓋壞資料。new UTF8Encoding(false,true)讓模型遇到無效bytes拋例外，不以替換字元默默透過。"
+      ]
+    },
+    {
+      "heading": "例題一：一筆狀態如何從bytes變成值",
+      "kind": "worked-example",
+      "paragraphs": [
+        "收到01 21 00 2A 01 2C，按上述6byte格式。offset0是版本1；offset1=0x21，型別正確；offset2..3=00 2A，ID=0×256+42=42；offset4..5=01 2C，原值1×256+44=300；單位0.1°C，所以30.0°C。這是收到一筆ID42狀態回覆，不證明感測器真的準確，也不證明值是即時而非快取。",
+        "若把最後兩bytes用小端讀，得到0x2C01=44×256+1=11265，再乘0.1變1126.5°C。程式可能沒有例外，只得到荒謬值。因此邊界正確還要核對端序和合理範圍；不要為了讓顯示正常直接除以不同常數掩蓋端序錯誤。用已知模式0x012C能比全部0或對稱bytes更容易抓出方向問題。",
+        "若最後欄位改FF FF，先命中特殊值「未知」，不能乘0.1顯示6553.5°C，也不能轉成有號-1而自動顯示-0.1°C。特殊值的判讀順序屬於協定，應和一般數值換算分開測試。"
+      ]
+    },
+    {
+      "heading": "例題二：標頭合法與內容合法是兩個門檻",
+      "kind": "worked-example",
+      "paragraphs": [
+        "框架00 01 FF的長度1在1..1024合法，且本文確實有1byte，因此框架完成。但FF不是合法UTF-8文字，嚴格解碼拋DecoderFallbackException。00 03 41則標頭長度3合法，卻只有1byte本文；若EOF是框架截斷，尚未輪到內容解碼。04 01則長度1025，立即在配置本文前拒絕。",
+        "三種情況的階段不同：非法length、本文不足、非法encoding。把三者都寫invalid packet會失去重要證據。維護時記錄允許上限、宣稱長度、實際收到長度與錯誤offset，再決定是規格不一致、傳輸中斷或資料汙染。不能用同一個加大buffer修所有情況。",
+        "即使完整而可解碼，也可能是未知命令或錯requestId，這又屬內容語意。先經過長度、編碼與欄位格式，再驗證版本、ID、值範圍和狀態轉移。完整性校驗若存在，也按協定指定範圍與位置計算，不可自行把TCP checksum當業務欄位驗證。"
+      ]
+    },
+    {
+      "heading": "讀取數值與配置資料時的檢查位置",
+      "kind": "code-reading",
+      "paragraphs": [
+        "教材Encode先GetBytes，再查body.Length，最後配置2+length並寫UInt16BigEndian。順序表達一個不變條件：標頭宣稱長度等於實際body.Length。若傳送端先用string.Length寫標頭，接收端再多麼努力補讀也無法知道正確長度；兩端都要有相同線上規則。",
+        "反序列化應把不可信資料限制在邊界內。Span的切片會提供越界檢查，但例外不等於可接受的業務結果；正式程式應在已知位置驗證與分類，不把所有例外吃掉後繼續。存放長度的整數型別要能容納計算，對壓縮或巢狀格式還需限制解壓後容量與深度；短網路輸入也可能引發大配置。"
       ],
       "code": {
-        "title": "Python 對照：只處理標頭",
-        "text": "import struct\nheader = struct.pack(\"!H\", 7)   # b\"\\x00\\x07\"\nlength = struct.unpack(\"!H\", header)[0]  # 7"
+        "title": "本教材長度等於UTF-8 bytes，不是字元數",
+        "text": "var utf8 = new UTF8Encoding(false, true);\nbyte[] body = utf8.GetBytes(text);\nif (body.Length is < 1 or > 1024)\n    throw new InvalidDataException(\"length outside 1..1024\");\nbyte[] frame = new byte[2 + body.Length];\nBinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)body.Length);\nbody.CopyTo(frame, 2);"
       }
     },
     {
-      "heading": "文字編碼也是協定欄位",
+      "heading": "版本與完整性不能由猜測補出",
+      "kind": "maintenance",
       "paragraphs": [
-        "ASCII 的 STATUS? 恰好每個字元一 byte；中文在 UTF-8 通常一字多 byte，所以 payload 長度要從 encode 後的 bytes 計算。",
-        "先確定是 ASCII、UTF-8 或完全非文字的欄位；別看到可列印字元就假設整份資料都是文字。"
+        "協定版本決定欄位含義。增加欄位、改單位或改長度規則，都可能使舊解析器仍讀出數字卻解錯。合理版本處理是明確接受支援版本，或依已有相容規則跳過已定義的擴充套件；未知版本不能直接當舊版。維護時查伺服器與客戶端版本、設定、實際bytes和解析程式，才能判斷是資料壞了還是兩端規格不同。",
+        "checksum或CRC能偵測某些意外錯誤，卻不等於來源可信或內容被授權。攻擊者可能重新計算未加密的校驗；有效MAC或數位簽章又涉及金鑰和涵蓋範圍。公司格式是否有CRC、涵蓋哪些bytes，都必須由檔案或程式查明。對未知格式最有用的工作是欄位假說、支援樣本與反例，保留未解欄位，避免把猜測寫成固定解析器。"
       ]
     },
     {
-      "heading": "序列化與解析要有邊界檢查",
+      "heading": "實作：用中文和錯誤bytes驗證長度",
+      "kind": "lab",
       "paragraphs": [
-        "序列化是把欄位轉成約定的 bytes；解析是按同一規則還原。收完標頭後先檢查長度在 1～1024 的教學範圍，再讀 payload，才嘗試 decode。",
-        "不合法長度、未知指令、錯誤編碼應給明確錯誤；不能把它們誤當網路逾時。"
-      ],
-      "flow": [
-        "收滿標頭",
-        "檢查長度",
-        "收滿 payload",
-        "依編碼與版本解析",
-        "產生回覆或錯誤"
+        "以.NET10執行模型，觀察2 characters = 6 UTF-8 bytes + 2 header透過。把第二筆字串改成溫度A，預期本文7、整框9；因此combined總長12，chunks總和也需改成12，例如[1,2,3,6]。同步調整預期字串與長度斷言後再跑，確認分段與內容都一致。",
+        "故障是只改Encode的長度來源為text.Length，保持本文原bytes，觀察中文框架出現解碼或剩餘邊界錯誤；不要保留這個修改。復原後再檢查無效UTF-8、過大長度與兩種EOF失敗。驗收必須同時有合法中文與非法bytes的不同分類，不能只測ASCII，因為ASCII會使字元數與byte數恰好相同。"
       ]
     },
     {
-      "heading": "看一則回覆",
+      "heading": "診斷：中文亂碼也可能是框架錯誤",
+      "kind": "diagnostic-case",
       "paragraphs": [
-        "OK,READY 有 8 個 ASCII bytes：4F 4B 2C 52 45 41 44 59，因此框架是 00 08 加這 8 bytes。",
-        "即使 parse 成功，也只證明程式讀到這個字串；READY 是否真的映射到設備狀態，仍要看產品定義與狀態來源。"
-      ]
-    },
-    {
-      "heading": "不要猜測未知公司的格式",
-      "paragraphs": [
-        "真實協定可能有同步字、版本、序號、校驗、壓縮、加密或不同的長度計算；Lab-A 並未聲稱能代表它們。",
-        "拿到正式文件時逐欄對照起點、長度、數值範圍、字元編碼、位元組順序與錯誤碼；無文件時保留未知，不對實機試送猜測命令。"
+        "甲與乙都顯示中文內容失敗。甲傳送bytes與預期UTF-8一致，但標頭寫02，接收拿兩bytes就decode；乙標頭06且收足6，但decode採錯誤編碼。補證把原因分成長度來源與文字編碼，不能看到亂碼就直接換字型或改UI。",
+        "甲修正標頭使用實際body.Length，乙依協定統一UTF-8與嚴格錯誤處理。回歸ASCII、中文、四byte字元、字元中間切片和錯誤bytes；若修改後仍有失敗，再核對框架偏移與長度是否含標頭。每個步驟保留raw bytes、declaredLength、actualBodyLength與解碼規則，才能分辨同症狀的不同原因。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【計算】00 07 在 !H 下是多少？",
-      "answer": "7。"
+      "question": "十六進位2A的單一byte與文字\"2A\"有何不同？",
+      "level": "foundation",
+      "answer": [
+        "0x2A是42，線上只佔1byte。",
+        "文字兩個ASCII字元編碼是32 41，佔2bytes。",
+        "日誌顯示法不可直接當成傳送格式，需查實際GetBytes或二進位寫入。"
+      ]
     },
     {
-      "question": "【偏移】00 07 後有 7 bytes，整則總長多少？",
-      "answer": "9 bytes。"
+      "question": "01 03按大端與小端無號16位各多少？",
+      "level": "foundation",
+      "answer": [
+        "大端為1×256+3=259。",
+        "小端為3×256+1=769。",
+        "根據協定選讀法，不依哪個結果比較合理而事後猜。"
+      ]
     },
     {
-      "question": "【字串】53 54 41 54 55 53 3F 是什麼 ASCII？",
-      "answer": "STATUS?。"
+      "question": "假想6byte狀態01 21 00 10 00 C8，求ID與溫度。",
+      "level": "application",
+      "answer": [
+        "ID=0x0010=16。",
+        "原值0x00C8=200，乘0.1得到20.0°C。",
+        "先驗版本1與型別21，結果才是可接受的狀態列位。"
+      ]
     },
     {
-      "question": "【順序】整數 258 的大端兩 byte 是？",
-      "answer": "01 02。"
+      "question": "UTF-8已知\"中\"為E4 B8 AD、\"A\"為41，依教材框架編碼\"中A\"。",
+      "level": "application",
+      "answer": [
+        "本文是E4 B8 AD 41，共4bytes，非string.Length的2。",
+        "標頭00 04，整框00 04 E4 B8 AD 41，共6。",
+        "拆在E4後仍須保留，完整框架後才能decode。"
+      ]
     },
     {
-      "question": "【編碼】中文字的「字數」可直接當 UTF-8 byte 長度嗎？",
-      "answer": "不行；應先編碼再取 bytes 長度。"
+      "question": "格式length含整框，header固定6，length=14。本文應幾bytes？若14被當本文會怎樣？",
+      "level": "application",
+      "answer": [
+        "本文14-6=8bytes。",
+        "誤當14會多等6bytes，可能逾時或吃入下一框。",
+        "比對格式檔案與兩端編碼/解析，回歸連續兩框可捕捉越界吞資料。"
+      ]
     },
     {
-      "question": "【安全】標頭宣稱 65535 bytes，但上限 1024，該怎麼辦？",
-      "answer": "在配置／讀取前拒絕該框架並記錄不合法長度。"
+      "question": "原值FF FF代表未知，程式顯示6553.5°C，哪個步驟漏了？",
+      "level": "diagnosis",
+      "answer": [
+        "程式直接把65535乘0.1，沒有先判特殊值。",
+        "應按協定將FF FF對映未知，保留其他合法數值的換算。",
+        "回歸特殊值、0、正常值與邊界，不能單靠顯示範圍截掉。"
+      ]
     },
     {
-      "question": "【分層】parse 出 READY 是否證明實體設備已 Ready？",
-      "answer": "不能；還要查回覆的資料來源及產品定義。"
+      "question": "框架00 02 E4 B8在EOF前已有兩bytes，應判本文截斷或編碼錯誤？",
+      "level": "diagnosis",
+      "answer": [
+        "按宣稱長度2，本文完整，因此不是框架缺byte。",
+        "E4 B8是不完整UTF-8字元，嚴格decode失敗，屬於encoding錯誤。",
+        "再查傳送端是否把字元數當byte數，不能追加下一框資料硬補字元。"
+      ]
     },
     {
-      "question": "【未知】缺少協定文件，可以把 01 當成通用成功碼嗎？",
-      "answer": "不能；需查該系統版本的欄位定義。"
+      "question": "checksum有效但version未知，能否直接更新狀態？",
+      "level": "diagnosis",
+      "answer": [
+        "checksum只驗證它涵蓋的資料依指定演算法相符，不提供未知欄位含義。",
+        "version未知時舊解析器沒有依據解釋欄位，即使數值看似正常。",
+        "按相容政策拒絕或處理擴充套件，儲存版本證據，回歸已知版本與未知版本。"
+      ]
     }
   ],
   "recap": [
-    "Hex 是資料表現方式，欄位意義來自協定。",
-    "位元組順序和編碼必須明確約定。",
-    "先檢查長度與完整性，再解析。"
+    "從欄位表讀出偏移、寬度、大小端序、符號與單位。",
+    "區分字元數、UTF-8 bytes 與框架長度。",
+    "將格式合法性、語意合法性和完整性驗證分開處理。"
   ],
   "sources": [
     {
-      "label": "Python 官方：struct 與 network byte order",
-      "url": "https://docs.python.org/3/library/struct.html"
+      "label": "Microsoft：明確大端序讀取",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.buffers.binary.binaryprimitives.readuint16bigendian?view=net-10.0"
     },
     {
-      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
-      "url": "https://docs.python.org/3/howto/sockets.html"
+      "label": "Microsoft：嚴格UTF-8與BOM選項",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.text.utf8encoding.-ctor?view=net-10.0"
     },
     {
-      "label": "IETF RFC 9293：TCP 是位元組串流",
-      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+      "label": "Microsoft：編碼後byte長度",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.text.encoding.getbytecount?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：C# 整數型別的範圍",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/integral-numeric-types"
     }
   ],
   "resources": [
     {
       "label": "下載 TCP 本機練習",
       "path": "./assets/labs/socket-tcp-lab.py",
-      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度字首與分段讀取。"
+    },
+    {
+      "label": "下載 C# Socket 維護教材模型",
+      "path": "./assets/labs/sockets-maintenance-lab.zip",
+      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
     }
   ]
 }

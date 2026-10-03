@@ -1,0 +1,8 @@
+# Teaching projects are published as source, never build output.
+**/bin/
+**/obj/
+**/__pycache__/
+*.pyc
+# Put browser previews and experimental output in /tmp.
+.playwright/
+test-results/

@@ -1,194 +1,248 @@
 {
-  "intro": "先把 Socket 想成程式的通訊端點：IP／Port 指向哪台主機的哪個服務，程式還要決定誰等待、誰發起、在哪個 Socket 讀寫。本主題以完全虛構的 Lab-A「查詢設備狀態」為例，不代表公司程式。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀範例",
-      "minutes": 14
-    },
-    {
-      "label": "判讀紀錄",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 10
-    }
+  "contentVersion": 2,
+  "intro": "Socket 是程式向作業系統借用的通訊端點。先理解物件、作業系統佇列和應用狀態如何分工，才看得懂公司程式為何要建立、等待、收送與釋放；本章以自行設計的本機狀態查詢說明，沒有假定任何公司架構。",
+  "prerequisites": [
+    "知道 IP 與 Port 大致用於定位；本章重新解釋它們與程式物件的關係。",
+    "看得懂 C# 變數、函式與 await 的外觀；Task 的完成不代表業務完成將在正文說明。"
   ],
   "goals": [
-    "能畫出 TCP 伺服器與客戶端的基本呼叫順序。",
-    "能區分監聽 Socket 與 accept 後的連線 Socket。",
-    "能說明 send 成功不等於對方程式已處理。"
+    "說明 IP、Port、Socket 物件與連線身分之間的關係。",
+    "追出監聽物件和連線物件各自的生命週期。",
+    "依每個返回值說明已完成哪一步，以及應用結果還缺什麼證據。"
   ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      45
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+  },
   "sections": [
     {
-      "heading": "端點和角色",
+      "heading": "從程式物件到網路端點",
+      "kind": "concept",
       "paragraphs": [
-        "伺服器（Server）在指定的本機位址和 Port 等待；客戶端（Client）主動連到該位址。127.0.0.1 是本機回環，示範程式不會碰外部設備。",
-        "同一台電腦可以同時執行兩個角色。Client／Server 描述誰先等待連線，不描述誰只能送或只能收。"
-      ],
-      "flow": [
-        "Server 建立 Socket → bind → listen → accept",
-        "Client 建立 Socket → connect",
-        "雙方用各自的連線 Socket send／recv → close"
+        "IP 用於網路上的主機介面定址；Port 讓接收端把 TCP 或 UDP 資料交給對應的傳輸端點。Socket 則是程式操作這個端點的物件與作業系統資源。三者不是同一層的名字：一個 C# 變數可指向 Socket 物件，物件持有底層資源，而資源可能尚未繫結位址、正在監聽、已連線或已釋放。只看到 new Socket，還不能知道它已經能與誰通訊。",
+        "建立時指定 AddressFamily、SocketType 和 ProtocolType。教材選 InterNetwork、Stream、Tcp，表示 IPv4 上的 TCP 串流；這些引數約束後續操作，並不替你決定協定內容。文字 STATUS、二進位標頭、登入步驟與裝置狀態都是應用自己定義的。閱讀陌生程式時，先辨認使用哪種傳輸，再找資料格式與執行緒的所有者，不要從類別名字推測用途。",
+        "端點由位址和 Port 組成，但 TCP 的一條連線由協定、兩端位址和兩端 Port 一起區分。伺服器可以讓許多客戶端連到同一服務 Port，因為對方端點不同；因此「Port 一樣」不等於「同一條連線」。Socket 物件也不能當永久裝置身分：斷線後新物件仍可能連到同一服務，卻有新的連線與狀態。維護時要區分裝置 ID、連線 ID 和請求 ID。"
       ],
       "image": {
         "src": "./assets/diagrams/socket-roles.svg",
-        "alt": "伺服器先 bind、listen、accept；客戶端 connect；雙方在連線 Socket 上收送。",
-        "caption": "Lab-A 的 TCP 呼叫順序；箭頭不是實際公司架構。"
+        "alt": "伺服器先監聽並接待，客戶發起連線，雙方在獨立連線Socket收送。",
+        "caption": "沿用角色示意圖；沒有假定公司拓撲。"
       }
     },
     {
-      "heading": "伺服器先佔位置，再等來訪者",
+      "heading": "等待者如何接待多個來訪者",
+      "kind": "mechanism",
       "paragraphs": [
-        "bind 指定本機位址與 Port；listen 讓 TCP Socket 開始接受連線。accept 等到連線後，回傳一個新的 Socket 和對方位址。",
-        "監聽 Socket 繼續負責等其他連線；這一次客戶端的資料，要從 accept 回來的新 Socket 接收。"
-      ],
-      "table": {
-        "caption": "兩個伺服器端 Socket 不能混用",
-        "headers": [
-          "Socket",
-          "主要用途",
-          "常見錯誤"
-        ],
-        "rows": [
-          [
-            "監聽 Socket",
-            "bind／listen／accept",
-            "在它上面 recv 客戶資料"
-          ],
-          [
-            "連線 Socket",
-            "與這個 Client send／recv",
-            "以為它能接待下一個 Client"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "客戶端的 connect 到底證明什麼",
-      "paragraphs": [
-        "connect 成功表示 TCP 連線建立，不表示應用伺服器已讀到查詢，更不表示狀態已取得。接著要送出請求、讀回完整回覆、解析內容。",
-        "連線失敗要分辨被拒絕、逾時、位址錯誤等現象；單靠例外類型也不能直接推定遠端程序的真實原因。"
+        "TCP 伺服器先 Bind 指定本機接收範圍，再 Listen 進入監聽狀態，最後 Accept 取出已建立的來訪連線。Bind 的位址是本機可接受連線的介面，並非要連去的遠端。綁 127.0.0.1 只供同一臺主機存取；綁通配位址會擴大接收範圍，但防火牆、路由及服務政策仍可能阻擋來訪。這些選擇影響可達性，不能為排錯任意放大範圍。",
+        "Listen 的 backlog 引數和平臺的接待佇列有關，不是允許的總客戶數，也不是每個客戶資料緩衝的大小。系統處理連線建立與等待接待；應用再透過 Accept 拿到一個新 Socket。伺服器忙著處理上一位時，新的客戶可能已完成建立而尚未被應用接待。因此客戶端 Connect 完成，不能證明伺服器處理函式已跑到讀取請求。",
+        "監聽 Socket 只負責接受更多連線；Accept 回來的新 Socket 才對應這一位客戶的雙向資料。若程式把兩者共用成一個欄位，下一次 Accept 覆寫前一條連線，或清理其中一位時關掉監聽物件，故障就會跨越客戶。建立清楚的所有權：服務擁有 listener，每個連線處理流程擁有自己的 accepted socket，退出時只釋放自己負責的資源。"
       ]
     },
     {
-      "heading": "send、recv 的對象與返回值",
+      "heading": "名稱解析、位址家族和實際連線選擇",
+      "kind": "concept",
       "paragraphs": [
-        "Python send 可能只接受部分位元組，必須檢查返回長度並繼續送；sendall 會嘗試全部送完或報錯，但成功也只是本端交給 Socket 流程。",
-        "recv(1024) 的 1024 是「最多」讀 1024 位元組，不是保證拿滿，也不是一則訊息。非空資料表示本端已讀到位元組；接著還要依協定解析。"
+        "公司組態可能寫主機名稱，Connect前需要將名稱解析成IP位址。一個名稱可能對應多個IPv4/IPv6位址；選到哪一個影響路由、監聽匹配和失敗結果。DNS解析成功只證明得到了位址記錄，不證明該位址的服務Port可達；連線成功又只證明這條選定端點的傳輸通道。將名稱、解析結果、實際Local/RemoteEndPoint分開記錄，才能發現配置看似相同卻走了不同目的地。",
+        "AddressFamily.InterNetwork與InterNetworkV6對應不同位址家族。雙棧Socket是否接受對映IPv4由構造方式、DualMode和平臺決定；不要把繫結IPv6通配自動等同繫結所有IPv4服務。若localhost解析到IPv6而教材只監聽127.0.0.1，連線目標就不匹配。維護時最小改動是對照實際解析和監聽位址，不是隨意把全部位址改為通配。",
+        "NAT或代理還可能改變遠端所見的來源端點，所以兩端日誌的四元組不一定逐字一致。業務裝置身份需協定ID或認證資訊，不能永久以臨時Port當裝置編號。本機迴環教材沒有這些中間變化，恰好適合先驗證程式呼叫關係，之後再把真實環境的對映證據加入，而不是憑空補出公司拓撲。"
+      ]
+    },
+    {
+      "heading": "分清資料所有權與物件所有權",
+      "kind": "concept",
+      "paragraphs": [
+        "物件所有權回答誰負責結束Socket；資料所有權回答哪個作業目前可以讀寫buffer。SendAsync或ReceiveAsync還在進行時，不能把同一可變buffer交給另一個作業改寫；即使Socket沒有Dispose，發出的或讀到的內容也可能在並行改寫下變錯。await完成後才決定下一次使用，或為各作業提供獨立且生命週期明確的記憶體。",
+        "多個業務傳送者共享一條連線時，也需序列化完整框架。若一個框架分幾次部分Send，另一個傳送者在中間插入bytes，接收端見到A標頭、B標頭、A本文，不再是合法訊息序列。可以讓單一傳送佇列負責每框的完整送出；鎖或Semaphore也需覆蓋整框迴圈，不只是單次Send呼叫。TCP仍按所接受bytes順序交付，錯誤來自本機把不該交錯的應用資料交錯。",
+        "因此「一個Socket一個接收所有者」和「完整框架傳送不交錯」是不同方向的約束。閱讀公司程式碼時分別畫接收與傳送路徑，檢查複用buffer、並行呼叫、取消和清理；只把Socket欄位設private不會自動滿足這些約束。"
+      ]
+    },
+    {
+      "heading": "發起者也有本機端點",
+      "kind": "concept",
+      "paragraphs": [
+        "客戶端 Connect 的引數是伺服器端點。通常不先指定本機 Port，由作業系統按路由與可用 Port 選擇來源位址及暫時 Port。教材 Bind 的 Port 為 0，同樣表示要求系統分配可用值，必須在繫結後讀 LocalEndPoint 才知道實際值。硬寫某個示範 Port 既可能碰撞，也不會使公司服務自動出現。",
+        "Client 與 Server 是建立連線時誰發起、誰等待的角色。建立後 TCP 有兩個獨立方向，雙方都可以收和送。Request／Response 是本教材的應用安排，不是 Socket 限制；另一套協定可以讓伺服器主動通知，或雙方同時傳資料。閱讀程式的 Send 與 Receive 路徑時，應把事件通知也算進來，不能只找一個對稱的查詢函式。",
+        "Connect 成功建立傳輸通道；若服務要求登入、授權、版本協商或狀態同步，仍需後續步驟。把 Connected 當成 Ready 會讓 UI 太早允許操作。可以分別記錄 TransportConnected、ProtocolAuthenticated、SnapshotLoaded，但名字本身不能保證事實：每一個狀態必須有實際事件或已解析回覆作依據。"
+      ]
+    },
+    {
+      "heading": "資料為何不是直接從一個函式跳到另一個函式",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Send 是將資料交給本機 Socket 的送出流程；作業系統管理傳輸緩衝、序號、重傳和確認。Receive 則從本機已到達的串流取資料。程式不直接控制對方何時執行 Receive，更不直接控制對方解析、排程或裝置操作完成。這種分工讓網路與應用速度可以不同，但也產生多個需要分別觀測的階段。",
+        "SendAsync 返回整數是本次接受的位元組數，可能小於交給它的區段長度。接收返回值則告訴你本次真正讀到多少，必須只解析那個有效範圍；buffer 裡未被覆寫的舊資料不是新資料。若需要完整的 N bytes，就維護 offset，持續讀剩餘範圍。等待完成是非同步還是同步，不改變部分收送與應用訊息沒有邊界的事實。",
+        "資料到達本機後可以先留在核心接收緩衝。TCP 確認收到某段位元組不表示應用已解析它。若接收應用不再讀，緩衝可能逐漸塞滿，使傳送端後續等待可用空間；這是流量控制的後果，不一定是鏈路斷線。維護時要問「資料在網路、核心緩衝、解析器或應用佇列中的哪一處」，而非把所有等待稱為網路慢。"
+      ]
+    },
+    {
+      "heading": "例題一：兩位客戶連到同一服務",
+      "kind": "worked-example",
+      "paragraphs": [
+        "已知 listener 綁 127.0.0.1:48001。第一位客戶本機 Port 為 51010，第二位為 51011。第一次 Accept 得到 A，端點為本機 48001、遠端 51010；第二次得到 B，端點為本機 48001、遠端 51011。listener、A、B 是三個物件。A 和 B 的本機 Port 相同，但對方端點不同，所以各自有獨立的串流位置與緩衝。",
+        "假設 A 送查詢，B 尚未送任何資料。讀 A 得到請求，不應從 B 讀取「剩下的一半」，也不應從 listener 讀。若 A 退出，清理 A 後 B 仍應運作，listener 仍可接受第三位。驗證方式是觀測三個不同 connectionId 的收送與釋放，並在 A 斷線後讓 B 再查一次。這樣才能發現共用欄位被覆寫或全域 Close 的問題。",
+        "同一物件也不宜由兩個接收流程競爭讀取，因為它們會分取同一串流：第一個拿標頭，第二個可能拿本文，兩邊都失去訊息完整性。適合的起點是每條連線一個接收擁有者，解析後再將完整訊息分派給多個使用者；這比在每個查詢函式各自呼叫 Receive 更容易維護。"
+      ]
+    },
+    {
+      "heading": "例題二：返回值與證據階梯",
+      "kind": "worked-example",
+      "paragraphs": [
+        "教學請求先編碼成 7 bytes，實際兩次 SendAsync 返回 3 與 4。第一次 offset=3，剩餘=4；第二次 offset=7，剩餘=0。若第二次又從陣列起點送 4 bytes，對方看到的是前三個 bytes 加前四個 bytes，原請求尾端消失。正確做法是 AsMemory(offset)，每次依實際 n 累加，不能依想送的長度累加。",
+        "時間線為 t=0 Connect 完成，t=2 本機送完，t=8 伺服器讀取，t=9 解析 requestId=r41，t=20 建立回覆，t=24 客戶端解析 READY。只到 t=2，能說本機送出流程完成；只到 t=9，能說對方已辨識請求；t=24 才證明此回覆到達並被解析。READY 的業務含義還取決於伺服器如何生成它，例如快取狀態或裝置即時查詢，不能從字串自行推定。",
+        "因此日誌應標示動作階段，例如 sendAccepted、frameParsed、requestHandled、responseApplied。若所有階段都寫 success，排錯者無法知道成功的是哪件事。要判斷結果，先找最遠已被證據支援的階段，再追下一個尚未被支援的階段。"
       ],
       "code": {
-        "title": "概念用程式片段：每次 recv 只取得部分資料",
-        "text": "with socket.socket() as client:\n    client.connect((\"127.0.0.1\", port))\n    client.sendall(request)\n    chunk = client.recv(1024)  # 最多 1024，不保證完整回覆"
+        "title": "完整送出迴圈；來自本教材標準函式庫模型",
+        "text": "int offset = 0;\nwhile (offset < bytes.Length)\n{\n    int n = await socket.SendAsync(bytes.AsMemory(offset), SocketFlags.None, ct);\n    if (n <= 0) throw new IOException(\"send made no progress\");\n    offset += n;\n}"
       }
     },
     {
-      "heading": "一次虛構狀態查詢的證據階梯",
+      "heading": "模型程式的進入與退出順序",
+      "kind": "code-reading",
       "paragraphs": [
-        "Lab-A：伺服器開始監聽；客戶端連線；客戶端送 STATUS?；伺服器收到並解析；伺服器回 OK,READY；客戶端收到並顯示。每一階都能有不同紀錄。",
-        "若只看到「客戶端送出成功」，下一步應找伺服器收到與解析紀錄；不能宣稱設備已回 Ready。"
-      ],
-      "table": {
-        "caption": "一條請求中各訊號最多能證明什麼",
-        "headers": [
-          "觀測",
-          "能證明",
-          "仍待確認"
-        ],
-        "rows": [
-          [
-            "connect 成功",
-            "TCP 已建立",
-            "請求有沒有送"
-          ],
-          [
-            "sendall 返回",
-            "本端送出流程未報錯",
-            "對方程式有沒有讀"
-          ],
-          [
-            "Server parse=STATUS?",
-            "對方程式已解析",
-            "有沒有產生回覆"
-          ],
-          [
-            "Client response=OK,READY",
-            "此回覆已到客戶端",
-            "來源定義與實際設備狀態"
-          ]
-        ]
-      }
+        "教材建立 listener 後先取得實際端點，再啟動 Serve 非同步函式，之後才建立 client。Serve 等待 AcceptAsync，取得 accepted 後讀一則框架與客戶的送出方向 EOF，最後回覆。client 收到回覆與 EOF 後等待 server Task。using 保證流程離開時釋放對應物件，但不代替協定的收尾，也不保證業務執行成功。",
+        "閱讀 using 時要檢查其作用範圍。若函式把 Socket 返回給外部，卻在同一函式的 using 結束時關閉，外部拿到的是已釋放物件。若啟動未等待的 Task，隨後退出 using，背景工作也可能使用失效物件。生命週期必須涵蓋所有使用者；例外與取消也要走同一個清理責任，否則暫時錯誤會累積成資源洩漏。"
+      ]
     },
     {
-      "heading": "本機練習怎麼做",
+      "heading": "實作：由實際端點追查一條回環連線",
+      "kind": "lab",
       "paragraphs": [
-        "下載 Python 腳本後執行。它先建立只綁 127.0.0.1 的 TCP 伺服器，以兩段 sendall 送出同一個框架；客戶端使用 read_exact 讀到指定長度。Port 由作業系統分配，不需碰外部網路。",
-        "輸出會標示每個步驟；若公司電腦政策不允許跑腳本，就直接閱讀本章紀錄與練習。腳本成功只驗證這台電腦上的模型，不驗證公司產品。"
+        "環境為自己的電腦、.NET 10 SDK 與下載包；解壓後執行 dotnet run --project sockets-maintenance-lab.csproj。全部只綁回環與系統分配 Port，不需外部服務。先找 LISTEN、CONNECT、ACCEPT 三行：驗證 CONNECT 的遠端等於 LISTEN 的本機，ACCEPT 的遠端等於 CONNECT 的本機，再找 request=r41 和對應回覆透過的 PASS。",
+        "變因是把 Serve 收到的預期 request 改成不存在的 r42，觀察會在應用內容驗證失敗，而非 Connect 失敗；復原後重新執行。不要試圖讓每次 READ 分段數完全一樣，作業系統有權合併或分開交付。驗收是端點關係正確、應用斷言透過、Task 結束並釋放；儲存自己的輸出時可保留 connectionId，毋須保留公司位址或資料。"
+      ]
+    },
+    {
+      "heading": "診斷：同樣是連上卻沒回覆，故障可能不同",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "案例甲與乙都顯示 Connect 已完成，五秒內沒有 READY。甲的伺服器沒有 Accept 紀錄；乙已有 Accept 和 frameParsed，但沒有 requestHandled。這兩項補證使排查分岔：甲先查接待迴圈是否尚在執行及工作是否阻塞；乙先查解析後分派、業務處理及回覆建立，不應繼續調整 IP。",
+        "進一步得到甲在上一位客戶的同步 Receive 上等待，主迴圈無法再次 Accept；乙有處理例外卻被空 catch 吃掉。有限修正是甲把每個連線的處理責任拆開且有數量上限，乙在正確階段儲存例外並產生協定允許的失敗回覆。驗證不只看 READY：甲需同時兩位客戶互不阻塞、退出不關 listener；乙需正常與錯誤輸入都有可追蹤的最終結果。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【角色】誰先執行 bind／listen？",
-      "answer": "Server；Client 通常對指定端點呼叫 connect。"
+      "question": "Socket、IP、Port 分別描述什麼？new Socket 能證明已連線嗎？",
+      "level": "foundation",
+      "answer": [
+        "IP 與 Port 是網路端點資料；Socket 是程式持有的通訊資源與操作介面。",
+        "建立物件還沒有提供遠端，也未完成 Connect。應檢視物件狀態改變的呼叫及返回，而非只看變數存在。",
+        "能證明連線建立的起點是這次 Connect 成功；能證明業務可用還需後續協定事件。"
+      ]
     },
     {
-      "question": "【物件】accept 後要在哪個 Socket 上讀取本次 Client 資料？",
-      "answer": "accept 回傳的連線 Socket；原監聽 Socket 繼續接新連線。"
+      "question": "客戶端連上後可否接收伺服器主動通知？說明角色與方向的關係。",
+      "level": "foundation",
+      "answer": [
+        "Client 是主動建立連線者，不是固定的傳送端。",
+        "TCP 建立後兩個方向獨立，伺服器主動通知只需應用協定允許且客戶有接收流程。",
+        "檢查公司程式時應找接收分派與事件，而非假設所有資料都是查詢回覆。"
+      ]
     },
     {
-      "question": "【方向】Client 一定只能 send，Server 一定只能 recv 嗎？",
-      "answer": "不是；連線建立後雙方都可收送。"
+      "question": "listener 的本機 Port 為 49000，A 遠端 52001、B 遠端 52002。A 結束後若 B 也失敗，應查哪個物件被關閉？",
+      "level": "application",
+      "answer": [
+        "A 與 B 是不同連線，共用服務 Port 不會自動綁在同一生命週期。",
+        "若 listener 被關，影響新的接待；若共用欄位已指向 B，清理 A 可能誤關 B。要以物件或 connectionId 的 Close 紀錄區分。",
+        "修正所有權後回歸 A 退出、B 繼續查詢、C 新連線三種邊界。"
+      ]
     },
     {
-      "question": "【證據】connect 成功能否證明 STATUS? 已被處理？",
-      "answer": "不能；還沒看到送出、接收與解析。"
+      "question": "輸入共 11 bytes，Send 返回依序 2、5、4。列每次 offset 與下次剩餘。",
+      "level": "application",
+      "answer": [
+        "offset 從 0 起，每次累加實際返回：2、7、11。",
+        "剩餘依序為 9、4、0，下一次的起點依序是索引 2、7；不能每次從 0 送。",
+        "驗證接收串流等於原 11 bytes，並非只計算三次總和。"
+      ]
     },
     {
-      "question": "【返回值】send 回傳 3，但輸入是 7 bytes，該怎麼做？",
-      "answer": "記住已送 3 bytes，對剩餘 4 bytes 繼續送；或使用 sendall 並妥善處理錯誤。"
+      "question": "buffer 長 32，Receive 返回 6，後面 26 bytes 仍有舊資料。應解析幾個？",
+      "level": "application",
+      "answer": [
+        "本次有效範圍只有前 6 bytes，陣列容量不是資料長度。",
+        "把後面舊資料送入解析器會憑空增加本次輸入，可能製造不存在的第二則框架。",
+        "應把 buffer.AsSpan(0,n) 交給解析器，用第二次短讀回歸測試。"
+      ]
     },
     {
-      "question": "【讀取】recv(1024) 回 5 bytes 是否一定異常？",
-      "answer": "不一定；參數是上限，TCP 可分段交付。"
+      "question": "t=4 本機送完，t=12 對方解析，t=17 對方操作完成，t=22 回覆解析。t=10 可否宣告對方未執行？",
+      "level": "diagnosis",
+      "answer": [
+        "t=10 的已知證據只有本機送完，尚未得到對方狀態。",
+        "缺少回覆不能反推未執行；可能在路上、已到緩衝或正在處理。",
+        "應查相同 requestId 的對方紀錄或結果查詢，不能據此重複副作用命令。"
+      ]
     },
     {
-      "question": "【地址】127.0.0.1 會連到別台設備嗎？",
-      "answer": "不會；它是本機回環位址。"
+      "question": "兩個 Task 同時對同一 TCP Socket 收資料，第一個讀兩 bytes、第二個讀五 bytes。為何即使沒丟包也可能解析失敗？",
+      "level": "diagnosis",
+      "answer": [
+        "兩個使用者競爭同一串流，各取得部分 bytes，TCP 不知道它們各自期待一則完整訊息。",
+        "可能第一個拿標頭、第二個拿本文，雙方都無法維持連續解析位置。",
+        "指定單一接收擁有者再分派完整訊息，並以分段和多請求交錯驗證。"
+      ]
     },
     {
-      "question": "【定位】只有 client sendall 成功而無回覆，第一個該補哪段證據？",
-      "answer": "確認 Server 是否收到完整請求、是否解析及是否產生回覆。"
+      "question": "某函式 using Socket s，啟動 Serve(s) 未 await 就返回。偶發 ObjectDisposedException，哪些證據能支援生命週期競爭？",
+      "level": "diagnosis",
+      "answer": [
+        "函式退出會觸發 Dispose，背景 Task 若仍待 Receive，就可能使用已釋放物件。",
+        "以同一 connectionId 記錄 TaskStart、ScopeExit/Dispose 與 ReceiveException，確認時間順序，而非單看例外名稱。",
+        "修正為等待責任或移交所有權；回歸正常完成、取消、例外三條退出路徑。"
+      ]
     }
   ],
   "recap": [
-    "伺服器有監聽 Socket 和每次連線的 Socket。",
-    "connect、sendall、recv 代表不同層級的觀測。",
-    "從請求到應用結果須逐段查證。"
+    "說明 IP、Port、Socket 物件與連線身分之間的關係。",
+    "追出監聽物件和連線物件各自的生命週期。",
+    "依每個返回值說明已完成哪一步，以及應用結果還缺什麼證據。"
   ],
   "sources": [
     {
-      "label": "Python 官方：socket 模組與各呼叫的返回值",
-      "url": "https://docs.python.org/3/library/socket.html"
+      "label": "Microsoft：Socket 類別與呼叫關係",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket?view=net-10.0"
     },
     {
-      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
-      "url": "https://docs.python.org/3/howto/sockets.html"
+      "label": "Microsoft：AcceptAsync 的新連線 Socket",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.acceptasync?view=net-10.0"
     },
     {
-      "label": "IETF RFC 9293：TCP 是位元組串流",
-      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+      "label": "Microsoft：SendAsync 返回長度",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.sendasync?view=net-10.0"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 串流、連線與關閉機制",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
+    },
+    {
+      "label": "Microsoft：DualMode與位址家族",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.dualmode?view=net-10.0"
     }
   ],
   "resources": [
     {
       "label": "下載 TCP 本機練習",
       "path": "./assets/labs/socket-tcp-lab.py",
-      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度字首與分段讀取。"
+    },
+    {
+      "label": "下載 C# Socket 維護教材模型",
+      "path": "./assets/labs/sockets-maintenance-lab.zip",
+      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
     }
   ]
 }

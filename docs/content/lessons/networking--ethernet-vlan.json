@@ -1,168 +1,263 @@
 {
-  "intro": "IP 告訴我們目的位址，但在一段以太網路上，電腦還要知道下一站的硬體位址。這篇用同一個交換器上的兩台主機，分清 Ethernet、MAC、ARP 與 VLAN。重點是知道封包在哪一段走、哪個位址會變，遇到同網段卻不通時該查什麼。",
-  "plan": [
-    {
-      "label": "建立 IP 與 Ethernet 的關係",
-      "minutes": 8
-    },
-    {
-      "label": "理解 MAC、ARP",
-      "minutes": 10
-    },
-    {
-      "label": "比較交換器與 VLAN",
-      "minutes": 9
-    },
-    {
-      "label": "讀模擬觀測與練習",
-      "minutes": 8
-    }
+  "contentVersion": 2,
+  "intro": "沿一份IP封包看Ethernet、MAC、ARP與VLAN各自負責什麼。重點是解釋本地鏈路如何找到下一站，以及跨路由後為什麼換MAC卻保留一般端到端IP。",
+  "prerequisites": [
+    "需知道IP與MAC分別作用於跨網路及本地鏈路；本章首節重新建立。",
+    "/24表示網路字首，本章只比較前三組；下一章推導掩碼。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      19
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+  },
   "goals": [
-    "說出 IP 位址與 MAC 位址的分工。",
-    "判斷同一條 Ethernet 路徑上何時需要 ARP 查詢。",
-    "說明 VLAN 為何會影響同一交換器上的通訊。",
-    "從模擬 ARP 紀錄選出下一個檢查點。"
+    "推導同網段與跨網段時ARP查詢物件。",
+    "解釋交換器學習、泛洪與VLAN分割槽的因果關係。",
+    "讀出每跳的MAC/IP/TTL及VLAN標記。",
+    "鑑別ARP缺回覆、錯誤VLAN與應用層失敗。"
   ],
   "sections": [
     {
-      "heading": "先分清資料要去哪裡，以及下一站是誰",
+      "kind": "concept",
+      "heading": "從「下一站是誰」進入本地鏈路",
       "paragraphs": [
-        "IP 封包記載較遠的來源與目的位址；Ethernet 幀則用來源與目的 MAC 位址在目前的本地鏈路上傳送。跨路由器時，IP 目的通常仍指向最終對端，而每段鏈路的 Ethernet MAC 目的會換成下一站。",
-        "可把它想成「最終收件地址」與「這一站交給誰」；但這只是比喻，實際還涉及路由表與鏈路種類。以下例子只談一般 Ethernet，無線與其他鏈路的細節可能不同。"
-      ],
-      "flow": [
-        "程式要送往目的 IP",
-        "系統決定下一站",
-        "查下一站的 MAC",
-        "包成 Ethernet 幀送出"
-      ],
-      "note": "不要把「目的 MAC」一直當成遠端 B 的 MAC；跨網段時常是本地閘道的 MAC。"
+        "IP路由選出要使用的介面和下一站IP，但Ethernet網卡要傳送的是frame（訊框），需要目的MAC。MAC是本地鏈路使用的地址，常見表示為六組十六進位bytes。它不是跨所有路由的全程目的標籤。A和B同一Ethernet網段時，下一站可能是B；B在另一網段時，下一站是閘道，而IP目的仍是B。",
+        "Ethernet交換器主要依目的MAC在同一VLAN內轉送，路由器則依目的IP決定跨網路下一站。具有三層功能的交換器可兼任路由，但一次轉送仍應區分觀察的是二層交換還是三層路由。認清功能比只看裝置外型有用。資料跨路由器時舊frame被拆開，IP packet檢查及轉送後再裝進新鏈路frame；不會把A的原Ethernet頭一路送到B。"
+      ]
     },
     {
-      "heading": "MAC 位址與交換器的工作",
+      "kind": "mechanism",
+      "heading": "ARP用本地廣播把下一站IP轉成MAC",
       "paragraphs": [
-        "MAC 位址是鏈路層識別資訊。交換器依它學習哪個連接埠可能通往哪個 MAC，再轉送 Ethernet 幀。MAC 與 IP 不一對一：同一台設備可能有多張介面，位址也可能變動或經虛擬化。",
-        "廣播幀會送給同一廣播領域內的接收者。交換器若不知道單播目的 MAC 在哪個埠，也可能先在允許的埠上泛洪；這不等於應用程式真的收到資料。"
+        "IPv4 ARP先查鄰居快取；若沒有匹配項，傳送廣播請求「誰有這個IP」，同廣播域內目標回覆自己的MAC，A快取結果後使用。快取可能已存在，因此沒有在抓包看到ARP不代表沒做過解析；也可能鄰居資訊來自其他機制。ARP詢問的是路由選擇出的本地下一站，不能直接跨路由找遠端B的MAC。",
+        "ARP請求可以描述傳送端與目標IP/MAC，但交換器不會靠ARP理解業務狀態。得到ARP回覆只證明該鏈路上有回應者提供對映，不證明Port7000或裝置命令成功。若IP重複，不同裝置可能競爭同一對映；若對映過期或被錯誤靜態條目替換，frame可能投向錯誤裝置。需要同時核對實際MAC、介面及更新時間，不能看到某個值便認定裝置身份。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "交換器為什麼學習來源、查詢目的",
+      "paragraphs": [
+        "交換器收到frame時，把來源MAC與收到的port及VLAN關聯到MAC table。傳送時查詢目的MAC；若在同VLAN已知，就往對應port，未知單播通常向同VLAN相關port泛洪，廣播也在該範圍傳播。學習來源是因為來源實際從這裡到達；目的可能還未出現，所以不能用目的猜學習位置。MAC table與主機ARP cache不同：一個是MAC→交換器port，另一個是IP→MAC。",
+        "VLAN把同一實體交換裝置分成不同二層廣播域。Access port通常把未標記流量歸入配置的VLAN；Trunk可承載多個VLAN，802.1Q標記攜帶VLAN ID，某些配置有未標記的native VLAN。具體裝置命令不同，概念是兩端必須對標籤、允許VLAN及歸屬有共同解釋。同樣IP字首卻在不同VLAN，不會自動互見ARP；不同VLAN互通需要三層路由及相應政策。",
+        "同一個交換port可以在不同時刻學到不同MAC，例如接上小型交換器後有多個來源；這與VLAN內同一MAC頻繁在多個port移動不同。表項老化亦是正常狀態管理。閱讀MAC表應保留VLAN、port、時間與是否靜態，才能判斷變化是否符合拓撲，而不是把任何更新都寫成線路故障。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "鏈路轉送的範圍：為什麼迴圈不能靠IP TTL處理",
+      "paragraphs": [
+        "普通二層交換不改IP TTL；TTL是在三層路由轉送減少。若多條二層鏈路形成迴圈，廣播和未知單播可反覆被複製，來源MAC也可能在不同port來回學習。不能說「TTL會讓ARP過幾跳消失」，ARP沒有這個IP轉送機制。交換網路需相應的避免迴圈設計，例如生成樹或受控多鏈路協定；具體協定由部署決定。",
+        "多鏈路本身不是錯誤，問題在於是否形成未控制的轉送迴圈。觀測會有廣播速率突升、相同資料重複、MAC學習移動與鏈路壅塞；這些也可能受其他原因影響，要對照拓撲及port狀態。VLAN隔離讓迴圈或廣播範圍受到邊界限制，但若trunk允許同VLAN跨迴圈，仍可擴散。",
+        "現代交換Ethernet常用全雙工點對點，碰撞偵測口訣不能直接用來解釋每次丟包。兩端速率/duplex不一致、實體錯誤與佇列丟棄有不同計數；frame checksum error與出口queue drop也不同。想知道「線不好」是否成立，先取得介面錯誤型別與負載條件，才把二層機制與應用症狀連在一起。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：跨網段時四組地址怎樣變化",
+      "paragraphs": [
+        "教學拓撲A=192.0.2.10/24，A-MAC=02:00:00:00:10:10；閘道G1=192.0.2.1，MAC=02:00:00:00:10:01；路由器另一介面G2=198.51.100.1，MAC=02:00:00:00:20:01；B=198.51.100.20，MAC=02:00:00:00:20:20。無NAT，A發B:7000。A比較字首後發現B不在本地/24，查G1的ARP，而不是B。",
+        "A側frame目的為G1-MAC，內部IP目的為B。路由器收frame後取出IP、TTL64減到63、重新計算IPv4頭checksum，再根據B所在鏈路查B的MAC，送出G2-MAC→B-MAC的新frame。TCP兩端Port保持54000→7000。回程B找自己的閘道G2，兩方向各有ARP與路由判斷；只有單向frame並不能代替回程。"
       ],
       "table": {
-        "caption": "兩種位址在本例中的角色",
+        "caption": "例題一：跨網段時四組地址怎樣變化",
         "headers": [
-          "位址",
-          "回答的問題",
-          "常見觀測位置"
+          "觀測點",
+          "Ethernet來源→目的",
+          "IP來源→目的",
+          "TTL"
         ],
         "rows": [
           [
-            "IP",
-            "資料最終要往哪個網路位址？",
-            "IP 設定、封包 IP 標頭"
+            "A輸出",
+            "A-MAC→G1-MAC",
+            "192.0.2.10→198.51.100.20",
+            "64"
           ],
           [
-            "MAC",
-            "這段 Ethernet 鏈路的幀交給哪個介面？",
-            "Ethernet 幀、鄰居表"
+            "路由器輸出",
+            "G2-MAC→B-MAC",
+            "192.0.2.10→198.51.100.20",
+            "63"
+          ],
+          [
+            "B回程首跳",
+            "B-MAC→G2-MAC",
+            "198.51.100.20→192.0.2.10",
+            "依B初始值"
           ]
         ]
-      },
-      "note": "不同鏈路技術不一定使用 Ethernet MAC。"
+      }
     },
     {
-      "heading": "ARP：已知 IPv4 下一站，還要找到 MAC",
+      "kind": "worked-example",
+      "heading": "例題二：同樣IP設定為什麼VLAN不同就沒有ARP",
       "paragraphs": [
-        "在一般 IPv4 Ethernet 網路，若主機知道下一站 IP、卻還不知道其 MAC，會用 ARP 查詢，再把結果暫存在鄰居表。若 B 與 A 在同一 IPv4 子網，A 通常查 B 的 MAC；若 B 在另一子網，A 通常查本地閘道的 MAC。",
-        "ARP 回覆只解決本地下一站位址，不保證 TCP 服務或 B 的應用程式正確。若 ARP 一直沒有回覆，先查實際鏈路、VLAN、目標是否在線與 IP 設定；也要確認這次確實應走該鏈路。"
+        "A與G1均使用192.0.2.0/24。交換器port3歸VLAN10，port8歸VLAN20；A在port3，G1在port8。A發廣播ARP，交換器只在VLAN10相關port傳播，因此G1無法看見。資料沒有到達IP路由器，先改變應用命令或DNS都不會影響這個缺口。",
+        "修正測試把G1的教學生境port歸同一VLAN10後，ARP才得到對映。若中間有Trunk，也必須允許VLAN10且兩端標籤一致；只改access仍可能在上行被排除。此處VLAN number本身沒有IP意義，VLAN10不必搭10.x地址。同樣ID在兩個隔離交換網路也不保證連線。"
       ],
       "code": {
-        "title": "模擬 ARP 觀測；位址均為教學資料",
-        "text": "A：Who has 192.0.2.1? Tell 192.0.2.10\n閘道：192.0.2.1 is at 02:00:00:00:00:01\nA 的鄰居表：192.0.2.1 → 02:00:00:00:00:01"
-      },
-      "note": "IPv6 不用 ARP，而使用 Neighbor Discovery；不要把 ARP 當成所有 IP 的共同步驟。"
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "交換器教學摘要（非廠商CLI）\nport3 access vlan=10 host=A\nport8 access vlan=20 host=G1\nuplink trunk allowed=10,20\nA ARP request target=192.0.2.1 VLAN=10\nG1 capture: 0 matching ARP\n變因：port8 access vlan=10\nG1 capture: request seen, reply sent\nA neighbor: 192.0.2.1 -> 02:00:00:00:10:01"
+      }
     },
     {
-      "heading": "VLAN 把一個交換網路分成不同的邏輯區",
+      "kind": "code-reading",
+      "heading": "把封裝長度和對映讀回程式日誌",
       "paragraphs": [
-        "VLAN 是交換網路的邏輯分區。即使 A 與 B 接在同一台實體交換器，若它們在不同 VLAN，不能因物理距離近就認定可直接交換 Ethernet 廣播或 ARP。跨 VLAN 通常要靠具備相應路由與政策的設備。",
-        "802.1Q 標記可讓一條實體連線承載多個 VLAN；但不是每個接入埠都會把標記原樣交給終端。讀交換器設定時需分清接入埠、承載多 VLAN 的埠、允許清單與兩端配置。"
+        "一筆8-byte查詢在無options時有20-byte TCP頭和20-byte IPv4頭，IP總長度=48 bytes。Ethernet基本頭14 bytes與FCS4 bytes，若載荷不足46 bytes會補padding；本例IP48大於46，無需padding，所以frame從目的MAC至FCS共14+48+4=66 bytes。加一個802.1Q tag是額外4 bytes；這類計算必須說明是否計FCS、前導碼及幀間隔，不能比較不同統計口徑。",
+        "應用C#一般拿到TCP payload而非Ethernet頭，因此ReadAsync回8和抓包frame-length66並不矛盾。網卡offload可能讓主機抓包看到尚未切割的大TCP資料或checksum尚未填寫；觀測點與抓包工具設定影響表示。維護程式若用錯層的length做parser檢查，會把正常封裝開銷誤判為異常。"
       ],
-      "table": {
-        "caption": "模擬接線結果",
-        "headers": [
-          "A 端 VLAN",
-          "B 端 VLAN",
-          "先查什麼"
-        ],
-        "rows": [
-          [
-            "10",
-            "10",
-            "確認鏈路、IP、ARP 與實際交換設定"
-          ],
-          [
-            "10",
-            "20",
-            "確認是否需經跨 VLAN 路由及相關政策"
-          ]
-        ]
-      },
-      "note": "VLAN 號碼與 IP 子網常配合設計，但它們不是同一種設定；實際是否可通，要看路由與政策。"
+      "code": {
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "int applicationBytes = System.Text.Encoding.ASCII.GetByteCount(\"STATUS?\\n\");\nint tcpHeaderBytes = 20; // lab: no options\nint ipv4HeaderBytes = 20; // lab: no options\nint ipTotal = applicationBytes + tcpHeaderBytes + ipv4HeaderBytes;\nint ethernetPayload = Math.Max(ipTotal, 46);\nint frameIncludingFcs = 14 + ethernetPayload + 4;\nConsole.WriteLine($\"application={applicationBytes} ip={ipTotal} frame={frameIncludingFcs}\");\n// A tagged frame has an additional 4 bytes in this model.\n// These lengths exclude preamble/SFD and inter-frame gap."
+      }
     },
     {
-      "heading": "同網段卻不通：照證據往下查",
+      "kind": "lab",
+      "heading": "實作：重跑ARP邊界並核對本機鄰居表",
       "paragraphs": [
-        "假設 A 的 IP 為 192.0.2.10/24，B 是 192.0.2.20/24，兩端被設定為同一子網。A 預期直接找 B 的 MAC。若 ARP 查詢有送出卻沒收到回覆，可能是 B 未連線、VLAN 不同、封包在路上被擋，或 IP 設定與想像不同。",
-        "若 ARP 有回覆，表示本地鏈路上有設備以該 IP 回答，但不保證是預期的 B，也不保證 B 的 TCP Port 7000 可用。下一步要比對 MAC、交換器埠與 TCP 封包。"
+        "執行 dotnet run -- ethernet 與 ethernet --fault；前者使用同VLAN10，後者只改變A歸VLAN20。畫A→交換器→G1→B路徑，標出廣播傳播範圍；逐行解釋為什麼fault停止在ARP，而非TCP。把Gateway VLAN也改20，寫出在模型中可見的結果與真實Trunk還需檢查的條件，然後復原。",
+        "Windows可唯讀以arp -a或Get-NetNeighbor檢視本機對映，配合route print確認哪一個是下一站。已快取的對映無需每次新發ARP；鄰居狀態也不等於服務健康。沒有真實交換器時完成固定資料讀碼即可，不以軟體輸出假裝量到VLAN。驗收需交兩張逐跳地址表、兩組模式輸出與一個說明MAC表/ARP表差異的段落。"
       ],
       "steps": [
-        "核對兩端 IP、遮罩與介面狀態。",
-        "確認兩端實際 VLAN 與交換器埠設定。",
-        "在 A 觀察 ARP 查詢和回覆，再比對 B 的觀測。",
-        "ARP 有回覆後，再看 IP／TCP 層，不把它當成服務成功。"
-      ],
-      "note": "範例位址與 MAC 都是模擬；不要把這個 VLAN 拓撲套到公司系統。"
+        "先預測ARP目標IP和廣播域，再執行模型。",
+        "對正常模式填每跳來源/目的MAC、IP、TTL；對fault標出第一個不能前進的機制。",
+        "手算8-byte查詢的IP及frame長度，說明FCS與tag口徑。",
+        "用本機唯讀表找一個鄰居，核對介面；復原模型並檢查輸出。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：ARP沒回覆，怎樣區分線斷與VLAN不匹配",
+      "paragraphs": [
+        "A每秒發ARP查G1，三次沒reply；候選H1實體鏈路斷、H2VLAN隔離、H3G1介面或地址未啟用。只憑三次request不能選定。第二輪交換器收到A的frame、port link=up、A-MAC已學在VLAN10；這降低了A至交換器斷線的候選，但未證明G1端。再取得G1 port link=up卻歸VLAN20，G1-IP正確；把廣播域機制串起，H2已有可驗證解釋。",
+        "隔離測試僅修正G1 port的VLAN，見G1收到ARP並回復、A鄰居對映正確、TCP握手及應用回覆恢復。回歸重插教學環境鏈路或等待表項更新，確認仍維持同樣對映。若ARP仍失敗，就查Trunk及G1介面，不盲目清所有快取。結論寫「VLAN歸屬導致下一站ARP不可達」，比「網路不通已解決」更能說明發生機制。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "A 與 B 跨路由器時，A 發出的 Ethernet 幀目的 MAC 通常是 B 還是本地閘道？",
-      "answer": "通常是 A 的本地下一站，也就是閘道的 MAC；IP 目的仍是 B。"
+      "level": "foundation",
+      "question": "MAC table與ARP cache分別把什麼對映到什麼？",
+      "answer": [
+        "交換器MAC table將VLAN內MAC對映到port；主機ARP cache把本地IPv4下一站對映到MAC。",
+        "兩者用於不同轉送步驟，不能交換解釋。",
+        "以交換器port、主機interface為範圍核對，避免把不同VLAN表項混用。"
+      ]
     },
     {
-      "question": "A 的 ARP 查詢沒有回覆，能立即說 B 的應用程式故障嗎？",
-      "answer": "不能。先查鏈路、VLAN、IP 與下一站是否正確；應用程式甚至可能尚未收到任何 IP 資料。"
+      "level": "foundation",
+      "question": "交換器為什麼學習來源MAC而非目的MAC？",
+      "answer": [
+        "收到的frame證明來源經該port到達，可以建立學習關係。",
+        "目的只是要去的地方，不證明在那裡。",
+        "未知目的按相應VLAN規則泛洪，隨後回覆幫助學習另一端。"
+      ]
     },
     {
-      "question": "A 與 B 插在同一台交換器，但分屬 VLAN 10、20。兩者一定能直接互通嗎？",
-      "answer": "不一定；不同 VLAN 的本地交換流量被分開。若要互通，需正確的跨 VLAN 路由與政策。"
+      "level": "application",
+      "question": "A=10.8.1.8/24，B=10.8.2.9，G=10.8.1.1；A應該ARP誰？",
+      "answer": [
+        "本地字首是10.8.1.0/24，B不匹配。",
+        "若路由指G，先ARP10.8.1.1；IP目的保留10.8.2.9。",
+        "畫frame目的G-MAC，不能寫B-MAC除非其他路由/代理機制有證據。"
+      ]
     },
     {
-      "question": "ARP 表裡看到 192.0.2.1 對應一個 MAC，可否證明 B 的 TCP 7000 正常？",
-      "answer": "不能。這只支持本地 IPv4 下一站位址解析；還要檢查到 B 的路由與 TCP 服務。"
+      "level": "application",
+      "question": "A初始TTL128，經兩臺普通IPv4路由器到B，B看到多少？MAC會保持A嗎？",
+      "answer": [
+        "每次路由轉送TTL減1，因此128−2=126。",
+        "每段Ethernet重新封裝，B看到最後路由器輸出MAC而非A-MAC。",
+        "端到端IP一般保持，但本題未含NAT；標明此前提。"
+      ]
     },
     {
-      "question": "在 IPv6 環境抓不到 ARP，就表示鄰居位址解析完全沒有發生嗎？",
-      "answer": "不能。IPv6 使用 Neighbor Discovery，不是 ARP；應觀察 ICMPv6 鄰居探索與鄰居表。"
+      "level": "application",
+      "question": "4-byte應用、20TCP、20IPv4，無tag，frame含FCS但不含前導碼長多少？",
+      "answer": [
+        "IP長度=4+20+20=44；Ethernet載荷最小46，補2 bytes。",
+        "frame=14+46+4=64 bytes。",
+        "應用read只有4合理；不同層length不可直接相等。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "access VLAN30兩端正確，上行trunk只允許10,20，為什麼仍不能跨該交換器？",
+      "answer": [
+        "VLAN30未在Trunk允許列表裡，其frame無法在本例上行路徑承載。",
+        "本地access歸屬正確只驗證一段。",
+        "修正教學Trunk允許範圍後重測ARP及應用；複核未擴大其他VLAN。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "同IP對映在兩MAC間切換且偶發連錯服務，提出兩個候選及下一步。",
+      "answer": [
+        "候選有重複IP與錯誤/惡意ARP對映；亦可能合法冗餘裝置機制。",
+        "取得兩裝置身份、IP配置、ARP時間線與官方冗餘配置，先區分是否設計行為。",
+        "隔離測試修正衝突後比對對映穩定和應用目標，不憑MAC變化直接刪合法裝置。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "A沒看到ARP但TCP正常，可以說裝置跳過ARP違規嗎？",
+      "answer": [
+        "不能；鄰居快取可能已存在，抓包也可能晚開始。",
+        "先查相同介面的快取與抓包起點。",
+        "模型機制並不要求每次應用查詢重新ARP；用正確觀測時間驗證。"
+      ]
     }
   ],
   "recap": [
-    "IP 指向網路目的；MAC 指向目前鏈路上的下一站。",
-    "ARP 用於一般 IPv4 Ethernet 的下一站 IP 到 MAC 解析。",
-    "跨路由器時，鏈路層 MAC 可能逐段改變。",
-    "VLAN 影響本地交換與廣播範圍，同一交換器不代表同一 VLAN。",
-    "ARP 成功不等於 TCP 或應用程式成功。"
+    "推導同網段與跨網段時ARP查詢物件。",
+    "解釋交換器學習、泛洪與VLAN分割槽的因果關係。",
+    "讀出每跳的MAC/IP/TTL及VLAN標記。",
+    "鑑別ARP缺回覆、錯誤VLAN與應用層失敗。"
   ],
   "sources": [
     {
-      "label": "RFC 826：ARP",
+      "label": "IETF RFC 826：ARP請求、回覆與快取對映",
       "url": "https://www.rfc-editor.org/rfc/rfc826.html"
     },
     {
-      "label": "RFC 4861：IPv6 Neighbor Discovery",
-      "url": "https://www.rfc-editor.org/rfc/rfc4861.html"
+      "label": "IETF RFC 1812：3.3、5.2：鏈路與路由轉送",
+      "url": "https://www.rfc-editor.org/rfc/rfc1812.html"
     },
     {
-      "label": "IEEE 802.1Q：VLAN 與交換橋接",
-      "url": "https://www.ieee802.org/1/pages/802.1Q.html"
+      "label": "Microsoft：arp顯示本機快取",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/arp"
+    },
+    {
+      "label": "IETF RFC 4541：VLAN與二層群播觀察邊界",
+      "url": "https://www.rfc-editor.org/rfc/rfc4541.html"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/networking-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
+      "label": "網路維護 C# 讀碼模型（Program.cs）",
+      "description": "本章使用 ethernet 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/README.md",
+      "label": "實驗專案操作說明",
+      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
     }
   ]
 }

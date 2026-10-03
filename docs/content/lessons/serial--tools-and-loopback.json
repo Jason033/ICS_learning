@@ -1,177 +1,272 @@
 {
-  "intro": "這章把前面的判讀帶到工具。你會辨認目前的 COM／tty 裝置、設定十六進位觀察、做不接硬體的 pySerial loop:// 軟體回環，並建立可對時的 TX／RX 紀錄。回環只驗證程式讀寫，不驗證 RS-232 電氣、線材或設備。",
-  "plan": [
-    {
-      "label": "找裝置與設定",
-      "minutes": 10
-    },
-    {
-      "label": "做軟體回環",
-      "minutes": 12
-    },
-    {
-      "label": "讀 TX／RX 紀錄",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 13
-    }
+  "contentVersion": 2,
+  "intro": "工具的輸出必須放回測試範圍。這裡先分清軟體迴環、真實埠迴環、裝置請求回覆及線路觀測，再讀驅動緩衝、Read與DataReceived為何不等於訊息邊界。",
+  "prerequisites": [
+    "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
+    "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
+  "studyTime": {
+    "reading": [
+      10,
+      18
+    ],
+    "practice": [
+      20,
+      40
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+  },
   "goals": [
-    "能辨認本機裝置與轉接器，而不是只背固定 COM 號。",
-    "能執行或讀懂無硬體 loop:// 練習並解釋其限制。",
-    "能整理包含時間、方向、HEX、設定與觀測點的紀錄。"
+    "解釋不同迴環測試覆蓋的路徑與不能推出的結論。",
+    "追實際read count、buffer與parser狀態，不按事件數認訊息。",
+    "建立資源取得、讀執行緒、取消及UI更新的關係。",
+    "用同一bytes與有效設定比較工具和應用差異。"
   ],
   "sections": [
     {
-      "heading": "先確認這次到底開到哪個埠",
+      "kind": "concept",
+      "heading": "迴環為何有用，以及為何不能替代裝置",
       "paragraphs": [
-        "Windows 的裝置管理員可用來確認轉接器目前的埠名稱與裝置狀態；Linux 常見裝置名稱有 /dev/ttyUSB0、/dev/ttyACM0 等，但名稱會因裝置、驅動和插入順序改變。pySerial 也提供列埠工具，清單可能不完整，不能只憑名稱認定外側電氣規格。",
-        "測試紀錄應同時寫時間、電腦、裝置辨識資訊與當次埠名；在不同系統或重新插拔後重新核對。"
-      ],
-      "code": {
-        "title": "選做：列出本機可見串列埠；不會對設備送命令",
-        "text": "Windows（已安裝 Python 與 pySerial）：py -m serial.tools.list_ports\nLinux：python3 -m serial.tools.list_ports\n輸出只代表系統列舉，仍需核對轉接器型號。"
-      },
-      "note": "列舉結果可能不完整；若設備已被其他程式佔用，也可能無法開啟。"
-    },
-    {
-      "heading": "實體設備測試先固定條件",
-      "paragraphs": [
-        "若有授權的測試設備，先讀手冊確認外側介面、pinout、串列參數與安全條件，再選終端程式。一次只讓一個程式開埠，先以十六進位觀察，避免工具默默附加 CR／LF 或轉換文字編碼。",
-        "不要在未核對電氣規格的情況下做實體接線或 loopback。教材不提供未知設備的 pin 號和通用接線步驟。"
-      ],
-      "steps": [
-        "確認設備型號、轉接器型號及當次埠名。",
-        "核對介面與接線條件，再設定鮑率、8N1 等參數和流量控制。",
-        "確認終端程式實際送出的是哪幾個 HEX 位元組。",
-        "記錄 TX、RX 時間與方向；不要只貼一張「有亂碼」截圖。"
+        "迴環讓已知輸入回到接收路徑，便於比較encoding、讀寫與buffer行為。軟體loop://從API路徑回顯，不穿真實線與裝置；真實埠或聯結器的合適迴環可能涵蓋驅動、橋/UART與部分線路，覆蓋範圍取決於迴環位置；真正對端服務還會檢查命令及執行語意。三者不是不同難度的同一證明，而是不同被測鏈。",
+        "Echo回到原AA011011不代表裝置回覆。教學協議請求CMD10、結果CMD90，回顯保有請求10。只斷言TX==RX只能驗證echo內容，無法判裝置READY。已知輸出測試應依契約明確預期：軟體原樣echo、parser分段完成、裝置結果需90/狀態/關聯各成立。"
       ]
     },
     {
-      "heading": "軟體回環：在電腦裡自己送給自己",
+      "kind": "mechanism",
+      "heading": "緩衝把線路時間與APP時間分開",
       "paragraphs": [
-        "本站提供可下載的 Python 小程式，它使用 pySerial 的 loop://，將寫入的虛構二進位請求 AA 01 10 11 回送給自己。程式分兩次各讀 2 bytes，接著再讀 1 byte，展示 timeout 回空。它不連實體線材或設備。",
-        "先在自己的測試電腦安裝 Python 與 pySerial；如已有 pySerial 可直接執行。此程式只需一般本機環境，不需公司帳號或設備。"
-      ],
-      "code": {
-        "title": "執行方式；先下載本章練習檔",
-        "text": "Windows：py -m pip install pyserial\nWindows：py serial-loopback.py\nLinux／macOS：python3 -m pip install pyserial\nLinux／macOS：python3 serial-loopback.py\n預期：read 1=AA 01；read 2=10 11；逾時後 (empty)"
-      },
-      "note": "安裝方式可能受你電腦的 Python 管理政策影響；不要為了練習在受管制的公司電腦自行安裝套件。"
+        "UART接收後可能先到硬體FIFO，USB橋湊包、驅動/OS緩衝，再到SerialPort管理的資料層及應用buffer。每層有容量與排程，APP一次read可能跨很多字元，或只得到一部分。BytesToRead是某API報告的當前未讀數量，不等於完整訊息數量；Read(buffer,offset,count)的count是請求最大數，返回n才是實際數。",
+        "若APP同時用SerialPort文字API與BaseStream或兩個讀執行緒，消費位置和緩衝語意可能不同，造成資料被另處先取走。維護應找所有讀取者，讓同一接收路徑有明確owner再進入parser。DataReceived由系統決定通知時機，不保證每byte一次，亦不保證每完整幀一次；接到通知先按實際count讀取，再更新有界狀態。"
+      ]
     },
     {
-      "heading": "回環成功與實體成功之間還隔著什麼",
+      "kind": "mechanism",
+      "heading": "資源與事件生命週期影響第二次測試",
       "paragraphs": [
-        "loop:// 回顯能幫你確認程式對位元組、分段讀取與 timeout 的基本處理；不能測 USB 轉接器外側、RS-232 電平、DTE/DCE 接線、控制線、設備的命令解析或動作。",
-        "若軟體回環也失敗，先修正程式或環境；若回環成功而設備不回覆，下一步才沿實體介面、串列參數與協定內容查。"
+        "過程可分Closed→Opening→Open→Closing→Disposed，但具體物件狀態按API。Open失敗可能是名字不存在、被佔用、許可權或driver問題；它們尚未進入電氣命令層。Close後舊回呼可能仍在排程，若重連新例項複用同一全域性buffer，舊bytes可能被當新裝置狀態。加入instance/session代號可防舊回呼更新新交易。",
+        "官方DataReceived在secondary thread，UI應以框架支援的排程送到UI執行緒，不能直接修改控制項。對parser的共享List也需單owner或同步，不能以同一事件handler通常不併行就忽略另個取消/重連執行緒。事件解除、取消等待、關閉與釋放的順序需追所有owner，避免舊事件/讀任務持有已關物件。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "測試覆蓋、已知輸入與觀測誤差",
+      "paragraphs": [
+        "要比較工具與APP，先保證真正相同的輸入。終端可自動加換行、把HEX轉成binary、用不同encoding或在開啟時改變DTR；APP啟動也可能讓裝置復位。記錄開始前狀態與有效配置，才能區分「工具能通」其實是不同試驗條件，或真實應用讀取邏輯問題。不要把按鈕標籤當原始資料。",
+        "已知輸入測試要覆蓋機制，不只覆蓋字面命令。用正常frame、payload含同步字、錯誤LEN、壞checksum、分段、兩幀合併、無終點及遲到；每組先寫預期分類，才能判斷parser是否穩定。軟體模型容易固定分塊重現，真實裝置則受橋與排程改變分塊；內容不變數應由程式負責。",
+        "線路測點、橋driver、SerialPort與APP日誌的時間並非一個clock或一個事件。由裝置波形認定傳送開始，到APP callback開始之間包含緩衝和排程；兩者差可用於觀察某鏈，但需同步方式與明確起點。缺乏這項說明，所謂「裝置響應慢」可能其實是讀執行緒晚醒。",
+        "復原也是覆蓋的一部分。第一次Open→讀→Close正常不證明第二次重開時無舊任務；PASS輸出只檢查指令碼編者預定的條件，不是完整產品認證。測試產物要附環境、輸入、實際count/HEX、預期、偏差解釋與恢復結果，使另一人可以重跑並理解限定結論。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：原有pySerial軟體迴環完整解釋",
+      "paragraphs": [
+        "原指令碼送AA011011共4bytes；read(2)得到AA01，第二read(2)得1011，兩段拼回原4。read(1)在timeout0.2s後無新資料，返回空bytes。此結果支援寫入/讀取與基本等待路徑，不能解釋成裝置在200ms拒絕，也不能從回顯請求推出裝置命令成功。",
+        "引數9600 8N1用於API配置，但loop://並不量真實每bit的104µs、線路電壓或線材。你可以更改read大小為1+3，內容仍應相同；這驗證接收切分不應改變訊息。若read要求5卻只有4，返回行為應依API timeout契約判讀，不強制每次拿到count。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "原指令碼：serial-loopback.py（未修改）\nTX request = AA 01 10 11 (4 bytes)\nread 1(2) = AA 01\nread 2(2) = 10 11\nread after timeout(1) = empty\nfirst+second==request -> software echo content matches\n這是請求回顯，不是AA 02 90 01 93裝置結果。"
+      }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：三次通知只組成一幀",
+      "paragraphs": [
+        "虛構通知：callback1讀3bytes AA0290；callback2無新bytes（可能已由其他路徑讀走或只是模型通知），callback3讀2bytes0193。累積3→3→5，第三才足完整LEN2/total5，完成1frame。通知3次、實際讀5bytes、完整訊息1是三種數字。",
+        "若一次通知讀9bytes，包含AA02900193與AA011011，則一次可完成2frame。對比訊息計數才有業務意義；以event count增加當作「收到3筆」會汙染錯誤率。程式需要記錄read count與HEX、buffer狀態、完成計數及交易歸屬，模型events印total模擬只是前置概念，不替代完整LabParser。"
       ],
       "table": {
-        "caption": "測試覆蓋範圍",
+        "caption": "例題二：三次通知只組成一幀",
         "headers": [
-          "測試",
-          "能支持",
-          "不能支持"
+          "通知",
+          "實際n",
+          "累積",
+          "訊息狀態"
         ],
         "rows": [
           [
-            "loop:// 軟體回環",
-            "本機程式寫入／讀取和逾時基本行為",
-            "真實線材或設備正常"
+            "1",
+            "3",
+            "3",
+            "LEN2需5，等待"
           ],
           [
-            "串列埠可開",
-            "作業系統讓程式取得埠",
-            "設備已收到資料"
+            "2",
+            "0",
+            "3",
+            "仍等待"
           ],
           [
-            "TX／RX 原始紀錄",
-            "該觀測點看到的位元組",
-            "設備實際完成動作"
-          ],
-          [
-            "設備狀態回報",
-            "符合該設備協定的狀態",
-            "所有硬體功能都正常"
+            "3",
+            "2",
+            "5",
+            "校驗後完成1"
           ]
         ]
       }
     },
     {
-      "heading": "把日誌寫成別人也能看懂的證據",
+      "kind": "code-reading",
+      "heading": "讀C#回呼：以n而不是buffer.Length交給parser",
       "paragraphs": [
-        "一份有用的 TX／RX 紀錄至少保留時間與時區、哪個程式／埠、串列設定、方向、原始 HEX、可讀解碼、預期長度與 timeout 條件。若只有「send OK」或一串沒有方向的 HEX，無法排除接錯埠或讀取不完整。",
-        "避免公開貼真實設備位址、控制命令、公司通訊內容與未授權手冊。以下模板用教學代號，所有值都可安全替換為虛構資料。"
+        "下方為已有SerialPort引用專案的閱讀片段；新.NET10需要相應package，本站獨立lab不使用它。把buffer固定256只代表接收臨時容量，若實際n3卻把256全部送parser，後253箇舊值/0會汙染。應使用返回n；若有其他讀取者，BytesToRead與Read之間可能變化，需處理API錯誤與協調。",
+        "事件handler宜快速讀取與釋出資料，不做長業務、sleep或同步UI等待，否則增加下一批接收壓力。把packet處理移工作佇列也不自動安全，佇列需有上界、保序與取消。串列協議同一流不能隨意並行重排chunks。下列程式碼僅展示核心n範圍，完整owner與deadline在實際專案按契約落實。"
       ],
       "code": {
-        "title": "自製虛構紀錄模板",
-        "text": "test=Lab-A port=COM8 settings=9600,8,N,1 flow=none\n12:00:00.000 TX 53 54 41 54 55 53 3F 0D 0A  | STATUS?\\r\\n\n12:00:00.085 RX 4F 4B 2C 52 45 41 44 59 0D 0A | OK,READY\\r\\n\n觀測點：本機程式日誌；不是設備內部證據。"
-      },
-      "note": "轉成可讀文字前先保留原始 HEX；二進位資料不應硬解成文字。"
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "// Code-reading excerpt in an existing project with System.IO.Ports.\nvoid OnDataReceived(object? sender, SerialDataReceivedEventArgs e) {\n    var port = (SerialPort)sender!;\n    byte[] buffer = new byte[256];\n    int n = port.Read(buffer, 0, buffer.Length);\n    if (n > 0) {\n        byte[] actual = buffer.AsSpan(0, n).ToArray();\n        Console.WriteLine($\"RX count={n} hex={Convert.ToHexString(actual)}\");\n        EnqueueToSingleParserOwner(actual);\n    }\n}\n// Do not enqueue all 256 bytes. Do not directly update UI on this thread.\n// The owner, queue bounds, closure race and exceptions need a defined policy."
+      }
     },
     {
-      "heading": "選下一個檢查，不一次改三個變因",
+      "kind": "maintenance",
+      "heading": "工具正常、APP失敗要比較完整有效條件",
       "paragraphs": [
-        "先拿一次正常基準與一次異常紀錄，比對轉接器、埠名、參數、命令、時間與回覆。一次只調整有證據支持的條件，否則即使好了也不知道原因。",
-        "若需要實體量測、接線或修改設備設定，應依授權與該設備正式文件進行；本網站提供的是判讀與紀錄方法。"
+        "串列terminal可能自動加CRLF、不同encoding或handshake、暫停輪詢；APP也可能另個例項用同COM或未關閉。比較PortName、adapter identity、UART/flow、實際HEX、每次read與總deadline，而不是只看畫面文字一樣。開啟同一埠的多個程式可能無法並存，不能為了監看直接搶資源；被動觀測方式應依裝置條件。",
+        "測試記錄保留一份原始TX/RX與時間，另寫解釋。timestamp是APP取得時間還是線路觸發時間要註明，不能把USB批次間隔當裝置字元間隔。錯誤計數按instance記錄，重連後不要把舊timer觸發為新超時。工具只是取得資料的方法，正確概念決定怎樣讀它。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：軟體迴環與事件模型互相對照",
+      "paragraphs": [
+        "有Python和pySerial時執行舊serial-loopback.py，預期4、2+2、empty；這需要外部pySerial，沒裝也可先按完整原指令碼追碼。執行.NET events，比較3+0+2只完成5bytes的模型，再執行frames確認完整校驗。將chunks切分改1+4或一次5，不改變frame內容。",
+        "驗收交四層覆蓋圖、軟體echo與裝置reply區別、事件/count/message三欄表，以及工具/APP配置比較表。復原所有模型變化。不接實體迴環也可完成讀碼；未知pinout不屬於本實驗操作。"
+      ],
+      "steps": [
+        "用原輸入先預測Python四項輸出。",
+        "跑events和frames，標每個計數代表什麼。",
+        "改變切分但保持內容，檢驗解析不變數。",
+        "復原並解釋軟體測試未涵蓋的線路/裝置層。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：terminal每次收到，APP偶爾只剩後半",
+      "paragraphs": [
+        "候選H1裝置回覆被截、H2兩個讀消費者分走、H3事件更新競爭。第二輪terminal記錄完整9bytes，APP有DataReceived讀前4且另timer ReadExisting取後5，兩個buffer各自認為不完整。獨立觀察同回合完整，支援H2。需要查所有Read/ReadLine/ReadExisting/BaseStream呼叫點，不能先把timeout變長。",
+        "有限修正為單接收owner，統一bytes進入同一parser再路由業務；移除競爭讀者。回歸完整/分段/合併、timer與回呼同時、Close/重開、舊instance事件，驗證每frame只交付一次且無遺漏。透過單次軟體echo不能驗證執行緒安全，應保留可重現時序或控制模型。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【列埠】列出 COM8 就能證明它外側是 RS-232 嗎？",
-      "answer": "不能。列埠只說明作業系統可見裝置；需核對轉接器型號及電氣規格。"
+      "level": "foundation",
+      "question": "loop://與裝置請求回覆各證明什麼？",
+      "answer": [
+        "loop://證明限定軟體echo路徑，裝置回覆還需命令語意與外部鏈路。",
+        "TX==RX對echo合理，對請求/結果格式未必合理。",
+        "以測試範圍解釋，不能宣稱真實裝置正常。"
+      ]
     },
     {
-      "question": "【回環】loop:// 讀到 AA 01 10 11，是設備回覆嗎？",
-      "answer": "不是。它是本機軟體把自己寫的資料回顯。"
+      "level": "foundation",
+      "question": "count=256，Read回n=7，要處理多少bytes？",
+      "answer": [
+        "只處理buffer中的前7。",
+        "256是申請上限，其餘可能舊值，不能送parser。",
+        "記錄n和原始HEX，驗分段與合併。"
+      ]
     },
     {
-      "question": "【分段】回環第一次讀 AA 01、第二次讀 10 11，第一段能被判成完整框架嗎？",
-      "answer": "不能。按虛構協定還需 CMD 與 CHK，應累積後驗證。"
+      "level": "application",
+      "question": "通知讀2、1、2而frame需5，哪回合完成？",
+      "answer": [
+        "累積2、3、5，第三才足長度。",
+        "還需校驗與欄位，足5不自動業務成功。",
+        "不能以3通知算3frame。"
+      ]
     },
     {
-      "question": "【逾時】回環最後 read(1) 讀到空 bytes，代表實體設備逾時嗎？",
-      "answer": "不代表。程式根本沒有連實體設備；它只示範本地讀取逾時。"
+      "level": "application",
+      "question": "一次read14bytes含5、4、5長度幀，應輸出幾個且保留什麼？",
+      "answer": [
+        "依協議分別消費5、4、5，共3完整幀。",
+        "無剩餘；若只處理首幀後清空會丟其餘9。",
+        "測試不同chunk切分應得到同三幀序列。"
+      ]
     },
     {
-      "question": "【觀測】終端畫面顯示 STATUS?，為何還要記 HEX？",
-      "answer": "終端可能暗中附加或轉換 CR/LF、文字編碼；HEX 才能核對實際位元組。"
+      "level": "application",
+      "question": "USB一次批次讀20bytes，能說線路20字元同一時刻到嗎？",
+      "answer": [
+        "不能，USB/driver緩衝合併不同線路時間。",
+        "APP時間是讀取或通知時間，非每bit時間。",
+        "要測線路間隔需相應儀器/測點，不從單timestamp推斷。"
+      ]
     },
     {
-      "question": "【日誌】只寫「COM8 send OK」缺哪三類關鍵資訊？",
-      "answer": "缺串列設定、實際 TX HEX、觀測到的 RX 或 timeout 時間；也應記裝置身分與觀測點。"
+      "level": "diagnosis",
+      "question": "只改terminal自動LF，APP原bytes不變，如何公平比較？",
+      "answer": [
+        "終止符是輸入條件差異，不是工具可靠性差異。",
+        "比TX HEX、有效配置及完整回應。",
+        "統一契約後比較，保留其他變數不變。"
+      ]
     },
     {
-      "question": "【比較】一口氣改轉接器、鮑率和命令，測通後能知道原因嗎？",
-      "answer": "很難。應一次改一個有證據支持的變因，與基準紀錄比較。"
+      "level": "diagnosis",
+      "question": "Close後舊回呼寫入新buffer，如何設計保護？",
+      "answer": [
+        "給connection/port instance世代身份，舊回呼不能更新新例項。",
+        "取消與解除訂閱再按owner關閉，處理排程未結束情形。",
+        "測重開/晚到/取消，確保不誤完成新請求。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "event handler直接等待UI同步結果導致收件慢，先查哪機制？",
+      "answer": [
+        "後臺回呼被UI或鎖等待，讀資料無法及時服務，可能積壓。",
+        "取得執行緒等待、read間隔與buffer/唯一訊息計數。",
+        "改短回呼與正確UI排程後驗證順序/有界佇列，不只是加buffer。"
+      ]
     }
   ],
   "recap": [
-    "列埠與開埠只是本機證據。",
-    "loop:// 可練程式讀寫，不會驗證實體 RS-232 或設備。",
-    "紀錄時間、方向、HEX、設定與觀測點，才能定位。"
+    "解釋不同迴環測試覆蓋的路徑與不能推出的結論。",
+    "追實際read count、buffer與parser狀態，不按事件數認訊息。",
+    "建立資源取得、讀執行緒、取消及UI更新的關係。",
+    "用同一bytes與有效設定比較工具和應用差異。"
   ],
   "sources": [
     {
-      "label": "pySerial：loop:// 與 URL handlers",
-      "url": "https://pyserial.readthedocs.io/en/latest/url_handlers.html"
+      "label": "pySerial：引數、讀取與timeout",
+      "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
     },
     {
-      "label": "pySerial：列埠與基本使用",
-      "url": "https://pyserial.readthedocs.io/en/latest/shortintro.html"
+      "label": "Microsoft：SerialPort.Read實際回傳數",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.read?view=netframework-4.6"
     },
     {
-      "label": "Microsoft：裝置管理員",
-      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager"
+      "label": "Microsoft：DataReceived時序與執行緒",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived?view=dotnet-plat-ext-8.0"
     }
   ],
   "resources": [
     {
+      "path": "./assets/labs/serial-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
       "label": "下載：無硬體軟體回環練習（Python）",
       "path": "./assets/labs/serial-loopback.py",
-      "description": "需自行安裝 pySerial；只回顯程式自己送出的虛構資料，不會連公司設備。"
+      "description": "需自行安裝 pySerial；只回顯程式自己送出的虛構資料，不會連公司裝置。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/Program.cs",
+      "label": "串列C#概念與解析模型",
+      "description": "本章用events模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/README.md",
+      "label": "獨立.NET10模型操作說明",
+      "description": "本章用events模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
     }
   ]
 }

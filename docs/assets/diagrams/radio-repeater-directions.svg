@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 600" role="img" aria-labelledby="title desc">
+ <title id="title">中繼上下行與終端方向相反</title>
+ <desc id="desc">A與B終端都向上行U發送並接收下行D；中繼接收U並發送D。中繼可以同時收發而終端使用者仍輪流講話。U與D只代表角色，不表示頻率數值高低。</desc>
+ <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#26766b"/></marker></defs>
+ <rect width="640" height="600" rx="24" fill="#f6f8f4"/>
+ <g font-family="sans-serif" fill="#14342e">
+  <text x="28" y="40" font-size="24" font-weight="700">方向由角色定義，不靠頻率高低猜</text>
+  <rect x="110" y="70" width="420" height="125" rx="14" fill="#e6e9f7"/>
+  <text x="320" y="104" text-anchor="middle" font-size="23" font-weight="700">中繼</text>
+  <text x="320" y="137" text-anchor="middle" font-size="21">接收U → 內容/門控 → 發送D</text>
+  <text x="320" y="170" text-anchor="middle" font-size="16">收U、發D可同時；需相應隔離</text>
+  <rect x="30" y="325" width="230" height="115" rx="14" fill="#dcefe7"/>
+  <rect x="380" y="325" width="230" height="115" rx="14" fill="#dcefe7"/>
+  <text x="145" y="359" text-anchor="middle" font-size="22" font-weight="700">終端A</text>
+  <text x="145" y="392" text-anchor="middle" font-size="21">TX=U　RX=D</text>
+  <text x="145" y="422" text-anchor="middle" font-size="16">本次先由A說話</text>
+  <text x="495" y="359" text-anchor="middle" font-size="22" font-weight="700">終端B</text>
+  <text x="495" y="392" text-anchor="middle" font-size="21">TX=U　RX=D</text>
+  <text x="495" y="422" text-anchor="middle" font-size="16">B收下行；反向另驗證</text>
+  <path d="M150 317L230 204" fill="none" stroke="#26766b" stroke-width="4" marker-end="url(#a)"/>
+  <text x="78" y="264" font-size="18">A發U</text>
+  <path d="M410 204L490 317" fill="none" stroke="#26766b" stroke-width="4" marker-end="url(#a)"/>
+  <text x="487" y="264" font-size="18">中繼發D</text>
+  <rect x="28" y="465" width="584" height="90" rx="12" fill="#fff0d9"/>
+  <text x="46" y="494" font-size="18">A→中繼、 中繼→B 是兩段內容鏈。</text>
+  <text x="46" y="520" font-size="17">中繼全雙工，不等於A/B能同時收發或同時說話。</text>
+  <text x="46" y="545" font-size="15">RF存在、門控允許、內容正確，逐段分開查。</text>
+  <text x="320" y="580" text-anchor="middle" font-size="14">U/D為教學符號；不提供可操作的頻點。</text>
+ </g>
+</svg>

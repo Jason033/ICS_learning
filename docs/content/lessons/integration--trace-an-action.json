@@ -1,170 +1,242 @@
 {
-  "intro": "學習真實整合程式時，先選一次可以重現的操作，沿「畫面收到、控制邏輯處理、介接層送出、外部回覆、畫面更新」找證據。這裡的 DemoCtrl-A 是完全虛構的教學模型；使用者筆記中的 RCSCall／iCallAPI 只作待查名稱，不把先前整理出的箭頭當成已驗證架構。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "要讀懂陌生整合程式，先選一個操作把輸入、呼叫、物件、回傳與事件串完整。這章從方法和呼叫堆疊開始，教你讀畫面到控制層、Adapter到外部，以及結果返回的兩條路。公司名稱只作搜尋線索；正文使用可逐步推導的自製C#模型。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 trace 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能從一次畫面操作找到方法定義、呼叫點與事件訂閱。",
-    "能區分靜態程式呼叫圖與實際執行時間線。",
-    "能寫出每個箭頭需要哪種證據。"
+    "從輸入事件沿方法呼叫與參數，追到真正執行的物件。",
+    "區分呼叫堆疊、物件依賴圖和後續事件時間線。",
+    "把一個操作寫成能復核的閱讀卡，找出最先失去證據的位置。"
   ],
   "sections": [
     {
-      "heading": "先選一個小而可重現的動作",
+      "heading": "程式不是檔案按順序播放，而是從入口呼叫方法",
+      "kind": "concept",
       "paragraphs": [
-        "教學動作是按「查狀態」，請求識別碼 q17。先記操作時間、所選對象和畫面變化，再找程式的按鈕事件處理器。不要一開始就猜整套公司系統由哪個物件控制。",
-        "若能看原始碼，可用全域搜尋與「尋找所有參照」定位方法；若沒有原始碼，只能先從 UI、日誌與廠商文件建立候選，不能假裝已看見呼叫關係。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/integration-trace.svg",
-        "alt": "虛構操作沿 View、Controller、Adapter、DemoCtrl-A 與事件回到 View，箭頭各需證據。",
-        "caption": "教學模型的追查路徑，不代表公司 View、RCSCall 或 iCallAPI 的實際連接。"
-      }
-    },
-    {
-      "heading": "由入口向下追「定義」與「呼叫者」",
-      "paragraphs": [
-        "找到 Click handler 後，看它呼叫哪個方法、傳什麼參數、收到什麼返回值；再進方法定義，重複追到介接邊界。IDE 的 Call Hierarchy／Find All References 可協助找靜態呼叫。",
-        "搜尋結果不一定包含反射、設定檔注入、委派或外部 DLL 內部執行。因此把「程式碼可見的呼叫」和「執行時確認的路徑」分開記。"
-      ],
-      "steps": [
-        "找一次操作的 UI 入口及綁定。",
-        "找下一個方法定義與所有呼叫者。",
-        "找 Adapter 或 SDK 的外部呼叫邊界。",
-        "找返回值、事件處理器及畫面更新。"
+        "一個專案可有幾十個class和幾千個方法，運行時不會按文件順序從頭執行。入口可能是Main、UI點擊、計時器或外部回呼；入口呼叫另一個方法，被呼叫方法再呼叫下一段。要讀一次操作，先找觸發它的入口，再追執行分支，而不是從每個文件第一行讀到最後一行。",
+        "方法有參數、局部變量、返回值和副作用。參數說明這次操作的輸入，例如目標設備D1和等級60；返回值說明方法按契約提供甚麼結果；副作用可能是改狀態、入隊、發送資料或訂閱事件。void僅表示沒有普通返回值，不表示沒作用；返回true也不自帶“遠端完成”的含義，必須看方法的實現和約定。",
+        "從代碼閱讀建立三個問題：誰呼叫此方法、此時參數是甚麼、它下一步實際調用甚麼。斷點能觀察這次執行，但靜態定義告訴你其他可能分支。兩者結合才能解釋為甚麼某次按鈕已經點擊，Adapter.Send卻沒有到達：控制層可能先因未Ready返回、參數校驗拋錯，或調用了別的實例。僅在紀錄搜索方法名字無法替代分支推導。"
       ]
     },
     {
-      "heading": "再從回報方向往上追",
+      "heading": "呼叫堆疊和返回：同步執行的基本骨架",
+      "kind": "concept",
       "paragraphs": [
-        "若設備狀態靠事件回來，要搜尋事件名稱、訂閱位置、處理器與取消訂閱。若靠 Polling，則找定時查詢、比對與 UI 更新。",
-        "不能因方法 `Send()` 返回就說設備已 Ready；也不能因畫面變色就說設備真的切換。看畫面資料來源是否來自權威回報。"
+        "假設ButtonClick調用Submit，Submit調用Send，Send驗證參數後返回Accepted，Submit保存結果再返回，ButtonClick結束。每一次尚未返回的呼叫都會在當前執行流中形成一層堆疊；正在Send時可看到上層Submit和入口。局部變量屬於這次調用，另一次調用有自己的參數；一個靜態/實例字段則可能跨很多次調用存在。",
+        "返回按呼叫鏈逆向進行，但只返回這條執行流的結果。如果Send只是把請求交給SDK或本地佇列，返回Accepted表示接受請求，不代表設備已改變。設備的Completed可能由後續事件進入另一條堆疊，原來的ButtonClick早已返回。看不到ButtonClick在回呼堆疊中，不是調用丟失，而是異步邊界已經把執行流分開。",
+        "這解釋Step Into和Step Over的用途：Into看被調用方法內部，Over看它返回後上層行為；跨到外部DLL若沒有原始碼，需要Object Browser、紀錄和接口契約輔助。遇await時也不能只用傳統堆疊理解所有歷史：後續continuation可能稍後恢復。閱讀重點是保存操作身份與條件，而不是試圖讓一條堆疊包含整個設備任務。"
       ]
     },
     {
-      "heading": "靜態圖、執行紀錄、產品文件各有用途",
+      "heading": "變數指向物件，介面決定可呼叫範圍",
+      "kind": "concept",
       "paragraphs": [
-        "程式碼說「可能呼叫哪裡」；斷點與 Call Stack 說「這次執行到哪裡」；API Manual／ICD 說「按文件應如何互動」；遠端 log 說「另一端觀測到什麼」。",
-        "版本不同時，這些證據可能互相矛盾。先記程式 commit、SDK 版本、部署版本及測試時間，不能拿另一版本文件填空。"
-      ],
-      "table": {
-        "caption": "三類證據的範圍",
-        "headers": [
-          "材料",
-          "能支持",
-          "仍未知"
-        ],
-        "rows": [
-          [
-            "靜態原始碼",
-            "存在某呼叫或分支",
-            "本次是否走到"
-          ],
-          [
-            "斷點／本機 log",
-            "本次走到哪個本機節點",
-            "外部設備是否處理"
-          ],
-          [
-            "ICD／手冊",
-            "預期介面語意",
-            "現場版本是否吻合"
-          ]
-        ]
-      }
+        "LabController保存LabAdapterPort型別字段，構造時傳入LabScriptedAdapter。LabAdapterPort是interface，說明Send與Completed等可用操作；LabScriptedAdapter是具體class，提供實際實現。呼叫_adapter.Send時執行的是當前被注入物件的實現，不是名為Adapter的文件一定執行。替換實現是設計能力，也是維護時必須查明的運行選擇。",
+        "class參照指派通常不複製整個物件。controller與root可能指向同一adapter，兩個controller也可能借同一個實例；把一個字段設null不會自動斷開其他引用。相反地，new兩個adapter會產生兩個事件發佈者：按鈕用A發送，controller卻訂B的Completed，A通知永遠不會進入B訂閱。這種錯誤有完整編譯類型卻錯誤運行關係。",
+        "用命名空間、組件、類型宣告辨認它是應用代碼、包裝、第三方DLL還是外部服務。interface名字以I開頭只是習慣，不證明網路依賴；LabAdapterPort沒有I也仍是interface。公司RCSCall/iCallAPI若只出現在筆記，必須先查class/interface宣告、構造與使用，再畫依賴。下面模型的關係是明確教學假設，不能把同名概念套成公司事實。"
+      ]
     },
     {
-      "heading": "DemoCtrl-A 的一次基準路徑",
+      "heading": "正向命令和反向通知是兩條不同路線",
+      "kind": "concept",
       "paragraphs": [
-        "本機練習在 0 ms 記 View CLICK、Controller VALIDATED、Adapter SEND；5 ms 模擬 ACK accepted；20 ms 才收到虛構設備 EVENT state=READY。這些時間是固定教學安排，不是性能指標。",
-        "若只讀到前四行，最多知道送出流程收到接受回覆；20 ms 的狀態事件才是此模型中顯示 READY 的依據。"
+        "正向通常由用戶入口→業務規則→adapter→外部邊界。反向可能是外部結果→adapter事件→controller狀態→UI派送。依賴箭頭和資料箭頭不同：controller持adapter參照以發送，adapter保存controller的handler委託以通知，但不一定直接持業務class型別。看到兩方向通知不代表兩邊使用同一個物件參照。",
+        "訂閱必須在開始操作前建立，並為本次操作建立待處理記錄。若SDK允許Send內同步觸發回呼，Send之後才建pending表會使結果被當未知；即使現在實現異步，先建觀察能力仍可減少順序依賴。代碼里的+=不是開啓一個後台線程，它保存handler；觸發的線程與順序由發佈者實現，所以不能從語法推斷並行保證。",
+        "事件還應攜操作身份。一個狀態Completed若沒有request/session，controller不知道對應哪次操作；全局lastRequest在同時兩次請求時會串線。完整追蹤卡必須把正向參數、同步回傳和反向事件配在同一身份上。UI只是狀態的顯示，不能把按鈕變綠作為設備結果的唯一證據。"
+      ]
+    },
+    {
+      "heading": "例題一：沿三層呼叫追一個SetLevel",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入是設備D1、等級60，連接／驗證／Ready均true。controller.Submit先分配請求ID並保存Pending，再調用adapter.Send。Send檢查Action和Value範圍，把命令加入Sent，返回Accepted；此時Results仍Pending。測試隨後Emit相同request/session的Completed，OnComplete才改結果並累計Applied=1。",
+        "逐行中間值說明三個不同事實：Sent有一條證明模型送到adapter；Accepted證明模型接收；Completed證明測試通知已正確匹配並應用。Lab沒有真實設備，因此這些標籤在教學範圍內才有意義。真實系統映射時，Accepted可能只代表本地佇列、SDK接收或遠端接收，必須從ICD/實現確定，不能提升證明層級。",
+        "下列完整代碼對照trace情境。它讓你在第一次Console打印時就預測Pending，而不誤以為方法返回會自動完成。若你把controller結果在Submit返回前直接改Completed，會破壞這套語義；一個慢外部響應或拒絕就讓畫面提前成功。概念先正確，後續診斷才能分出“沒送出”和“等待結果”。"
       ],
       "code": {
-        "title": "本機模擬：不要跳過最後一段",
-        "text": "000ms View       CLICK GetStatus req=q17\n000ms Controller VALIDATED req=q17\n000ms Adapter    SEND GetStatus req=q17\n005ms Adapter    ACK accepted\n020ms FakeDevice EVENT state=READY"
+        "title": "完整Lab正反路徑；對應trace",
+        "text": "using var adapter = new LabScriptedAdapter();\nusing var controller = new LabController(adapter);\nstring id = controller.Submit(\"SetLevel\", 60, \"D1\");\nConsole.WriteLine(adapter.Sent.Count); // 1\nConsole.WriteLine(controller.Results[id]); // Pending\nadapter.Emit(new LabCompletion(id, controller.Session, \"Completed\"));\nConsole.WriteLine(controller.Results[id]); // Completed\nConsole.WriteLine(controller.Applied); // 1"
       }
     },
     {
-      "heading": "公司名稱只拿來當搜尋線索",
+      "heading": "例題二：型別完全正確，物件卻訂錯了",
+      "kind": "worked-example",
       "paragraphs": [
-        "若授權程式裡真的有 RCSCall、iCallAPI 或 `vv_service`，先找定義、建立處、呼叫者、事件及版本；同名可能是類別、介面、包裝層或不同模組。",
-        "使用者筆記提到的 `*19`、`*23`、`callarea` 目前也只有名稱，不能推斷是撥碼、狀態或協定。未取得可分享的文件前，不把推測圖公開成公司事實。"
+        "輸入有adapterA和adapterB兩個LabScriptedAdapter，controller借B並在構造訂B.Completed。為模擬另一路誤送，我們直接向A.Send命令R7，再A.Emit Completed。controller.Results沒有R7，Applied仍0；不僅事件沒送到controller，controller也沒有為R7建立待處理記錄。這個例子同時顯示發佈者身分與request記錄的重要性。",
+        "修正建立一條完整路徑：讓controller借A，再由controller.Submit建立pending並調用同A.Send，然後由A.Emit相同身份。結果才Completed。你不能僅多訂A事件就算修好，因為controller沒有request記錄，仍可能過濾掉通知；也不能只把R7塞進全局字段而保留事件訂B。修正必須使正反方向共享同一操作上下文。",
+        "斷點分別設在構造訂閱、Submit、Send和Emit，每個位置寫實例A/B。文件名與class名相同，運行實例仍不同；這正是靜態“有訂閱代碼”不能證明實際訂閱正確的原因。未來讀公司專案時，可用應用分配的實例標識與ReferenceEquals輔助，不依賴廠商一定提供物件ID。"
+      ],
+      "code": {
+        "title": "完整錯實例與修正對照",
+        "text": "using var a = new LabScriptedAdapter();\nusing var b = new LabScriptedAdapter();\nusing var wrong = new LabController(b);\na.Send(new LabCommand(\"R7\", 1, \"QueryState\", \"D1\", 0));\na.Emit(new LabCompletion(\"R7\", 1, \"Completed\"));\nConsole.WriteLine(wrong.Applied); // 0\nusing var right = new LabController(a);\nstring id = right.Submit(\"QueryState\", 0);\na.Emit(new LabCompletion(id, right.Session, \"Completed\"));\nConsole.WriteLine(right.Results[id]); // Completed"
+      }
+    },
+    {
+      "heading": "一張程式圖不夠：分別畫靜態、物件與時序",
+      "kind": "concept",
+      "paragraphs": [
+        "靜態調用圖說明代碼可能呼叫哪些方法，但包含沒執行的分支；運行物件圖說明哪些實例此刻持哪條參照；時間線說明實際執行與通知順序。三張圖不能互相替代。Controller class能使用Adapter interface，是靜態關係；C1借A1是物件關係；R1在20ms得到Completed是動態事實。",
+        "跨外部邊界還需文件圖：SDK調用究竟觸發序列埠、網路、shared memory還是內部模擬，必須由適配器實現與契約證實。若手上只有二進位，可先記公開簽章與可觀察點，再用授權紀錄/抓包補證。不要因為類名RadioController就畫出RF控制鏈，也不要因為某DLL有Socket字樣就認定所有命令走TCP。",
+        "把圖中的實線附到代碼宣告或運行證據，待查關係用明確注記。維護報告應說明本次實際走哪個分支、在哪條邊缺結果。這樣讀者能理解“UI沒更新”是正向未進入、反向漏轉發還是投影問題，而不會誤把未驗證的架構圖當事實。"
+      ]
+    },
+    {
+      "heading": "從斷點到可交接的閱讀卡",
+      "kind": "concept",
+      "paragraphs": [
+        "閱讀一次操作至少保存入口位置、參數、所選物件、准入條件、同步回傳、預期通知、實際通知、狀態應用和清理。斷點不是把所有字段截圖；挑能區分候選的值。例如Connected=true但Authenticated=false，解釋為何Submit未調用Send；或者request匹配但session不符，解釋為何通知被忽略。",
+        "調用堆疊可幫助確認目前的同步路徑，事件紀錄幫助跨時間路徑。單步可能改變時序、讓競態消失，所以正常追碼後仍要用不暫停的紀錄回歸。紀錄應先建立最小身份，再按需要增加字段；所有參數原樣打印可能洩漏賬號或造成高負載，不必為“完整”無差別複製。",
+        "代碼變更後的閱讀卡也要更新。若原先直接調用真實adapter，後來注入mock，報告要寫目前驗證的是哪種實現；mock通過不等於外部協議正確。完整卡讓別人不用聽你口頭補充，就能知道運行輸入、模型假設和驗證邊界。這是從懂概念走到可維護系統的關鍵產物。"
+      ]
+    },
+    {
+      "heading": "追碼實作：預測每次返回與事件後的狀態",
+      "kind": "lab",
+      "paragraphs": [
+        "在.NET10Lab執行trace，在Submit、Send、OnComplete設中斷點。停止在Send返回前記錄堆疊；Send返回後檢查Pending；Emit後檢查Completed。畫出兩次不同的執行入口，而不是畫一個無限長堆疊。再執行commands，比較兩筆返回順序與反向完成順序，說明為甚麼必須按ID關聯。",
+        "變因一把trace的Completed換成另一個request，預期completion_returns_by_event失敗；變因二將結果預先寫Completed，預期return_is_not_completion失敗。兩項分別破壞歸屬與語義，不能靠刪除斷言通過。復原後all應退出0。Lab的事件同步注入，不測外部延遲，這一點應寫在閱讀卡的範圍。",
+        "最後用公司筆記任意一個名稱作為待查入口，列未來取得專案後要搜索的宣告、構造、調用者與事件，不自行建立真實依賴。驗收本章在於你能不看執行輸出預測中間值，能說明失效在正向、反向還是狀態投影，而不僅能跑一個Console。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：按鍵有紀錄，但控制器看不到結果",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "同症狀兩案開始都只有Click。甲在Submit發現DeviceReady=false拋Operation not permitted，SendCount=0；乙SendCount=1、返回Accepted，Completed由A發佈，但controller訂B。兩案的下一觀測是控制分支與實例歸屬，不是直接檢查網路端口。第一案根本未進入外部邊界，第二案事件路由錯誤。",
+        "甲應查DeviceReady來源與業務條件，若確實未Ready就正確呈現不允許，不隨意刪除守衛；若Ready映射丟失，修該轉換並驗證失效時仍阻止。乙統一發送與訂閱實例，保留request/session匹配；只將UI強制更新Completed會掩蓋外部任務仍未知。有限修正不應同時改協議字段與音訊配置。",
+        "回歸甲包括未連接、未驗證、未Ready和正確Ready；回歸乙包括正常、亂序、重復、重連舊事件與關閉。證據報告寫“控制准入未滿足”或“反向實例斷開”及具體代碼，而不寫籠統“系統沒反應”。這些結論從基礎呼叫與物件機制推出來，讀者可以自行復核。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【入口】追一次按鍵，第一個應找什麼？",
-      "answer": "該畫面操作綁定的 handler、發生時間與輸入對象。"
+      "question": "【基礎】調用堆疊和物件圖分別回答甚麼？",
+      "level": "foundation",
+      "answer": [
+        "堆疊顯示當前執行流尚未返回的方法與局部輸入；物件圖顯示運行實例的持有與共享關係。",
+        "靜態調用圖還包括可能未執行的分支，不能把它當本次歷史。",
+        "跨異步結果用身份與時間線連接，不要求原入口仍在回呼堆疊。"
+      ]
     },
     {
-      "question": "【搜尋】看到 RCSCall 字串就能確定它呼叫 Ozeki 嗎？",
-      "answer": "不能；需找實際定義、呼叫與版本證據。"
+      "question": "【基礎】方法返回Accepted能直接標設備完成嗎？",
+      "level": "foundation",
+      "answer": [
+        "不能，Accepted語義必須由實現/契約定義，Lab只表示接收。",
+        "後續Completed須按request/session匹配並應用。",
+        "驗收區分同步回傳和最終結果，不以按鈕變綠代替。"
+      ]
     },
     {
-      "question": "【靜態】Find All References 能證明這次真的走到該方法嗎？",
-      "answer": "不能；要斷點、Call Stack 或執行紀錄。"
+      "question": "【基礎】LabAdapterPort字段為何可執行LabScriptedAdapter.Send？",
+      "level": "foundation",
+      "answer": [
+        "interface聲明操作契約，字段參照當前實際實現物件。",
+        "構造傳入具體adapter，調用被該實例實現處理。",
+        "查注入點和運行類型，不能只憑字段名選擇實現。"
+      ]
     },
     {
-      "question": "【動態】斷點停在 Adapter Send 能證明設備已 Ready 嗎？",
-      "answer": "不能；還要對端回覆或狀態證據。"
+      "question": "【應用】Connected=true、Authenticated=false、DeviceReady=true，Submit拋准入例外，預期Sent多少？",
+      "level": "application",
+      "answer": [
+        "Lab在發送前檢查條件，驗證未成立就拋出。",
+        "因此Sent=0，不存在已發出的外部請求證據。",
+        "查認證來源或合理顯示拒絕，不能首先抓一個並不存在的結果包。"
+      ]
     },
     {
-      "question": "【事件】回報到畫面的上行路徑要找什麼？",
-      "answer": "事件／Callback 或 Polling、處理器、狀態映射與畫面更新。"
+      "question": "【應用】C訂B事件，A發送R4，A完成；再讓C訂A，仍無pending R4。為甚麼還不完整？",
+      "level": "application",
+      "answer": [
+        "原發佈者不一致導致通知路由錯；改訂閱只修第一條關係。",
+        "controller仍缺R4待處理記錄，會按未知request過濾。",
+        "讓操作經同一controller.Submit建立上下文並用同adapter，驗證正反ID一致。"
+      ]
     },
     {
-      "question": "【Lab】005ms ACK accepted 與 020ms EVENT READY 是同一層嗎？",
-      "answer": "不是；前者只表示接受，後者是這個虛構模型的狀態回報。"
+      "question": "【應用】兩個controller各counter=1、session=1共用adapter，request都R1。如何避免串線？",
+      "level": "application",
+      "answer": [
+        "request文本只在各controller內唯一，不足以在共用發佈範圍區分。",
+        "加入controller/客戶端範圍或全局唯一ID，並同時匹配session；Lab採用owner前綴。",
+        "回歸同時兩筆、亂序及不同controller結束，確認只更新所屬結果。"
+      ]
     },
     {
-      "question": "【版本】為何要記部署版與 SDK 版？",
-      "answer": "不同版本的實作與文件可能不一致，不能混用。"
+      "question": "【診斷】Send執行且SDK結果到handler，UI仍舊，和SendCount=0該查的層相同嗎？",
+      "level": "diagnosis",
+      "answer": [
+        "前案正向和反向到handler已有證據，查狀態應用、過濾與UI派送。",
+        "後案未跨發送邊界，查入口分支/參數/例外。",
+        "分別修有限層，回歸未Ready與晚到UI，不能用同一“重連”代替診斷。"
+      ]
     },
     {
-      "question": "【未知】`*19` 的功能可從名字推定嗎？",
-      "answer": "不能；目前只有名稱，需查授權規格或程式與測試。"
+      "question": "【診斷】Step除錯正常、不暫停時晚到R1蓋R2。如何把證據與模型補完整？",
+      "level": "diagnosis",
+      "answer": [
+        "暫停可能改變交錯，除錯通過不排除身份/順序缺陷。",
+        "保留request/session/接收/應用紀錄，按不暫停操作重現R2完成先於R1。",
+        "修按ID歸屬與業務最新狀態規則，回歸不同順序而不是增加Sleep。"
+      ]
     }
   ],
   "recap": [
-    "從一個可重現操作沿雙向路徑追證據。",
-    "程式可見呼叫不等於本次實際執行。",
-    "公司名稱先當搜尋線索，不當已知架構。"
-  ],
-  "sources": [
-    {
-      "label": "Microsoft Learn：Visual Studio 搜尋定義與參照",
-      "url": "https://learn.microsoft.com/en-us/visualstudio/ide/writing-code-in-the-code-and-text-editor?view=visualstudio"
-    },
-    {
-      "label": "Microsoft Learn：除錯器 Call Stack 與斷點",
-      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
-    },
-    {
-      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
-    }
+    "從入口、分支、參數與實際物件追正向，再用事件身份追反向。",
+    "返回值、狀態通知和設備結果須按契約區分。",
+    "靜態圖、物件圖、堆疊和時間線各有用途，讀碼用它們交叉解釋。"
   ],
   "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
     {
       "label": "下載虛構 API 事件追蹤程式",
       "path": "./assets/labs/integration-trace-lab.py",
       "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 trace，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    }
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：物件、參照與實例",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/object-oriented/objects"
+    },
+    {
+      "label": "Microsoft：interface契約與實現",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/types/interfaces"
+    },
+    {
+      "label": "Microsoft：委託與事件",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/delegates-overview"
+    },
+    {
+      "label": "NASA：界面管理與關係記錄",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
     }
   ]
 }

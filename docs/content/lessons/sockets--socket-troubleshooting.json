@@ -1,177 +1,273 @@
 {
-  "intro": "這一章把前七篇放在一起：讀虛構紀錄、找第一個未證實的步驟，再決定下一個檢查。案例不是公司故障；數值只供練習，不是通用性能門檻。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀範例",
-      "minutes": 14
-    },
-    {
-      "label": "判讀紀錄",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 20
-    }
+  "contentVersion": 2,
+  "intro": "這章把Socket端點、串流、框架、編碼、期限、生命週期與業務結果串成一套讀碼流程。先解兩個完整示例，再用不同資料獨立診斷；重點是從證據推導有限結論，不是看到症狀就套修法。",
+  "prerequisites": [
+    "前七章的端點、框架、編碼、期限、世代與證據；每個案例給足規則和輸入。",
+    "會分清事實與推測；正文教如何寫可反駁假說及有限修正。"
   ],
   "goals": [
-    "能依證據把連線、發送、框架、解析與業務結果分開。",
-    "能處理短讀、錯誤長度、逾時與重連情境。",
-    "能寫出有證據和未知範圍的診斷句。"
+    "依正常路徑區分傳輸、框架、內容、分派與畫面故障。",
+    "用可反駁假說與最小實驗選擇有限修正。",
+    "驗證內容、次數、狀態、資源和結果未知的邊界。"
   ],
+  "studyTime": {
+    "reading": [
+      14,
+      23
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      45
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+  },
   "sections": [
     {
-      "heading": "先畫一條最小證據鏈",
+      "heading": "先讀架構，不急著改錯誤那一行",
+      "kind": "concept",
       "paragraphs": [
-        "Lab-A 的虛構流程：Client CONNECT → SEND 00 07 STATUS? → Server READ_EXACT → PARSE → REPLY 00 08 OK,READY → Client READ_EXACT → DISPLAY。",
-        "每題先標已觀測，再找第一個沒有證據的箭頭；不要因某個 log 欄位叫 success 就推論整條路都成功。"
+        "拿到陌生程式，先找程式入口、組態來源和target framework，再找Socket建立、Bind/Connect、Accept、收送迴圈、解析器、訊息分派、UI入口與Dispose。畫出物件擁有者與資料流，不必畫公司不存在的整合。不同主題獨立，但本Socket程式內部的依賴必須逐段明確。",
+        "每個節點寫出輸入、狀態與輸出。例如接收器輸入bytes，輸出完整框架；解析器輸入框架，輸出合法命令；handler輸入命令，輸出業務結果；UI input event，output displayed state。若類名叫Manager仍不清楚，它的欄位、呼叫者和事件才是證據。執行時日誌再對映到這張圖，避免只沿一個異常堆疊忽略另一條回呼。",
+        "正常不變數也先寫：每連線一個接收所有者、每byte只被消費一次、每完整框只輸出一次、每請求最多一個最終結果、舊世代不能改新狀態、退出只釋放自身資源。除錯就是發現哪個不變數最早被破壞及其原因。只求例外消失可能隱藏資料丟失或錯誤成功。"
+      ]
+    },
+    {
+      "heading": "從症狀分層，但每層還需證據",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Connect失敗在建立階段，尚未討論框架；Connect成功卻Read不足，可能是合法分段、發端未發完、等待業務或接收程式碼錯誤；完整bytes後parseError，查長度、端序、編碼與版本；完整合法回覆後畫面不變，查關聯、狀態規則、排程和UI。相同「無回應」覆蓋所有層，因此先補最遠已確認階段。",
+        "工具與問題匹配。端點/程式檢查適合查監聽是誰與在哪個位址；封包適合看指定擷取點的傳輸；應用日誌適合看框架和處理；離線Feed適合驗證解析；執行緒堆疊適合查等待依賴。不要每次都Ping或換Port，因為它們無從驗證所有上述層級。觀測工具本身的範圍與遺漏也需要記錄。",
+        "錯誤碼提供分類，不自動給根因。被拒絕需查目的服務是否在該端點；逾時需查操作與整筆期限、是否底層仍在等；EOF需查框架位置；ObjectDisposedException需查誰釋放與哪代任務。將這些問題變成具體證據，而非列一堆可能原因後讓讀者自己猜。"
+      ]
+    },
+    {
+      "heading": "把最早破壞點與後續症狀分開",
+      "kind": "concept",
+      "paragraphs": [
+        "某個錯誤可能依次造成錯誤length、等待逾時、重連、舊事件覆蓋與UI失聯。若只修最後一個症狀，例如增加重連間隔，仍保留第一處解析破壞；若只修parser，也需確認錯誤後清理不會繼續關閉新會話。根因與防護可以是兩個有限改動，但每個都有獨立證據與回歸，不能混在一次巨大重構裡而無法判斷效果。",
+        "在時間線上寫出因果箭頭，並要求每個箭頭有機制或實驗。例題一的「清空半框→本文當標頭」有明確bytes位置可追；「因為網路慢所以長度大」沒有解釋數值如何從43 00產生。解釋越能連到具體變數與中間值，越容易被反駁也越值得信賴。",
+        "反事實測試問：若候選原因不存在，這個結果還會發生嗎？完整離線bytes仍出錯可排除本次鏈路丟失；正確標頭但錯誤decode可排除長度不足；UI事件早已排隊而晚應用可排除仍等Socket。這不是排除世界上所有原因，而是用有限證據確定本次足夠具體的機制。"
+      ]
+    },
+    {
+      "heading": "維護修正還要定義不會產生哪種錯誤成功",
+      "kind": "concept",
+      "paragraphs": [
+        "對壞框架的修正不能是把例外吃掉並繼續返回預設READY，因為這把可見故障變成錯誤成功。對超時也不能預設未執行或預設執行；結果未知需保留並走協定允許的確認。對重連則不能只是強制isConnected=true，必須有新連線接收與同步證據。正確失敗分類是可靠維護的一部分。",
+        "可用五個驗收維度：資料內容、執行次數、狀態版本、時間預算、資源壽命。例如一條控制回應正確但執行兩次，內容透過卻次數失敗；狀態顯示正確但來自舊快照，版本失敗；所有請求最終成功卻超過可用期限，時間失敗；正常一次無異常但連線不斷累積，資源失敗。每次修正選擇與機制有關的維度，不機械跑無關專案。",
+        "教材的本機模型能驗證框架內容、錯誤拒絕與傳輸介面語意；公司業務還要由真實版本/裝置與協定驗證次數、狀態和期限。把兩種驗收記錄區分並保持可復現，後續擴充新章節才有清楚基準。不能由所有教學PASS直接跳到公司系統安全或效能達標。"
+      ]
+    },
+    {
+      "heading": "完整例題一：新請求觸發巨大長度",
+      "kind": "worked-example",
+      "paragraphs": [
+        "已知協定兩byte大端本文長、1..1024 UTF-8。傳送端原串流00 03 41 42 43 00 02 58 59，共9bytes。接收兩次返回4與5。第一次讀00 03 41 42，應保留等待第三個本文byte；第二次補43並有第二框00 02 58 59，應輸出ABC和XY。",
+        "實際程式第一讀就GetString並輸出AB，隨後清buffer；第二讀把43 00當length，得0x4300=17152，報超上限。補證不是遠端真的傳17152，而是本端把第一框最後的C與下一標頭00拼成假標頭。第一個被破壞的不變數是未完整框被過早輸出並丟失解析狀態。",
+        "有限修正是儲存完整標頭/本文狀態，累積到2+length才輸出，準確移除已消費bytes並迴圈餘框。回歸原切片4/5、單片9、逐byte、兩框之間EOF、本文中EOF與超上限。驗收是輸出列表內容ABC/XY、次數2、最終retained0，錯誤輸入明確拒絕，不只是日誌不再出現17152。"
+      ]
+    },
+    {
+      "heading": "完整例題二：重連後一切成功卻顯示失聯",
+      "kind": "worked-example",
+      "paragraphs": [
+        "已知g10在t0送r50，t30超時並啟動新g11；t50新Connect成功，t80合法快照version7 READY已應用；t90舊g10 Receive結束並執行finally，t92畫面變Disconnected。g11沒有傳輸錯誤，直到t95新查詢因ObjectDisposedException失敗。",
+        "讀finally發現它呼叫全域currentSocket.Dispose，欄位已在t50指向g11；同時舊回呼不核對generation而改全域狀態。兩個補證分別解釋新資源被關閉與狀態被舊事件覆寫。不能以「網路不穩定」解釋，因為新Socket釋放由本端日誌明確指向舊任務清理。",
+        "有限修正捕獲並釋放g10自己的Socket，在狀態更新入口核對當前世代與所有者，停止時也用明確所有權。回歸讓舊finally分別在新連線之前、之後，以及同步完成之後執行；新會話應維持正常且舊資源仍釋放。再測試真正新連線錯誤應可更新Disconnected，避免過濾舊事件時連新錯誤也被吞掉。"
+      ]
+    },
+    {
+      "heading": "練習資料A：同樣等待，時間線不同",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "A1：請求總期限500ms，標頭00 04在t40收滿；正文前兩byte在t120，其餘兩byte在t300；程式每次Read都重新給500ms，完整後t310應用。A2：同樣標頭，本文每200ms一byte到達，t800才收滿；每次Read都沒有單次超時。請判斷兩者是否符合總期限，並提出只改計時責任的修正。",
+        "A3：外層在t500 WaitAsync逾時，底層Receive未取消；t510發新請求並啟動第二Receive，t530兩作業分別拿到舊回覆的標頭與本文。這裡要辨認是哪條競爭造成解析狀態不可恢復，不能只把期限加長。請列觀察欄位、清理順序和回歸邊界，解答在本章練習中。"
+      ]
+    },
+    {
+      "heading": "練習資料B：數值異常，bytes究竟在哪段改變",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "假想6byte格式沿用前章版本/型別/ID/溫度。收到01 21 00 11 00 FA，UI顯示6400.0°C；raw記錄完整且與傳送端相同。另一次收到01 21 00 12 FF FF，UI顯示6553.5°C。分析兩筆是否同一個錯誤，指出各自規則、正確結果與應回歸的資料。",
+        "再給B3：框架00 02 E6 BA，本文已滿宣稱長度，卻strict UTF-8失敗。傳送端日誌原字串溫度，寫length=text.Length，實際body為6bytes。必須辨認框架驗證、內容驗證和傳送側序列化責任，不要用把decode錯誤吃掉的修正隱藏剩餘串流錯位。"
+      ]
+    },
+    {
+      "heading": "練習資料C：一個動作重複兩次",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "C1：Toggle operation=o9，在server t10 executed寫ON；回應未到，client t20結果未知；client t30改用新operation=o10重試，server t35寫OFF。C2：收到兩次相同notificationId=e9，UI處理函式每次呼叫Toggle，server也記錄兩個不同operation。請區分傳輸重試與事件處理副作用，並說明不能直接認定TCP本身交付重複bytes。",
+        "C3：UDP client收到來自預期端點的r7回應，但當前等待r8；函式只核對端點，把r7內容填給r8。結果不是丟包而是關聯規則不足。比較三個案例，選擇分別依賴去重、事件消費設計或request關聯的修正；只有按具體機制修，才能防止新功能又引入同一問題。"
+      ]
+    },
+    {
+      "heading": "改動時要寫出你保持哪些邊界",
+      "kind": "maintenance",
+      "paragraphs": [
+        "修改parser要保護bytes和框架次數；修改deadline要保護底層作業收尾與半框；修改reconnect要保護所有權與舊事件隔離；修改業務retry要保護副作用次數和未知結果。一個改動的成功標準不應只有「能連上」，因為被改變的邊界通常在異常和恢復路徑。",
+        "建立小矩陣：正常/分段/合併/EOF/壞長度/壞內容/取消/遲到/重連/停止。不是每次都寫大型測試框架，但每個涉及的機制要有能抓錯的輸入。修改前保留失敗重現，修改後同輸入對照，並加入相鄰反例，例如過濾舊世代後仍接受新世代錯誤，拒絕壞長度後仍接受合法最大長度。",
+        "若改動依賴公司協定或裝置，先從檔案/原始碼確認前提，教學習慣用本機模型隔離演算法。不要把模型結果當公司完整驗證；正式驗收還可能需要真實SDK、版本、裝置和負載。明確這個限制能保留謹慎而不犧牲正文解釋：基礎機制仍可以在教材內完整推導。"
+      ]
+    },
+    {
+      "heading": "讀程式時的證據記錄格式",
+      "kind": "code-reading",
+      "paragraphs": [
+        "一條維護筆記可以是：物件connection=c3/g=11；輸入bytes=9；預期框2；實際輸出1；第一缺口在parser清空字尾；離線切片實驗支援；有限修正RemoveRange並迴圈；回歸單片/多片/EOF；真實裝置未測。每個欄位服務於因果，不是為了把資料塞進表格。",
+        "證據不足時寫「尚無法區分」並指定下一條能分叉的證據。例如無回應且無對端許可權，下一步可找接收API、請求對應結果或協定查詢，而不是聲稱遠端沒做。錯誤恢復不能讓未知變確定；修正的範圍應與證據相稱。自己將來維護教材時，也能按這個結構知道示範到底測了什麼。",
+        "以下片段只表示局部所有權，不是完整並行實作。currentSocket 與 generation 必須由單一所有者讀取，或在同一受保護區段一次取得一致快照；若分別讀欄位而另一執行緒在中間更換，會把新 Socket 與舊世代錯配。釋放自己的資源後，任何共享狀態更新也要在相同的協調規則下核對目前世代與物件身分，不能只保護 finally。"
       ],
-      "flow": [
-        "連線",
-        "送出",
-        "對端收滿",
-        "解析",
-        "產生回覆",
-        "本端收滿",
-        "顯示"
+      "code": {
+        "title": "保證每個流程自己的資源與世代；架構示意不是公司API",
+        "text": "// 前提：單一所有者，或在同一受保護區段取得這一對。\nSocket owned = currentSocket;\nint ownedGeneration = generation;\ntry { await ReceiveLoop(owned, ownedGeneration, ct); }\nfinally\n{\n    owned.Dispose(); // 释放这次流程自己的资源\n    // 更新状态仍需受保护地核对当前世代与所有者。\n}"
+      }
+    },
+    {
+      "heading": "實作：建立兩份不相同的失敗重現",
+      "kind": "lab",
+      "paragraphs": [
+        "先執行完整.NET10模型並儲存基準輸出，只在自己的副本修改。重現一：在parser完成第一框後Clear，單片11輸入應失敗；重現二：用text.Length代替body.Length，中文應失敗而ASCII可能透過。每次只保留一項修改，記錄輸入、實際輸出、第一破壞的不變數，不混合兩項錯誤。",
+        "各自復原後執行切片列表、長度1025、標頭EOF、本文EOF、invalid UTF-8、TCP半關閉、UDP空資料報與取消檢查。驗收是能把兩種表面parseError寫成不同因果結論，並解釋每個PASS的範圍。模型沒有實現真實重連、操作去重、UI框架，因此C組和世代案例用讀碼/紙上追算，不可把全PASS寫成公司系統驗證。"
       ]
     },
     {
-      "heading": "案例 A：被拒絕，尚未開始收送",
+      "heading": "最後一步是讓結論可供別人繼續工作",
+      "kind": "maintenance",
       "paragraphs": [
-        "Client 顯示 connect error: connection refused；Server log 沒有 LISTEN。本次還沒有可讀的業務請求。",
-        "先核對目標 IP／Port、服務是否監聽及觀測位置；不能把它歸因於 STATUS? 格式錯誤。"
-      ]
-    },
-    {
-      "heading": "案例 B：連線成功，標頭只讀到一半",
-      "paragraphs": [
-        "Client CONNECT_OK、SEND_DONE 9 bytes、HEADER_READ 1/2、READ_TIMEOUT。已建立連線且讀到 1 byte，沒有完整回覆。",
-        "下一步核對 Server 的回覆 bytes 與時間；可檢查 parser 是否錯把單次 recv 當 2 bytes。不能用 SEND_DONE 證明對端完整處理。"
-      ]
-    },
-    {
-      "heading": "案例 C：兩則連在一起",
-      "paragraphs": [
-        "Server 一次 recv 看到 00 07 STATUS? 00 07 STATUS? 共 18 bytes，卻只解析第一則、丟掉後 9 bytes。",
-        "這是應用緩衝管理錯誤；依長度解析第一則後保留剩餘 bytes，或逐段 read_exact。不能要求 TCP「每次只給一則」。"
-      ]
-    },
-    {
-      "heading": "案例 D：標頭宣稱超大長度",
-      "paragraphs": [
-        "Server 收到 FF FF，宣稱 65535 bytes，但 Lab-A 最大 1024 bytes。此時尚未讀 payload。",
-        "立即記錄並拒絕不合法框架；不要先配置 65535 bytes 或一直等。這是格式驗證問題，不是網路慢。"
-      ]
-    },
-    {
-      "heading": "案例 E：UDP 送出後沒回覆",
-      "paragraphs": [
-        "Client sendto 回傳 7；等候 2 秒後 timeout；Server 沒有對應紀錄。可能未送達、送到別的端點、Server 沒紀錄或回覆未到。",
-        "先核對雙方 IP／Port、服務監聽與兩端封包觀測；不能由 sendto 返回 7 說 Server 必然收到。"
-      ]
-    },
-    {
-      "heading": "案例 F：切換命令送後斷線",
-      "paragraphs": [
-        "Client 對有副作用的「切換」命令記 SEND_DONE，接著 EOF；Server 執行紀錄缺失。結果未知。",
-        "先查權威狀態或原請求識別碼的執行紀錄，再按產品定義決定是否重試；不要直接用新連線重送。"
-      ]
-    },
-    {
-      "heading": "案例 G：收到回覆仍顯示舊畫面",
-      "paragraphs": [
-        "Client READ_COMPLETE 00 08 OK,READY、PARSE_OK，但 UI 仍顯示 Busy。Socket 層已讀完此回覆，顯示更新是另一個環節。",
-        "下一步查回覆與 UI 狀態映射、事件分派及是否有更新被較舊事件覆蓋；不能倒退宣稱網路一定斷了。"
-      ]
-    },
-    {
-      "heading": "自己跑腳本，對照一份基準",
-      "paragraphs": [
-        "先執行兩個本機腳本取得正常輸出，再逐題比較哪個階段變了。若在本機也失敗，先看 Python 版本、端點是否被政策阻擋和腳本錯誤。",
-        "本機成功是程式範例基準，沒有測真實設備、網路或公司 SDK。整合結果仍要用授權的實際證據驗證。"
+        "完整結論包含已確認事實與有限修正，例如「未滿框時清空buffer，使下一片的本文被當標頭；同一9bytes離線重現，修正後所有切片輸出相同兩框」。這讓讀者理解為什麼改及如何證明。只有「解決黏包」既沒有因果也沒有驗證，未來增加協定欄位時無法知道還需保持什麼。",
+        "不確定項也要有下一步，例如SDK版本與真實裝置尚未驗證、跨端時鐘誤差未知、日誌取樣不完整。它們不能否定已證實的本機機制，也不能被隱藏在成功宣告後面。閱讀教材的終點是有能力提出並檢驗這些具體問題，而不是熟記專有名詞或獲得一個未經證明的工程師等級。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【A】connect 被拒絕時，優先查協定 payload 嗎？",
-      "answer": "不是；先查位址／Port、監聽與服務狀態。"
+      "question": "收到合法完整bytes卻顯示舊值，為什麼先查關聯/UI而非路由？",
+      "level": "foundation",
+      "answer": [
+        "完整bytes已支援傳輸與框架階段，路由無法解釋後續應用未更新的全部證據。",
+        "核對request/世代、狀態規則、事件分派與應用時間。",
+        "仍保持實際證據範圍，不排除不同請求另有網路問題。"
+      ]
     },
     {
-      "question": "【B】1/2 標頭後逾時，已知哪兩件事？",
-      "answer": "連線成功且至少讀到一個回覆 byte；完整框架未取得。"
+      "question": "沒有異常就透過，為什麼不是parser足夠的驗收？",
+      "level": "foundation",
+      "answer": [
+        "parser可能靜默丟框、重複框或改變內容而不拋異常。",
+        "需比較完整訊息列表、次數、順序與剩餘bytes。",
+        "錯誤輸入也需有明確拒絕而非偽成功。"
+      ]
     },
     {
-      "question": "【C】18 bytes 含兩則 9-byte 框架，parser 應如何處理？",
-      "answer": "解析第一則後保留剩餘 9 bytes 再解析第二則。"
+      "question": "A1與A2是否滿足500ms總期限？修計時規則。",
+      "level": "application",
+      "answer": [
+        "A1在310ms完成，滿足；A2到800ms，超總期限，單次未超不能證明整體合格。",
+        "儲存同一起點，每步取remaining=500-elapsed，過零停止新等待。",
+        "回歸零星bytes持續到達、期限內完整與期限中半框。"
+      ]
     },
     {
-      "question": "【D】FF FF 的長度超過上限，該怎麼做？",
-      "answer": "在讀 payload 前拒絕並記錄不合法長度。"
+      "question": "B1顯示6400.0°C，正確值是什麼，錯誤讀法是哪種？",
+      "level": "application",
+      "answer": [
+        "末兩byte00 FA，大端原值250，正確25.0°C。",
+        "小端原值0xFA00=64000，乘0.1為6400.0，精確支援端序誤讀。",
+        "修成明確大端讀取，回歸非對稱樣本和0值，保留raw比較。"
+      ]
     },
     {
-      "question": "【E】UDP sendto 返回 7，可證明 Server 收到嗎？",
-      "answer": "不能；需對端或封包證據。"
+      "question": "B2顯示6553.5°C，與B1要同一個修法嗎？",
+      "level": "application",
+      "answer": [
+        "FF FF兩種端序都等於65535，交換端序不會改變結果。",
+        "錯誤是漏掉未知特殊值，應在單位換算前識別。",
+        "分別驗證端序與特殊值，不能用一個顯示上限掩蓋兩者。"
+      ]
     },
     {
-      "question": "【F】有副作用命令送後 EOF，結果應標什麼？",
-      "answer": "未知；先查權威狀態／請求 ID，避免盲目重送。"
+      "question": "A3從哪裡開始不再有單一接收責任？列修正與驗證。",
+      "level": "diagnosis",
+      "answer": [
+        "t500外層停止等待而底層未收尾，t510再啟動第二Receive，兩者競爭同串流。",
+        "取消真正底層作業並等待其結束，按協定保留或結束半框會話，再啟新操作。",
+        "回歸遲到回應、取消時已有一byte、正常完成和停止；確認無重疊讀者。"
+      ]
     },
     {
-      "question": "【G】PARSE_OK 而畫面仍 Busy，下一個檢查？",
-      "answer": "查 UI 狀態更新路徑與事件時序。"
+      "question": "C1如何證明重複副作用，為何新ID重試不是安全查詢？",
+      "level": "diagnosis",
+      "answer": [
+        "server o9=ON、o10=OFF證明兩個不同意圖各執行Toggle。",
+        "Toggle非冪等，新ID可能繞過去重；回應未到不證明未執行。",
+        "依協定對賬/相同操作ID去重，測試執行後回覆丟失不重複動作。"
+      ]
     },
     {
-      "question": "【分層】封包看到 payload，但 Server 沒 PARSE_OK，可能在哪一段？",
-      "answer": "可能在 Socket 接收、框架讀取、解析或紀錄缺失；補對端階段紀錄。"
+      "question": "C2為什麼不應直接說TCP把命令重複送給應用？",
+      "level": "diagnosis",
+      "answer": [
+        "證據顯示相同通知被UI處理兩次，隨後生成兩個不同operation。",
+        "這支援事件消費者副作用或訂閱重複，不等於TCP串流自動重複交付。",
+        "查notificationId、訂閱生命週期與處理函式，回歸重複通知只產生允許次數。"
+      ]
     },
     {
-      "question": "【結論】如何描述 B 而不過度推論？",
-      "answer": "「連線並送出 9 bytes，回覆標頭只收到 1/2，2 秒後讀取逾時；對端是否送齊未知，下一步查 Server 回覆紀錄。」"
+      "question": "C3正確端點的r7填給r8應怎樣修與回歸？",
+      "level": "diagnosis",
+      "answer": [
+        "端點不區分請求，缺少requestId關聯。",
+        "核對r8、型別與世代後才能滿足當前等待，r7按舊請求規則處理。",
+        "用兩筆不同內容逆序返回、遲到與重複資料驗證，避免誤配而非簡單丟所有舊訊息。"
+      ]
     }
   ],
   "recap": [
-    "先找第一個沒有證據的步驟。",
-    "不要把 send、TCP ACK、解析、設備結果當同一件事。",
-    "真實系統需要版本相符的文件和雙端觀測。"
+    "依正常路徑區分傳輸、框架、內容、分派與畫面故障。",
+    "用可反駁假說與最小實驗選擇有限修正。",
+    "驗證內容、次數、狀態、資源和結果未知的邊界。"
   ],
   "sources": [
     {
-      "label": "Python 官方：socket 模組與各呼叫的返回值",
-      "url": "https://docs.python.org/3/library/socket.html"
+      "label": "Microsoft：ReceiveAsync返回與取消",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0"
     },
     {
-      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
-      "url": "https://docs.python.org/3/howto/sockets.html"
+      "label": "Microsoft：Socket錯誤分類",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socketexception.socketerrorcode?view=net-10.0"
     },
     {
-      "label": "IETF RFC 9293：TCP 是位元組串流",
-      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+      "label": "Microsoft：連線狀態的觀測限制",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.connected?view=net-10.0"
     },
     {
-      "label": "IETF RFC 768：UDP 資料報",
-      "url": "https://www.rfc-editor.org/rfc/rfc768"
+      "label": "Microsoft：Pipelines的消費/保留邊界",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/io/pipelines"
     },
     {
-      "label": "Python 官方：struct 與 network byte order",
-      "url": "https://docs.python.org/3/library/struct.html"
+      "label": "IETF RFC 9293：TCP 串流、連線與關閉機制",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
     }
   ],
   "resources": [
     {
       "label": "下載 TCP 本機練習",
       "path": "./assets/labs/socket-tcp-lab.py",
-      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度字首與分段讀取。"
     },
     {
       "label": "下載 UDP 本機練習",
       "path": "./assets/labs/socket-udp-lab.py",
       "description": "標準函式庫；只用 127.0.0.1 的虛構 STATUS?／OK,READY 資料報。"
+    },
+    {
+      "label": "下載 C# Socket 維護教材模型",
+      "path": "./assets/labs/sockets-maintenance-lab.zip",
+      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
     }
   ]
 }

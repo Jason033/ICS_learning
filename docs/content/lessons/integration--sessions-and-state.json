@@ -1,142 +1,283 @@
 {
-  "intro": "網路接通、驗證成功、Session 有效、設備 Ready 與畫面顯示，是五個不同的問題。本章用虛構 Session S1／S2 理解重連前後怎麼重新驗證狀態。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "連得上、驗證成功、設備Ready、某操作完成與UI顯示是不同狀態。這章從狀態的基本定義與轉移規則開始，建立Session/世代的意義，解釋重連為甚麼不能恢復所有布林，以及舊事件怎樣讓一個看似連線正常的系統做錯動作。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      14,
+      23
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 sessions 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能分開 Transport、驗證、Session、設備與 UI 狀態。",
-    "能辨認舊 Session 的事件不宜直接套到新會話。",
-    "能列出重連後需要重新確認的條件。"
+    "分開連線、驗證、設備、操作與顯示狀態，並寫出允許條件。",
+    "解釋Session/世代如何限定請求與事件的有效範圍。",
+    "推導重連、舊快照、重復終態和關閉的狀態行為與驗收。"
   ],
   "sections": [
     {
-      "heading": "先把五個狀態放在不同格子",
+      "heading": "狀態是模型記錄，不是一個名字的萬能證明",
+      "kind": "concept",
       "paragraphs": [
-        "Transport 連上只表示通道可用；驗證通過表示身分被接受；Session 是本次交談的識別和有效期；設備回 READY 是設備宣告；UI 顯示則依其資料來源。",
-        "這些層次可能同時不同步。例如網路已重連，但應用 Session 還沒建立；畫面仍保留舊 READY，不代表設備現在 Ready。"
+        "狀態是你對物件當前情況的記錄，必須有來源與含義。Connected可由傳輸連接建立更新，Authenticated由認證結果更新，DeviceReady由設備狀態或業務條件更新。三者可以組合：網路通但賬號失敗，賬號成功但設備忙，設備曾Ready但連接失效。把它們合成一個Online，UI看起來簡單，程式卻無法作正確准入。",
+        "UI狀態是模型的投影，不一定最新，業務狀態又可能綜合多條證據。設備回報Ready如果已過期，應記錄新鮮度而不是永久維持true；應用自己允許點擊也不能命名為“設備確認Ready”。來源、更新時間與有效範圍決定一筆狀態可拿來做甚麼。維護者先查狀態從哪被寫入、何處被清除與誰使用，才能解釋不一致。",
+        "一套完整模型通常有設備狀態和每次請求狀態。設備Ready不意味著R1完成；R1Completed不意味著設備所有功能都Ready。結束一個請求不一定斷線，斷線會使某些尚未完成請求Unknown，卻不自動證明它們在設備未執行。把不同物件與事實保存在各自範圍，才可處理失聯時的準確結論。"
+      ]
+    },
+    {
+      "heading": "狀態機包含輸入、條件、動作與下一個狀態",
+      "kind": "concept",
+      "paragraphs": [
+        "狀態機不是enum列表。你需要說明當前狀態遇到甚麼輸入、是否符合guard、執行甚麼動作、變成何狀態。guard是准入條件，如Connected&&Authenticated&&DeviceReady；動作可建立request、發命令或撤銷准入。enum給命名常數，編譯器不會自動保證你寫的每個轉移合法，甚至整數轉enum也能得到未定義值。",
+        "例如Pending遇Completed→應用最終結果；Pending遇Timeout→Unknown；Unknown遇同session合法晚到Completed→Completed；Completed遇重復Completed→保持不變。重連提升session並清舊pending，對新session尚未認證時禁止操作。表中的每一行都應有測試，預設分支應能保留原始輸入與說明處理，而不是悄悄歸成功。",
+        "互斥狀態與可組合條件也不同。請求Pending/Completed通常是一個選擇；連接、驗證、設備Ready則是三個維度。Flags enum可以表示位元組合，卻不會自動附來源時間或驗證邏輯，所以把三個bool換Flags並不解決舊數據。若定義0=Unknown，它應具有明確業務含義，不應因為字段預設0就誤認為Ready。整理狀態維度再選擇數據表示，比為了統一UI把所有資訊塞一個enum更可靠。",
+        "狀態轉換還要注意多字段一致。檢查Ready然後發送之間若另線程Disconnect，可能在失效條件下發命令。串行控制佇列可統一所有轉移；鎖也可保護應用數據，但外部Send可能阻塞/重入，不該把所有工作無條件包大鎖。狀態機定義邏輯正確，同步政策保證實際執行能遵守它，兩者缺一不可。"
       ],
-      "image": {
-        "src": "./assets/diagrams/integration-state.svg",
-        "alt": "Transport、驗證、Session、設備狀態和 UI 顯示依序需要各自證據。",
-        "caption": "五層狀態檢查卡，具體產品可能不使用相同名稱。"
+      "table": {
+        "caption": "本Lab請求轉移規則",
+        "headers": [
+          "目前",
+          "輸入",
+          "下一狀態"
+        ],
+        "rows": [
+          [
+            "Pending",
+            "同session Completed",
+            "Completed"
+          ],
+          [
+            "Pending",
+            "Timeout",
+            "Unknown"
+          ],
+          [
+            "Unknown",
+            "同session有效Completed",
+            "Completed"
+          ],
+          [
+            "Completed/Failed",
+            "重復終態",
+            "保持不變"
+          ],
+          [
+            "任意舊session",
+            "通知",
+            "不更新當前"
+          ],
+          [
+            "當前重連",
+            "Reconnect",
+            "新世代，驗證/Ready撤銷"
+          ]
+        ]
       }
     },
     {
-      "heading": "Session ID 有版本範圍",
+      "heading": "Session與generation定義觀察和操作的有效範圍",
+      "kind": "concept",
       "paragraphs": [
-        "本機模型在連線重建後，Session 從 1 變成 2。若 20 ms 收到標成舊 Session 1 的 READY，教學程式不把它直接套到新 Session 2。",
-        "真實事件不一定含 Session ID；若沒有，可依文件規定的序號、連線世代或重新查狀態建立防護。不能由本模型推說公司協定有 Session 欄位。"
+        "Session在不同系統可指登錄上下文、連接關聯或業務會話，不能假設一個通用格式。本Lab整數Session指控制世代：每次重連加1，使舊結果不能更新新狀態。它不是伺服器認證令牌，也不是一個socket。公司接口如果有真實SessionId，需要弄清建立者、有效期、所屬賬號及重連可否沿用。",
+        "generation也可用於本地配置：同一個設備ID換賬號或adapter，舊配置回報可能晚到。ID文字相同不代表是同一代；R1在session1和2都可出現，匹配鍵需含範圍。若沒有遠端session字段，應用可在訂閱時捕獲本地世代，但不能把收到時“當前session”蓋到舊事件上，否則保護失效。",
+        "範圍越細也不是無限加ID。選擇能區分業務與生命週期的最小上下文：controller/客戶端、session、request、target。記錄時保留它們的關係，狀態更新時核對必要條件。ID用于歸屬，不提供真實性或授權；猜中session文字不會自動被授權操作，認證和權限仍是另一條機制。"
       ]
     },
     {
-      "heading": "重連後應重新確認哪些事",
+      "heading": "重連恢復傳輸，不恢復所有事實",
+      "kind": "concept",
       "paragraphs": [
-        "確認當前傳輸通道、驗證與 Session、需要的訂閱是否恢復、尚未完成請求的結果、設備權威狀態和 UI 是否由新資料更新。",
-        "不要只用 `Connect()` 成功讓畫面瞬間回到舊狀態；也不要假設舊請求沒有被執行。"
+        "重新建立傳輸只證明新的連接入口存在。之前的認證可能失效，訂閱可能綁定舊實例，設備配置或狀態可能改變；舊Ready可能已不新鮮。恢復應按當前契約重新驗證、建立通知與讀取狀態，再打開動作准入。直接把所有flag=true會讓系統在設備尚未Ready時發控制命令。",
+        "舊pending請求如何處理要明確。設備可能已執行但結果在斷線中失去，客戶端不能簡單改Failed後重送實體動作。可將結果記Unknown，用支持的查詢或請求去重解析；本Lab重連清舊當前表用於教學，不宣稱真實系統可以丟歷史。真實實現應保留審計/恢復記錄，並說明舊結果僅歸舊操作，不更新新顯示。",
+        "恢復順序也可能因協議不同而變。有些接口先建立session才能訂閱，有些先訂才能取快照；不應自造萬能步驟。你要從契約與實現確認前提，再寫轉移表。基礎模型使問題具體：“當前Authenticated來自舊世代，重連沒有撤銷”，比籠統說“狀態不同步”更可修。"
+      ]
+    },
+    {
+      "heading": "例題一：Connected為true，為甚麼仍不能送",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入controller初始session1三條件true，先QueryState得old；調用Reconnect後Session=2，Connected=true，Authenticated=false，DeviceReady=false。再Submit應拋操作不允許，不增加adapter.Sent。這是正確守衛，不能為了按鈕可點刪除。只有新的認證與Ready觀測成立，才可建立current請求。",
+        "完整例題將兩個條件設true僅代表測試注入成功，真實程式應由合法結果更新而非硬寫。最終current所屬session2，old屬於1。中間狀態解釋了重連恢復階段與業務可用的區別。若UI只用Connected打開按鈕，會對“網路已經恢復”做過度解釋。",
+        "回歸需要每個條件單獨false、兩個同時false與全部true；只測試一次三者true不能發現誤用OR的guard。程式還要合理呈現不允許原因，給外行“連接已建立，賬號仍在驗證”，而不是一個沒有前因後果的錯誤碼。"
       ],
-      "steps": [
-        "確認連線與驗證。",
-        "確認新 Session 或協定等價狀態。",
-        "重建必要事件訂閱或 Polling。",
-        "查詢設備權威狀態。",
-        "再更新使用者畫面。"
+      "code": {
+        "title": "完整Lab重連准入推導；對應sessions",
+        "text": "using var adapter = new LabScriptedAdapter();\nusing var c = new LabController(adapter);\nstring old = c.Submit(\"QueryState\", 0);\nc.Reconnect();\nConsole.WriteLine($\"{c.Session} {c.Connected} {c.Authenticated} {c.DeviceReady}\"); // 2 True False False\ntry { c.Submit(\"QueryState\", 0); }\ncatch (InvalidOperationException) { Console.WriteLine(\"blocked until verified and ready\"); }\nc.Authenticated = true; c.DeviceReady = true; // 測試注入，不是生產認證代碼\nstring current = c.Submit(\"QueryState\", 0);\nConsole.WriteLine(adapter.Sent.Count); // 2，受阻操作未發送"
+      }
+    },
+    {
+      "heading": "例題二：request文字匹配，session仍可錯",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入新session2的current處於Pending。先注入同currentID卻session1的Completed，應該被忽略；再注入session2才應用。這比只用舊requestID測試更精確：若舊ID根本不在pending表，即使刪session檢查也會被unknownID擋住，無法證明session守衛真的工作。良好測試必須讓另一個條件成立，才能檢驗此條件。",
+        "完整結果為第一次Pending/Applied0/Ignored1，第二次Completed/Applied1；第三次重復不再增加Applied。這個例題把匹配條件拆開，教會你讀復合if：並非所有IGNORE都說明session正確。真實事件如果帶未經信任或錯誤映射session，也應保留原始資料，不能自動換成當前值。",
+        "若公司協議會重復使用request文字，完整範圍更重要；若全局唯一ID已避免重復，session仍能幫助生命週期與准入，但測試應明確要保護哪種失敗。狀態規則需要證據針對性，不是斷言越多就越好。"
+      ],
+      "code": {
+        "title": "完整同ID不同世代的實驗",
+        "text": "using var adapter = new LabScriptedAdapter();\nusing var c = new LabController(adapter);\nc.Reconnect(); c.Authenticated = c.DeviceReady = true;\nstring id = c.Submit(\"QueryState\", 0);\nadapter.Emit(new LabCompletion(id, 1, \"Completed\"));\nConsole.WriteLine($\"{c.Results[id]} {c.Applied} {c.Ignored}\"); // Pending 0 1\nadapter.Emit(new LabCompletion(id, 2, \"Completed\"));\nConsole.WriteLine($\"{c.Results[id]} {c.Applied} {c.Ignored}\"); // Completed 1 1\nadapter.Emit(new LabCompletion(id, 2, \"Completed\"));\nConsole.WriteLine(c.Applied); // 1"
+      }
+    },
+    {
+      "heading": "快照與事件合併，需要定義新鮮度",
+      "kind": "concept",
+      "paragraphs": [
+        "初始化查詢Q1取得Ready=true，隨後事件E2報告Busy，Q1卻較晚到；若無版本條件，快照會把Busy蓋回Ready，程式錯誤開放操作。不能僅用客戶端到達時間排序設備事實。更可靠的是設備序號/版本或明確查詢時代規則；若接口沒有此資訊，要承認無法保證併發期間全序並設計重新確認。",
+        "狀態還可能有TTL。最後heartbeat成功只說明當時有回應，超出允許新鮮度應降為未知或失效，不等同立即宣稱設備死。TTL數字來自需求與觀察，不是所有系統都用固定5秒。應用使用狀態前需確認範圍與新鮮度，顯示可展示“最後確認時間”，讓人理解為甚麼網路綠燈仍不代表當前Ready。",
+        "本章不引入完整實時分布式協議，但模型已經足夠精確：來源、身份、順序、有效期。讀取公司狀態類時，查四項是否有字段/邏輯；若只一bool，找寫入條件與重置路徑。新增字段要針對已確認需求，不為“做得完整”無止境擴大系統設計。"
       ]
     },
     {
-      "heading": "狀態名稱一定要附來源",
+      "heading": "關閉、取消與終態：不可逆不代表遠端停止",
+      "kind": "concept",
       "paragraphs": [
-        "Ready、Busy、Connected 可能出現在網路、SDK、設備、音訊或 UI 層。寫 log 時加上 `source=adapter`、`source=device` 等；只寫 `state=Ready` 容易被誤讀。",
-        "若產品文件沒有定義某名稱，就標成未知的原文欄位；不能從字面推定它是 PTT 許可、音訊可聽或實體設備安全。"
+        "controller.Dispose在Lab把Closed=true並解除自身訂閱，之後不得Submit。它代表本地接收者結束，不會Dispose借用adapter，也不會撤銷已送命令。CancellationToken請求的是合作取消，由監聽者響應；Cancel並非強行殺掉所有外部操作。UI顯示“取消”必須說明是本地等待取消還是設備確認停止。",
+        "本地終態可防舊工作復活，但任務事實仍可能Unknown。例如窗口關閉前SetLevel已Accepted，設備完成晚到，而本地controller不再接收；記錄應保存關閉時仍在途的請求，未來查詢機制另處理。不能把Closed當“所有設備動作都失敗”，也不能讓舊完成使Closed恢復。",
+        "所有結束入口需要冪等與owner範圍。多次關閉不重復解除業務副作用，舊事件只記錄於適合範圍；完整資源釋放由owner負責。並行下Closed檢查與狀態更新要同步。Lab串行模型驗證邏輯邊界，真實線程需受控交錯和契約測試，不能從幾次正常運行聲稱競爭不存在。"
       ]
     },
     {
-      "heading": "驗證失敗和傳輸錯誤不同",
+      "heading": "追碼實作：拆開guard的每個條件",
+      "kind": "lab",
       "paragraphs": [
-        "通道可連但驗證拒絕，應查憑證／權限／版本；連線根本未建時先查端點、服務與網路。從某一層錯誤直接跳到設備故障是不合理的。",
-        "真實錯誤碼要用對應版本文件解讀；教材不列通用的公司錯誤碼。"
+        "執行sessions，逐步看Reconnect撤銷哪些字段，再比較兩筆請求ID與session。臨時去掉session比較，注入同currentID舊session，預期old_session_is_not_applied失敗；這個故障測試避免被unknownID條件遮住。復原後把准入AND改OR，Connected=true時錯誤允許，reconnect_does_not_restore_readiness應失敗。",
+        "獨立寫三列狀態表，枚舉Connected、Authenticated、DeviceReady的8種組合；僅111允許。再寫Pending/Unknown/Completed對Completion、Timeout、Reconnect的轉移。運行recovery觀察Unknown被當前合法晚到結果解析，troubleshooting觀察Rejected不能被完成覆寫，建立跨章同一模型的閉環。",
+        "驗收產物是狀態定義、來源、轉移與測試輸入，不只是狀態圖有箭頭。真實公司session若含認證令牌或設備會話，另列具體差異；不要把Lab整數映射成實際API字段。能解釋每個guard為何存在、怎樣驗證，就已從基礎詞語走到維護規則。"
       ]
     },
     {
-      "heading": "DemoCtrl-A 的 stale-session 範例",
+      "heading": "故障鑑別：重連後畫面綠，但控制被拒",
+      "kind": "diagnostic-case",
       "paragraphs": [
-        "0 ms 送 q17、5 ms 收 accepted；12 ms 重連至 Session 2；20 ms 舊 Session 1 的 READY 才到；50 ms 本次等待逾時，現在狀態仍未知。",
-        "這只示範舊事件不應直接覆蓋新狀態。真正系統可能選擇其他安全策略，需看介面契約與權威狀態來源。"
+        "候選甲UI只看Connected=true，認證未恢復；候選乙當前認證/Ready正確，舊session成功事件將顯示覆蓋，但請求仍帶舊session；候選丙讀回快照過期，設備已Busy。先查准入各字段來源世代、發送session與設備新鮮度，而不是刪除拒絕分支。",
+        "資料甲Authenticated=false支持恢復尚未完成，修UI表達/恢復流程；資料乙adapter收到session1而當前2，修請求構造與依賴切換，保留session過濾；資料丙快照版本低於Busy事件，修合併規則或明確重新確認。三案共同症狀是綠色誤導，但作用層不同，修正需各自證據。",
+        "回歸包括重連未認證、認證失敗、新Ready、舊事件晚到、快照亂序與關閉。驗收既保證正常允許，也保證失效條件禁止；只測成功會讓刪除guard看似修好。報告用“哪項事實屬於哪一代”解釋，讓外行懂為何網路恢復仍要等待其他條件。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【層次】TCP 連上等於已通過應用驗證嗎？",
-      "answer": "不等於；需另看驗證結果。"
+      "question": "【基礎】Connected、Authenticated、Ready為甚麼不能總合成Online？",
+      "level": "foundation",
+      "answer": [
+        "它們來源、有效期和允許操作不同，可以分別成功失敗。",
+        "合一bool丟失准入條件與恢復階段，網路通不代表設備可做事。",
+        "按物件和來源保存，UI投影可簡單但紀錄與模型保留差異。"
+      ]
     },
     {
-      "question": "【層次】Session 有效可保證設備 Ready 嗎？",
-      "answer": "不能；要設備狀態證據。"
+      "question": "【基礎】enum定義幾個狀態就自動保證轉換合法嗎？",
+      "level": "foundation",
+      "answer": [
+        "不會，enum只是命名常數；轉移、guard和動作仍由代碼實現。",
+        "預設/數值轉換還可能出現未定義值，需按邊界驗證。",
+        "列當前+輸入+條件+動作+下一狀態並測試。"
+      ]
     },
     {
-      "question": "【顯示】UI 仍顯示 READY 可證明重連後設備現在 READY 嗎？",
-      "answer": "不能；可能是舊狀態。"
+      "question": "【基礎】SessionId可證明授權嗎？",
+      "level": "foundation",
+      "answer": [
+        "ID用於關聯上下文，不等同真實身份或權限。",
+        "認證與准入需獨立機制，Lab整數也不是伺服器令牌。",
+        "核對建立者、有效期、範圍與事件歸屬。"
+      ]
     },
     {
-      "question": "【重連】最先要重新核對哪幾層？",
-      "answer": "傳輸、驗證／Session、訂閱、權威狀態與 UI。"
+      "question": "【應用】八種C/A/R組合中AND只允許哪一項，OR會多允許哪些？",
+      "level": "application",
+      "answer": [
+        "AND只有111可用。OR除000外其餘7項都true。",
+        "因此100、010、001、110、101、011都被誤允許。",
+        "對每個未滿足條件測試，不能僅回歸111。"
+      ]
     },
     {
-      "question": "【舊事件】Session 1 的事件可無條件套用 Session 2 嗎？",
-      "answer": "不能；要依協定驗證新舊關係。"
+      "question": "【應用】新session5，id匹配，事件session4 Completed；pending為何不能完成？",
+      "level": "application",
+      "answer": [
+        "request文字相同但有效範圍不同，舊世代不得更新當前。",
+        "預期忽略且Pending保持，紀錄保存原始4而非改成5。",
+        "再注入合法5完成驗證會恢復，防把過濾寫成永遠拒絕。"
+      ]
     },
     {
-      "question": "【名稱】`Connected` 可單獨解釋成「有人聽見聲音」嗎？",
-      "answer": "不能；需明確來源與定義。"
+      "question": "【應用】Q快照version10 Ready晚到，E version11 Busy先到，當前應怎麼保存？",
+      "level": "application",
+      "answer": [
+        "版本11較新，不能由舊10覆蓋Busy。",
+        "按設備提供的版本規則合併；若無版本，不能假定最後到達為最新。",
+        "測試各種交錯與重新確認，保持准入基於當前有效狀態。"
+      ]
     },
     {
-      "question": "【分因】能連但驗證失敗，先查哪類資料？",
-      "answer": "查憑證／權限／版本與伺服器拒絕原因。"
+      "question": "【診斷】重連Session2但發請求仍1，和Auth=false兩案如何修？",
+      "level": "diagnosis",
+      "answer": [
+        "前案請求構造/依賴切換舊範圍，修攜當前session，保留舊事件拒絕。",
+        "後案確實未驗證，完成恢復或正確提示，不刪除guard。",
+        "回歸新舊世代、認證失敗與Ready恢復，驗證允許和禁止均正確。"
+      ]
     },
     {
-      "question": "【Lab】stale-session 案例結論為何未知？",
-      "answer": "新 Session 沒取得可用的新狀態回報，舊事件不直接套用。"
+      "question": "【診斷】關閉時有Accepted請求，Cancel返回後無完成。能報告設備沒執行？",
+      "level": "diagnosis",
+      "answer": [
+        "不能，本地取消/關閉不保證外部命令撤回。",
+        "保存操作身份與Unknown事實，按契約查詢或設備確認解決。",
+        "驗收本地不復活、owner清理和後續結果歸屬，區分觀察者結束與設備事實。"
+      ]
     }
   ],
   "recap": [
-    "連線、驗證、Session、設備與 UI 是不同層。",
-    "重連後重新確認權威狀態。",
-    "舊事件的關聯範圍須按協定驗證。"
-  ],
-  "sources": [
-    {
-      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
-      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
-    },
-    {
-      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
-    },
-    {
-      "label": "IETF RFC 9110：HTTP 202 Accepted 與 200 OK 的語意（HTTP 範例適用）",
-      "url": "https://www.rfc-editor.org/rfc/rfc9110"
-    }
+    "狀態要有來源、範圍與新鮮度，名稱不足以證明可用。",
+    "重連只恢復部分條件，舊世代不能覆寫新狀態。",
+    "狀態機和同步政策共同保證合法轉移，測試也必須驗證禁止條件。"
   ],
   "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
     {
       "label": "下載虛構 API 事件追蹤程式",
       "path": "./assets/labs/integration-trace-lab.py",
       "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 sessions，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    }
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：enum語義與未定義值",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/enum"
+    },
+    {
+      "label": "Microsoft：合作取消與資源",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/threading/cancellation-in-managed-threads"
+    },
+    {
+      "label": "NASA：接口行為與變更",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
+    },
+    {
+      "label": "Microsoft：物件身份",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/object-oriented/objects"
     }
   ]
 }

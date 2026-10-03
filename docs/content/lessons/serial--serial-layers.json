@@ -1,190 +1,268 @@
 {
-  "intro": "設備沒有回應時，不要先猜「RS-232 壞了」。本章用一份完全虛構的設備說明，把作業系統的 COM Port、電氣接線、每個字元的 UART 設定、應用程式命令與設備回覆分開。你會先學會說清楚目前證明了哪一步。",
-  "plan": [
-    {
-      "label": "建立四層地圖",
-      "minutes": 10
-    },
-    {
-      "label": "閱讀虛構設備卡",
-      "minutes": 10
-    },
-    {
-      "label": "核對可見證據",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "串列連線要同時滿足資料、時間、電氣與裝置語意。先從bit和byte建立模型，再說明COM、UART、RS-232及命令各如何協作；它們不是四個可互換的名稱。",
+  "prerequisites": [
+    "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
+    "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
+  "studyTime": {
+    "reading": [
+      10,
+      17
+    ],
+    "practice": [
+      20,
+      40
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+  },
   "goals": [
-    "能分清 COM Port、UART 字元、RS-232 電氣介面及設備命令。",
-    "能說明「開埠成功」「送出位元組」「設備回覆」是三種結果。",
-    "能依虛構手冊安排無回應的檢查順序。"
+    "區分應用bytes、UART字元、線路電平與命令交易。",
+    "解釋COM列舉、USB橋接及本機讀寫能證明到哪一段。",
+    "用文字編碼及完整HEX檢查訊息邊界。",
+    "建立裝置契約與成功條件並設計分層驗證。"
   ],
   "sections": [
     {
-      "heading": "從四層看一條設備連線",
+      "kind": "concept",
+      "heading": "從bit到byte，再到一句有意義的命令",
       "paragraphs": [
-        "程式呼叫串列埠 API，把位元組交給作業系統；UART 依鮑率、資料位元、同位檢查與停止位元逐字元傳送；RS-232 介面決定線上的電氣與訊號方向；設備自己的命令文件則定義「送什麼才會回什麼」。這四層各有可能出錯。",
-        "USB 轉接器可能在電腦上呈現 COM Port，但轉接器另一側可能是 RS-232、RS-422、RS-485 或 TTL UART。只有 COM 名稱不足以判斷電氣規格。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/serial-layers.svg",
-        "alt": "由上到下區分應用程式命令、COM Port 與 UART 字元、RS-232 電氣與接線、設備回覆。",
-        "caption": "自製教學圖；四層不是公司設備拓撲。"
-      },
-      "note": "不要根據插頭外形或「有 COM Port」推定訊號一定是 RS-232。"
+        "bit是0/1的資料單位，byte通常是8bits；二進位是這些bits的表示法，HEX則每兩位表示一個byte。0x53是十六進位83，二進位01010011；若協議定義ASCII，它對應字母S。同樣0x53也可以是數值83或某裝置狀態碼，意義來自上層契約，不是電線或UART自帶。",
+        "Serial的意思是資料依時間先後傳送，而不是並行地以很多線同時呈現一個字。接收端必須知道何時讀每個bit，並把一串bit重新組合成byte。組合出byte以後仍要判斷哪些bytes是一筆命令，因此「能收到」至少分成電平變化、正確字元、完整訊息與裝置結果四層。我們從這條轉換鏈建立後續所有故障推理。"
+      ]
     },
     {
-      "heading": "UART 與 RS-232 的分工",
+      "kind": "mechanism",
+      "heading": "UART把byte變時間序列，電氣轉換器把邏輯變線電平",
       "paragraphs": [
-        "UART 是將資料逐字元轉成非同步位元流的功能；常見設定寫成 9600,8,N,1。RS-232 則描述線上訊號的電氣、訊號與介面特性。設備的 STATUS?、回覆格式、檢查碼，不由 RS-232 自動決定。",
-        "電氣標準與命令協定是兩回事。同一種 RS-232 介面可以承載不同廠商命令；相同文字命令也不能保證不同設備通用。"
+        "UART是Universal Asynchronous Receiver/Transmitter，負責非同步字元傳送/接收。應用把byte交給緩衝與UART，UART按配置插start、parity及stop bits，按baud時鐘逐位送出；接收UART檢測起點、取樣並重組成字元。這些功能不定義STATUS?、裝置地址或命令成功。",
+        "UART邏輯端常用3.3V或5V等器件規定的邏輯電平；RS-232 transceiver把它轉換成線路側的正負電壓及相應極性。RS-232描述電氣、功能與介面特性，不等於一段C# API。USB轉串列橋把USB傳輸與UART/線路轉換串起來，OS再把它列成COM。橋的外側可能是RS-232、TTL、RS-422或RS-485，必須查器件/裝置型號。"
+      ]
+    },
+    {
+      "kind": "concept",
+      "heading": "COM名稱是OS資源，不是物理協議保證",
+      "paragraphs": [
+        "COM7讓程式選擇一個串列資源，驅動可能對應主機板UART或USB橋。Open成功表示本機取得並配置該資源，不檢查遠端是否接上正確線。write返回或本機傳送緩衝接收bytes，亦不代表遠端UART已取樣或裝置已執行。讀到bytes後要按協議解析，最後按定義看回覆是否表示受理、完成或僅狀態。",
+        "USB橋有自己的buffer、packet及驅動排程，UART線上仍逐byte傳送。因此資料進入APP可能3bytes一批、再6bytes一批；批次不等於裝置訊息邊界。重插裝置可讓COM號改變，資源佔用也能讓Open失敗。相同COM名不證明同一裝置，要核對裝置識別、例項與當前配置；這些OS機制與baud/命令內容是不同故障層。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "非同步為什麼仍需雙方約定同樣引數",
+      "paragraphs": [
+        "UART兩端沒有每bit共用clock line，但各自仍有時鐘，需以同baud建立近似bit時間，並在每字元start邊緣重新對齊。data bits決定一個字元承載多少資料，parity提供單字元的一種錯誤檢測，stop保證結尾閒置區間。若一端8N1、另一端7E1，接收者會以不同位置解釋bit；同樣9600並不能補此差異。",
+        "上層協議另決定encoding、命令格式、訊息終點、checksum、請求回覆關聯、等待期限和重試語意。它們應組成一張資料契約卡。改變baud只影響時間序列，不會補缺CR LF；加CR LF只補某類訊息終點，不會修錯電壓。引數層與訊息層分別成立後，才有辦法討論裝置完成結果。",
+        "裝置一次受理的工作也可能由多筆串列訊息完成：先選通道，再下操作，再查結果。正確收到一筆ACK只是該步契約，不能以「串列已通」跳過下一步狀態。閱讀公司程式時將port生命週期與工作生命週期分開，記錄每筆訊息如何改變目前可執行的操作，才會看懂Ready、Busy與Timeout為何共存。",
+        "同一硬體連線可先後承載很多交易，因此COM號不能當request ID；同一命令也能重複發出，因此CMD不能當唯一回合。資料層有邊界、交易層有相關性，兩種識別要分開。沒有交易欄位的協定仍可用受控單一未決請求等策略，但限制與遲到處理必須寫清楚。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：一條文字查詢如何透過四層",
+      "paragraphs": [
+        "Device-Lab-A規定RS-232、9600 8N1、無flow control，ASCII STATUS?加CR LF；回覆OK,READY加CR LF。STATUS?7bytes加0D0A共9，HEX為53 54 41 54 55 53 3F 0D 0A。UART每字元1start+8data+1stop=10bits，線上共90bits，最短傳送90/9600=9.375ms，不含橋接與裝置等待。",
+        "裝置UART取得9bytes後，上層parser看到CR LF才識別一筆查詢；它處理後產生10-byte回覆（OK,READY8+CRLF2），線上100/9600=10.4167ms。若處理5ms、其他延遲暫忽略，交易最快約9.375+5+10.4167=24.7917ms。把APP寫一次9bytes與裝置訊息一筆對應，只在這條明確契約成立，不是SerialPort每次呼叫的保證。"
       ],
       "table": {
-        "caption": "看到名詞先分類",
+        "caption": "例題一：一條文字查詢如何透過四層",
         "headers": [
-          "名詞",
-          "屬於哪個問題",
-          "誰提供答案"
+          "層",
+          "本例",
+          "成功意味著"
         ],
         "rows": [
           [
-            "COM7",
-            "程式開哪個作業系統埠",
-            "本機裝置與程式設定"
+            "OS/COM",
+            "COM7 Open",
+            "取得本機資源"
           ],
           [
-            "9600,8,N,1",
-            "每個字元怎麼傳",
-            "雙方串列設定"
+            "UART",
+            "90bits查詢",
+            "按字元格式傳送"
           ],
           [
-            "TX、RX、GND",
-            "訊號方向與電氣接線",
-            "設備 pinout 與轉接器手冊"
+            "RS-232",
+            "符合接收電平與方向",
+            "線路可承載bit"
           ],
           [
-            "STATUS? + CR LF",
-            "送出的應用命令與邊界",
-            "設備命令文件"
+            "應用協議",
+            "CR LF完整查詢及READY",
+            "裝置語意結果"
           ]
         ]
       }
     },
     {
-      "heading": "開埠、寫入、回覆各證明不同事",
+      "kind": "worked-example",
+      "heading": "例題二：文字與二進位的同一畫面誤導",
       "paragraphs": [
-        "開埠成功只代表程式取得一個埠，並不保證線已接好。write 回傳已交付的位元組數，也不代表遠端設備已看見或接受命令。只有在正確觀測點取得設備回覆，才可說本次交易得到回覆；回覆內容是否表示成功，還要按協定解讀。",
-        "若用軟體 loop:// 模擬，讀到的只是自己寫回自己的位元組，更不能當成實體設備回覆。"
-      ],
-      "table": {
-        "caption": "證據階梯",
-        "headers": [
-          "看到什麼",
-          "能說",
-          "仍未知"
-        ],
-        "rows": [
-          [
-            "COM Port 可開啟",
-            "本機程式取得埠",
-            "轉接器外側、接線與設備狀態"
-          ],
-          [
-            "程式 write 4 bytes",
-            "本機提交 4 個位元組",
-            "線上實際波形與設備是否收到"
-          ],
-          [
-            "記錄 RX 4 bytes",
-            "本觀測點收到 4 個位元組",
-            "是否完整、校驗及業務結果"
-          ],
-          [
-            "解出 OK",
-            "符合教學命令的回覆格式",
-            "實際設備是否完成動作"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "先讀一張虛構設備卡",
-      "paragraphs": [
-        "以下是為教材自製的 Device-Lab-A 卡，不是任何公司的設備規格：介面欄寫 RS-232、串列參數 9600,8,N,1、無流量控制；教學命令是 ASCII 的 STATUS? 加 CR LF，回覆是 OK,READY 加 CR LF。它刻意不提供實際 pin 號，因為每台設備都必須依自己的手冊查 pinout。",
-        "這張卡讓你練習將「介面、參數、命令、回覆」分欄；若手冊缺少一欄，應標為待查，不能用常見預設值補上。"
+        "工具顯示TX=10，可能送ASCII兩個字元1、0，即31 30，也可能以HEX模式送一個byte10，數值16。兩者byte數和內容不同。教學二進位協議CMD10需要0x10，ASCII31 30不會成為同命令；再加工具自動換行0D0A又產生額外資料。核對真實HEX比看文字輸入更可靠。",
+        "對於UTF-8「狀態」或裝置的專有編碼，字元數也不同於bytes。C# Encoding.ASCII把非ASCII字元替換成問號的風險必須理解；若裝置只定義ASCII命令，就應先驗證字符集合。LEN欄位若以bytes為單位，使用string.Length可能錯。畫面資料、編碼後bytes、UART字元與線路bits是不同計數層。"
       ],
       "code": {
-        "title": "虛構設備卡：Device-Lab-A",
-        "text": "介面：RS-232（教學假設）\n接線：請查該設備的 pinout；本卡未給實體 pin 號\n參數：9600 baud, 8 data bits, parity none, 1 stop bit\n流量控制：none\nTX 命令：ASCII STATUS? + CR LF\nRX 範例：ASCII OK,READY + CR LF"
-      },
-      "note": "若實際設備手冊要求 RTS/CTS、不同電壓或專用線，不能拿此教學卡取代手冊。"
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "byte[] asText = System.Text.Encoding.ASCII.GetBytes(\"10\");\nbyte[] asHex = { 0x10 };\nConsole.WriteLine(Convert.ToHexString(asText)); // 3130 (2 bytes)\nConsole.WriteLine(Convert.ToHexString(asHex));  // 10 (1 byte)\nbyte[] command = System.Text.Encoding.ASCII.GetBytes(\"STATUS?\\r\\n\");\nConsole.WriteLine(command.Length);             // 9\nConsole.WriteLine(Convert.ToHexString(command)); // 5354415455533F0D0A"
+      }
     },
     {
-      "heading": "無回應時，照證據往下查",
+      "kind": "maintenance",
+      "heading": "裝置卡要有輸入契約與操作語意",
       "paragraphs": [
-        "先確認程式開到正確埠，再核對轉接器型號、設備介面與 pinout；接著核對雙方參數和流量控制；最後看送出位元組、結束符號與等待時間。每一步記下可見證據和觀測點。",
-        "如果接收到亂碼，先檢查串列設定與解碼方式；如果資料完整但設備回錯碼，轉向命令格式或設備狀態。不要把所有症狀都叫「線路不通」。"
+        "一張可用卡要記型號/手冊版本、實際外側電氣介面、接線視角及方向、字元引數、flow control、TX格式、RX格式、錯誤碼、等待與重試。缺哪項就把它列為待取得資料，但教材可以解釋完整概念，而不是只重複「查手冊」。Pin號必須來自確切型號與檢視；本章不提供未知裝置通用施工圖。",
+        "裝置可能將ACK定義為接受到處理佇列，完成由另個event或狀態查詢提供。動作命令timeout結果可能未知，重發不一定安全；只讀查詢通常風險較低，但也要以裝置語意核對。控制線名稱也不自動代表裝置準備好業務。定義好這兩層成功標準，才能解釋「所有串列引數正確，裝置仍回Busy」是正常的應用響應。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "看公司程式碼時沿配置、bytes、讀迴圈與parser",
+      "paragraphs": [
+        "在C#專案查SerialPort建立與PortName/BaudRate/DataBits/Parity/StopBits/Handshake賦值，再找Open、Write、Read或DataReceived、緩衝與parser。舊.NET Framework與新.NET的System.IO.Ports部署方式不同；本學習模型刻意僅用標準函式庫模擬bytes，不假裝SerialPort已編譯在.NET10。",
+        "日誌宜分COM-instance、TX/RX raw HEX、累積訊息、請求代號、parser狀態及結果。不能只用DataReceived次數計收到幾筆命令，因為事件不是逐byte或逐訊息通知，後臺執行緒回呼也不等於UI更新。後面工具與parser章會深化，每一層都要先理解其提供的契約。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "教學讀碼清單\n1 config -> effective PortName, baud, data/parity/stop, handshake\n2 open   -> resource acquired or error category\n3 tx     -> encoded bytes and terminator\n4 rx     -> actual count on each read, not requested count\n5 buffer -> incomplete / complete / corrupt\n6 result -> request match and accepted/completed semantics"
+      }
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：把Open和完整訊息分別記錄",
+      "paragraphs": [
+        "執行 layers與layers --fault，前者9bytes並包含CR LF，後者7bytes；兩者COM-open都OK。對照C#編碼與TakeLast(2)條件，畫資料轉換鏈。只改變文字輸入為10與HEX10，手算差別並比較模型；復原後重跑。",
+        "原有pySerial loop://可選做本機回顯，但它不是線路也不是裝置；回顯只能測試基本軟體路徑。驗收交裝置契約卡、兩個HEX、時間計算及「Open成功為何仍等待」說明。沒有硬體仍可完整學到各層機制，不虛稱已驗證線或voltage。"
       ],
       "steps": [
-        "找到當次 COM Port、轉接器與實際設備文件。",
-        "核對介面類型、線路方向及安全接線條件。",
-        "核對鮑率、資料位元、同位檢查、停止位元及流量控制。",
-        "以十六進位確認實際送出的命令與結束符。",
-        "記下 RX 原始位元組、回覆完整性和逾時條件。"
+        "先將9-byte訊息與90bit字元鏈畫出來。",
+        "跑兩個模式，比較相同Open與不同parser條件。",
+        "變更輸入表示，列實際bytes及對應規則。",
+        "復原，列真實接入還缺的電氣/接線與語意資料。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：能Open與Write，裝置始終無回覆",
+      "paragraphs": [
+        "症狀COM7 Open OK、Write7、Read等200ms空。候選H1無有效線路、H2引數不符、H3訊息終點缺失。第一輪沒有遠端觀測不能選唯一原因。第二輪授權測試確認外側RS-232相符，裝置UART RX看到53 54 41 54 55 53 3F，parser waiting-CRLF，契約要求0D0A；H3給出明確機制。",
+        "只補終止符，保留電氣與UART引數，裝置解析並回10bytes，APP完整READY。回歸split3+7、一次完整與重複查詢，確認無錯誤合併；再記錄當次裝置卡與程式有效值。結論應說缺訊息終點讓裝置等完整命令，不寫成「COM壞了」，也不把補CRLF套用所有裝置。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【分類】RS-232 是否規定 STATUS? 這個命令？",
-      "answer": "沒有。RS-232 是介面相關規範；命令由設備自己的上層協定文件定義。"
+      "level": "foundation",
+      "question": "bit、byte、字元與訊息各是什麼？",
+      "answer": [
+        "bit是二值單位，byte通常8bits；編碼讓字元對應bytes。",
+        "UART字元幀再加時序控制bits，上層訊息可含多個字元/bytes。",
+        "依每層長度分別算，不能把一次read當一訊息。"
+      ]
     },
     {
-      "question": "【開埠】COM7 開啟成功，能說設備端已接到資料嗎？",
-      "answer": "不能。只證明本機取得 COM7；還需核對轉接器、線、設定、實際 TX 和設備觀測。"
+      "level": "foundation",
+      "question": "COM出現能保證轉接器外側RS-232嗎？",
+      "answer": [
+        "不能；COM是OS資源名，外側電氣由轉接器型號決定。",
+        "核對TTL/RS-232/差分及裝置契約。",
+        "不用未知端子試接驗證，先取得正式資料。"
+      ]
     },
     {
-      "question": "【寫入】write 回報 4 bytes，能證明設備執行命令嗎？",
-      "answer": "不能。它只反映本機寫入；設備是否收到、解讀及執行是另外的證據。"
+      "level": "application",
+      "question": "新命令PING加CR LF，ASCII多少bytes，8N1/9600多少ms？",
+      "answer": [
+        "PING4+2=6bytes。",
+        "每字元10bits，共60/9600=6.25ms。",
+        "未含裝置處理、USB橋及回覆，不能當交易總期限。"
+      ]
     },
     {
-      "question": "【轉接器】USB 轉接器顯示 COM7，就能把它當 RS-232 直接接上未知端子嗎？",
-      "answer": "不能。外側可能是不同電氣介面，先查轉接器與設備手冊。"
+      "level": "application",
+      "question": "工具Text模式輸入A0與HEX模式A0，分別什麼bytes？",
+      "answer": [
+        "Text ASCII A=41、0=30，所以41 30。",
+        "HEX A0是一個byte，數值160。",
+        "比對TX raw HEX，先確認協議要哪種，不憑顯示字串相同判斷。"
+      ]
     },
     {
-      "question": "【缺欄】虛構手冊沒有 pinout，可以用網路上常見 DB9 圖直接填嗎？",
-      "answer": "不能。插頭、DTE/DCE、視角與廠商配置都可能不同；標為待查。"
+      "level": "application",
+      "question": "回覆WAIT\r\n分2+4讀到，首輪能判完整嗎？",
+      "answer": [
+        "完整6bytes以CRLF終點，首輪2不足。",
+        "累積到4後組成完整6才按契約解讀。",
+        "WAIT可能不是完成成功，要查回覆語意。"
+      ]
     },
     {
-      "question": "【亂碼】看到 RX 有位元組但呈亂碼，下一步先查哪兩類？",
-      "answer": "查雙方串列參數及資料的文字／二進位編碼方式；有資料不等於內容正確。"
+      "level": "diagnosis",
+      "question": "raw RX全正確，裝置回BUSY，先改baud嗎？",
+      "answer": [
+        "字元及訊息已有正確證據；BUSY屬於上層狀態候選。",
+        "查操作前條件、裝置忙碌語意及請求物件。",
+        "以正常空閒基準驗證，不先改已相符的baud。"
+      ]
     },
     {
-      "question": "【loop】軟體 loop:// 回顯 STATUS?，能說實體設備有回應嗎？",
-      "answer": "不能。那是本機軟體自回環，只能測程式的基本寫入、讀取與逾時。"
+      "level": "diagnosis",
+      "question": "loop://回顯9bytes後能宣佈線和裝置正常嗎？",
+      "answer": [
+        "不能，軟體自己回給自己，沒有外側電氣或裝置。",
+        "它驗證編碼/read/timeout部分路徑。",
+        "報告範圍並另需接線/線路觀測，避免把軟體基準當實測。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新LEN以bytes計，C# string.Length=2但UTF-8實際6bytes，該用哪個？",
+      "answer": [
+        "協議明確以bytes計，應使用編碼後array.Length=6。",
+        "填2會改變接收訊息邊界。",
+        "加入ASCII與多byte輸入測試，非法編碼按契約拒絕或處理。"
+      ]
     }
   ],
   "recap": [
-    "COM Port、UART、RS-232 與設備命令不是同一層。",
-    "開埠、寫入、收到位元組、解出成功回覆要分別記錄。",
-    "不確定的 pinout 與電氣規格應查手冊，不猜。"
+    "區分應用bytes、UART字元、線路電平與命令交易。",
+    "解釋COM列舉、USB橋接及本機讀寫能證明到哪一段。",
+    "用文字編碼及完整HEX檢查訊息邊界。",
+    "建立裝置契約與成功條件並設計分層驗證。"
   ],
   "sources": [
     {
-      "label": "NI：串列埠通訊與設定",
-      "url": "https://www.ni.com/docs/es-ES/bundle/labview/page/serial-port-communication.html"
+      "label": "Analog Devices：UART字元與非同步傳送",
+      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
     },
     {
-      "label": "Analog Devices：RS-232 基礎",
+      "label": "Analog Devices：RS-232電氣、訊號與介面",
       "url": "https://www.analog.com/en/resources/technical-articles/fundamentals-of-rs232-serial-communications.html"
     },
     {
-      "label": "Analog Devices：UART 概念",
-      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
+      "label": "pySerial：引數、讀取與timeout",
+      "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/serial-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/Program.cs",
+      "label": "串列C#概念與解析模型",
+      "description": "本章用layers模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/README.md",
+      "label": "獨立.NET10模型操作說明",
+      "description": "本章用layers模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
     }
   ]
 }

@@ -1,198 +1,262 @@
 {
-  "intro": "這一篇把「位址」從抽象名詞變成可檢查的設定。沿用兩端程式的教學情境，學會看介面位址、端點、監聽位置與 IPv4／IPv6；最後用本機輸出判斷為什麼同一個 Port 有時能連、有時不能。以下輸出均為模擬，請勿當成公司網路設定。",
-  "plan": [
-    {
-      "label": "讀介面與位址",
-      "minutes": 8
-    },
-    {
-      "label": "分清 Port、監聽與連線",
-      "minutes": 9
-    },
-    {
-      "label": "看 IPv4／IPv6 與回環位址",
-      "minutes": 8
-    },
-    {
-      "label": "判讀模擬輸出",
-      "minutes": 8
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 7
-    }
+  "contentVersion": 2,
+  "intro": "IP回答資料往哪個網路位址，Port回答同一傳輸協定下交給哪個端點；真正的接收規則還包含繫結位址、連線五元組、位址家族與程式。本章把這些概念組成可讀程式與作業系統輸出的模型。",
+  "prerequisites": [
+    "IP與Port的基本分工在前兩節重新說明。",
+    "五元組指協議加兩端IP/Port，不需要先懂Socket程式。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      18
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+  },
   "goals": [
-    "能用「協定＋來源 IP:Port＋目的 IP:Port」描述一條連線。",
-    "能從監聽位址判斷服務只接本機還是可能接外部連線。",
-    "能分辨 127.0.0.1、0.0.0.0、::1、實際介面位址的用途與限制。",
-    "能說出 IP、Port 與程式是否真正提供服務之間的差別。"
+    "分清網路介面位址、傳輸端點、Socket與程式。",
+    "以協定及五元組辨認監聽與已建立連線。",
+    "解釋回環、指定IP與萬用繫結如何影響可達範圍。",
+    "讀懂IPv4/IPv6格式與多網卡選址問題。"
   ],
   "sections": [
     {
-      "heading": "位址先屬於網路介面，不是某個程式",
+      "kind": "concept",
+      "heading": "為什麼單有IP不足以找到程式",
       "paragraphs": [
-        "一台電腦可同時有有線、Wi-Fi、VPN 與回環介面，每個介面可能有自己的 IP。IP 用來標記網路層的來源或目的；它不是程式名稱。若同一台電腦有多個位址，只說「連這台電腦」不足以確認走哪個介面。",
-        "以教學案例為例，B 有 198.51.100.20，服務可能監聽這個位址，也可能只監聽 127.0.0.1。兩者都能在 B 自己的電腦上使用，但後者通常不接受從 A 直接送來的連線。"
-      ],
-      "flow": [
-        "B 的網路介面有位址",
-        "程式綁定位址與 Port",
-        "A 選定目的位址",
-        "網路依位址送達"
-      ],
-      "note": "198.51.100.20 是文件保留位址，只用來說明，不是要連接的真實目標。"
+        "一臺電腦可以同時執行網頁服務、電話軟體與裝置監看程式。IP先讓資料找到網路位址，卻沒有指出由哪個通訊功能接收。TCP和UDP因此各有16-bit Port欄位，數值範圍0到65535，用來區分同協議下的端點。Port不是實體插孔，也不是程式編號；OS維護「哪個Socket綁到哪個端點」的關係，程式再透過Socket讀取資料。",
+        "一個程式可以開多個Socket，多個連線也能指向同一服務Port。TCP7000與UDP7000由不同協定處理，所以只說「7000開了」不夠。服務名稱和Port的登記提供慣例，不能保證實際部署使用它；程式設定、監聽輸出和對端檔案才決定本次端點。Port0常用於請OS選一個可用本機Port，不是對端服務的通用目的Port。"
+      ]
     },
     {
-      "heading": "Port 幫作業系統把資料交給對的端點",
+      "kind": "mechanism",
+      "heading": "IP屬於介面配置，選來源也是路由的一部分",
       "paragraphs": [
-        "在 TCP 與 UDP 中，Port 是 0 到 65535 的編號；同一個數字必須和協定一起看。B 的 TCP 7000 與 B 的 UDP 7000 不是同一個接收端點。服務程式可能使用常見 Port，也可以依設定使用其他 Port。",
-        "Client 的來源 Port 常由作業系統暫時選用；Service 的目的 Port 通常要由雙方事先約定。不能因看到 7000 就推定某個特定產品在執行；應查服務設定與實際監聽程序。"
+        "有線網卡、Wi-Fi、VPN與回環可能各有位址。IP不必與整臺電腦一對一，也不是可靠的人員或裝置身分。A連B時，若程式沒有指定來源繫結，OS會根據目的路由及位址選擇規則決定使用哪個來源介面與IP，再分配來源Port。若來源IP不在預期路徑，回程、政策及裝置白名單可能隨之改變。",
+        "127.0.0.1與IPv6 ::1是回環：讓本機程式彼此通訊，不向外部鏈路傳送。0.0.0.0是IPv4萬用繫結表示法；作為Listen位置，意思是接受符合該Socket的本機IPv4位址流量，不能把它當成遠端可連的固定地址。IPv6 ::用作萬用繫結時是IPv6未指定位址。DualMode及平臺設定決定是否一個IPv6 Socket也接IPv4；不要單看::就認定兩家族都可用。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "監聽Socket與連線Socket為何能共用服務Port",
+      "paragraphs": [
+        "TCP Server先bind本機地址和Port，再listen等待。Accept得到一個代表特定對端的新Socket；原本監聽Socket繼續接受其他連線。新Socket可用協定、來源IP、來源Port、目的IP、目的Port形成五元組來識別，方向反過來是同一條連線的回傳方向。OS因此可以讓兩位Client同時連B:7000，依來源端點區分。",
+        "Listen只是本機有等待端點；Established表示TCP狀態，不保證應用回覆。UDP沒有TCP Listen／Accept這種握手模型，bind後即可接資料報，connect可指定預設對端。UDP選擇交付Socket時也受到繫結和平臺複用規則影響；不要把TCP狀態表複製套給UDP。TIME_WAIT是TCP結束後的一種狀態，與仍在執行業務不同，後續TCP章會說明其理由。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "端點生命週期與識別能保證到哪裡",
+      "paragraphs": [
+        "暫用來源Port屬於某次Socket的配置，不是使用者永久身分。關閉後同樣數字可能被後來的連線再用，因此只有五元組還不足以在跨很長的歷史紀錄中唯一辨認一次連線；應再有建立時間或本機connection代號。TIME_WAIT、Port可用範圍和復用選項由平臺規則影響，不能為了「Port已使用」就隨便開reuse而忽略並行交付語意。",
+        "服務綁到Any是在接收端選地址匹配範圍，不是傳送端的路由選擇策略；Client沒有指定來源時，OS仍要根據目的決定LocalEndPoint。監聽0.0.0.0也不代表服務公開於網際網路，還要有外部路由與允許政策。反之，就算只在公司內網可達，應用身分驗證仍有其責任，IP/Port不能自動代替帳號或操作許可權。",
+        "這個區分也避免混淆NAT：邊界改來源IP/Port後，對端看見的是外側端點，而內側Client仍記本機端點。它們可透過轉換狀態對照，並非其中一份日誌錯誤。代理更可能建立第二條全新TCP連線；此時不能把同一時刻兩條連線畫成一條端到端Socket。遇到中介裝置，畫出實際終止與重新建立的地方，端點模型才完整。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：同一目的Port的兩條連線",
+      "paragraphs": [
+        "給A1=192.0.2.10:54000、A2=192.0.2.10:54001，兩者均使用TCP連198.51.100.20:7000。逐欄比較，協定、來源IP、目的IP、目的Port一致，來源Port不同，因此是兩條連線。B兩個AcceptSocket的LocalEndPoint同為198.51.100.20:7000，RemoteEndPoint各指A1、A2；這不是Port衝突。",
+        "若另一臺192.0.2.11也用54000連同一B，來源IP不同仍能區分。若是B回給A1，封包方向變B:7000→A:54000；不要把回覆的來源7000解讀成A也有監聽7000。程式PID4200同時持有多條連線合理；程式與連線身份應分欄記錄。"
       ],
       "table": {
-        "caption": "本例四個欄位要一起讀",
+        "caption": "例題一：同一目的Port的兩條連線",
         "headers": [
-          "欄位",
-          "範例",
-          "回答的問題"
+          "Protocol",
+          "Local",
+          "Remote",
+          "State",
+          "PID"
         ],
         "rows": [
           [
-            "來源 IP",
-            "192.0.2.10",
-            "資料從哪個位址送出？"
-          ],
-          [
-            "來源 Port",
-            "54000",
-            "A 的哪個暫用端點？"
-          ],
-          [
-            "目的 IP",
-            "198.51.100.20",
-            "資料要送往哪個位址？"
-          ],
-          [
-            "目的 Port",
-            "7000",
-            "B 的哪個接收端點？"
-          ]
-        ]
-      },
-      "note": "Port 號碼不保證服務存在，也不保證應用協定正確。"
-    },
-    {
-      "heading": "監聽中的位址，比「有開 Port」更有用",
-      "paragraphs": [
-        "監聽是程式告訴作業系統準備接受某個 TCP 端點的連線。若 B 只監聽 127.0.0.1:7000，B 本機連得上不代表 A 可以連。若監聽 0.0.0.0:7000，代表在所有適用的本機 IPv4 介面上接受連線；能否被 A 連到，仍取決於網路路徑、防火牆與其他設定。",
-        "監聽 ::1 是 IPv6 回環位址；監聽 :: 通常表示 IPv6 的未指定位址。不同作業系統對 IPv4 與 IPv6 的雙棧行為可能不同，不能只看一行輸出就假定兩種位址都接得住。"
-      ],
-      "table": {
-        "caption": "模擬的監聽位置",
-        "headers": [
-          "監聽位置",
-          "通常表示",
-          "仍需另查"
-        ],
-        "rows": [
-          [
-            "127.0.0.1:7000",
-            "只在本機 IPv4 回環位址接收",
-            "服務是否也監聽其他位址"
-          ],
-          [
-            "198.51.100.20:7000",
-            "在指定的 IPv4 位址接收",
-            "A 到該位址的路徑與政策"
-          ],
-          [
+            "TCP",
             "0.0.0.0:7000",
-            "在適用的本機 IPv4 位址接收",
-            "防火牆、路由及實際測試"
+            "*",
+            "Listen",
+            "4100"
+          ],
+          [
+            "TCP",
+            "198.51.100.20:7000",
+            "192.0.2.10:54000",
+            "Established",
+            "4100"
+          ],
+          [
+            "TCP",
+            "198.51.100.20:7000",
+            "192.0.2.10:54001",
+            "Established",
+            "4100"
           ]
         ]
-      },
-      "note": "這裡描述一般 Socket 綁定行為；代理、容器與埠轉發可能改變外部實際看到的端點。"
+      }
     },
     {
-      "heading": "IPv4 與 IPv6 都是 IP，寫法與局部規則不同",
+      "kind": "worked-example",
+      "heading": "例題二：同樣Port，三種繫結的可達範圍",
       "paragraphs": [
-        "IPv4 如 192.0.2.10，是 32 位元位址；IPv6 如 2001:db8::10，是 128 位元位址。2001:db8::/32 也保留給文件範例。兩者都可承載 TCP／UDP，但不能把 IPv6 位址直接塞進只接受 IPv4 的設定欄位。",
-        "127.0.0.1 是 IPv4 回環位址，::1 是 IPv6 回環位址；127.0.0.1 不等於「本機對外網卡 IP」。網址中若要明寫 IPv6 位址和 Port，通常用方括號分隔，例如 [::1]:7000，避免冒號混淆。"
+        "B有192.0.2.20與198.51.100.20兩個教學介面。情形一綁127.0.0.1:7000，本機以127.0.0.1可連，但外部往任一介面不匹配這個Listen。情形二綁192.0.2.20:7000，只匹配該地址；往198.51.100.20的連線不會由此監聽接收。情形三綁0.0.0.0:7000，地址匹配範圍擴大到本機IPv4，但仍受防火牆、路由和服務狀態限制。",
+        "這三個條件只改變繫結，不能推成全路徑成功。反方向也有問題：A明確bind192.0.2.10而目的路由走VPN，源地址與路徑是否允許必須核對。對IPv6端點[2001:db8::20]:7000，方括號分開位址內的冒號與Port分隔符；字串Split(':')會得到錯誤段數，應使用IPEndPoint與IPAddress之類的型別。"
       ],
       "code": {
-        "title": "教學範例：同一服務可有不同端點表示",
-        "text": "IPv4：198.51.100.20:7000\nIPv6：[2001:db8::20]:7000\nIPv4 本機回環：127.0.0.1:7000\nIPv6 本機回環：[::1]:7000"
-      },
-      "note": "IPv6 的鄰居探索、路由與位址配置會在後續章節補充；此處先學會辨認端點。"
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "// Original C# reading examples; addresses are documentation-only.\nvar loopback = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 7000);\nvar selected = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Parse(\"192.0.2.20\"), 7000);\nvar allV4 = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, 7000);\n// Compare each binding separately. Do not start all three simultaneously.\nvar v6Endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Parse(\"2001:db8::20\"), 7000);\nConsole.WriteLine(v6Endpoint); // [2001:db8::20]:7000"
+      }
     },
     {
-      "heading": "從模擬輸出判斷下一步",
+      "kind": "code-reading",
+      "heading": "設定目的與記錄實際端點不能互相代替",
       "paragraphs": [
-        "下面是 B 的一段假設輸出。看到 LISTEN 只能說作業系統中有對應的 TCP 監聽端點；它不保證應用層命令會正確回覆。看到 ESTABLISHED 代表該 TCP 連線當時已建立，也不能單獨證明命令已完成。",
-        "假設 A 連不到 B:7000，而 B 顯示只監聽 127.0.0.1:7000，優先檢查服務綁定位址；若 B 監聽的是對外介面位址，下一步才查 A 的目的設定、路由、防火牆及雙端封包。"
+        "下列片段的hostname與Port是設定值；ConnectAsync可能解析名稱、選來源並連線。成功後LocalEndPoint與RemoteEndPoint才記錄此Socket實際端點。排查多網卡時先收集這兩個值，能發現程式其實走另一張網卡或另一個DNS結果。避免日誌只寫「已連7000」，導致不同目標混成一次工作。",
+        "取消與失敗應標階段，若Connect失敗尚未有已建立的RemoteEndPoint，不能無條件把它當可用值。日誌加connection代號可以對齊同程式的多個Socket。SocketException的SocketErrorCode提供失敗類別，仍要結合端點、時間與另一端證據解釋；錯誤類別不會直接指定一條電纜。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "using var client = new System.Net.Sockets.TcpClient();\nstring host = \"localhost\";\nint servicePort = 7000;\nConsole.WriteLine($\"conn=C12 stage=connect target={host}:{servicePort}\");\ntry {\n    await client.ConnectAsync(host, servicePort);\n    Console.WriteLine($\"conn=C12 stage=connected local={client.Client.LocalEndPoint} remote={client.Client.RemoteEndPoint}\");\n} catch (System.Net.Sockets.SocketException e) {\n    Console.WriteLine($\"conn=C12 stage=connect-failed error={e.SocketErrorCode}\");\n}\n// In real code, a deadline and cancellation policy are also required."
+      }
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：把端點輸出改寫成可理解的關係圖",
+      "paragraphs": [
+        "執行 dotnet run -- endpoints，讀endpoints分支的三行固定資料。畫PID→Socket→Local/Remote三列，把Listen與兩條Established分開，找出兩條連線的唯一差異。模式還輸出IPv6字串；先預測括號位置，再對照。把第二條來源Port改54000，觀察模型印出相同標記，寫出真實TCP為什麼不能用這種資料區分兩個獨立同時連線；模型不執行OS繫結，無法替你報真實地址使用衝突。",
+        "在自己的Windows可唯讀執行 Get-NetTCPConnection | Select LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess，並以Get-Process -Id核對PID。UDP用Get-NetUDPEndpoint，不找Established欄。只選擇你認得的本機程式，數值不會與教材相同。驗收是能解釋至少一行監聽與一行連線的方向、PID及地址範圍；不要為匹配教材擅改現場網卡。"
       ],
       "steps": [
-        "先辨認協定是 TCP 還是 UDP。",
-        "看本機 IP 是回環、指定介面，還是所有適用介面。",
-        "把目標 Port 與程式設定對照，再看連線狀態與應用回覆。"
-      ],
-      "code": {
-        "title": "模擬輸出，格式經簡化",
-        "text": "TCP  127.0.0.1:7000       LISTEN       程式 B\nTCP  198.51.100.20:7001   LISTEN       程式 C\nTCP  198.51.100.20:7001   192.0.2.10:54002  ESTABLISHED"
-      },
-      "note": "模擬輸出沒有真實命令名稱；Windows 可查 netstat 或 Get-NetTCPConnection，Linux 可查 ss。實際欄位依系統版本而變。"
+        "預測固定資料的關係圖與IPv6格式。",
+        "執行基準並逐行標註協議、Local/Remote、狀態、PID。",
+        "在模型改一個來源Port，說明識別失去什麼；復原後重跑。",
+        "選做讀取本機端點表，保留原始輸出與白話說明；不終止未知程式。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：本機可連，遠端連不上",
+      "paragraphs": [
+        "症狀是B本機http-like測試可連7000，A外部連線遭拒絕。候選H1繫結回環、H2主機政策拒絕、H3A連錯地址。第一輪先讀取B實際Listen，看到127.0.0.1:7000 PID4100，A設定198.51.100.20:7000；兩端點不匹配，H1具體可驗證。若看到0.0.0.0，則H1減弱，應查到達B的SYN與主機政策。",
+        "在隔離測試服務僅把binding改指定可用介面，保留Port、程式與請求。第二輪SYN/ACK出現、Accept log記A端點、收到正確回覆，支援binding修正解決本次問題。再測127.0.0.1是否按設計可用，以及另一介面是否應被拒絕，確認沒有無意擴大服務範圍。此例故意不指示把所有正式服務改Any；範圍選擇也是產品安全與維護決策。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "A 要連 B 的 TCP 7000。B 只顯示 127.0.0.1:7000 LISTEN。可以判定 A 一定能連上嗎？",
-      "answer": "不能。這表示服務只在 B 的本機回環位址監聽，A 從另一台電腦通常無法直接連入。需檢查綁定位址及是否另有代理／轉發。"
+      "level": "foundation",
+      "question": "Port與PID有什麼不同？PID相同的兩行Established是否一定同一連線？",
+      "answer": [
+        "Port是傳輸欄位，PID是作業系統程式標識。",
+        "一個程式可持有多Socket，因此PID相同不能合併連線。",
+        "比較五元組與起訖時間，再查各Socket物件。"
+      ]
     },
     {
-      "question": "同一台 B 同時顯示 TCP 7000 與 UDP 7000。它們是否是同一條連線？",
-      "answer": "不是。協定也屬於端點識別的一部分；UDP 沒有 TCP 那種連線。要依設備文件核對使用哪一種協定。"
+      "level": "foundation",
+      "question": "0.0.0.0:7000與127.0.0.1:7000在Listen輸出分別表示什麼？",
+      "answer": [
+        "前者是IPv4萬用地址繫結，後者只匹配回環。",
+        "萬用繫結擴大匹配範圍但仍不保證路徑與政策透過。",
+        "用真實外部目標IP與本機繫結關係驗證，不能把0.0.0.0當對端地址。"
+      ]
     },
     {
-      "question": "封包寫 192.0.2.10:54000 → 198.51.100.20:7000。哪個是服務 Port？為什麼不能只記 54000？",
-      "answer": "7000 是這次連向 B 的服務 Port。54000 是 A 的來源 Port，下一次可能改變；分析時應連同協定、IP、方向、時間一起看。"
+      "level": "application",
+      "question": "TCP A:55000→B:9000與UDP A:55000→B:9000各欄相同，是否同端點協議？",
+      "answer": [
+        "協議不同；TCP與UDP有獨立交付規則。",
+        "要把protocol列進身份，服務檔案亦應註明。",
+        "用TCP表與UDP表分別核對；TCP監聽不能證明UDP服務存在。"
+      ]
     },
     {
-      "question": "B 顯示 0.0.0.0:7000 LISTEN，A 仍連不上。下一個檢查是什麼？",
-      "answer": "先核對 A 的目的 IP、Port 與 TCP，查 A 的路由及防火牆，再比對 A、B 兩端封包。0.0.0.0 監聽只表示 B 的接收配置，不能保證路徑可達。"
+      "level": "application",
+      "question": "新表兩行TCP：192.0.2.8:51000→B:7000、192.0.2.9:51000→B:7000，怎樣區分？",
+      "answer": [
+        "來源IP不同所以五元組不同，來源Port相同不構成矛盾。",
+        "回傳分別指192.0.2.8:51000與192.0.2.9:51000。",
+        "以IP與Port合在一起標示，不能只用Port作字典鍵。"
+      ]
     },
     {
-      "question": "看到 [::1]:7000 可以宣稱 127.0.0.1:7000 一定也在監聽嗎？",
-      "answer": "不能。::1 是 IPv6 回環，127.0.0.1 是 IPv4 回環；是否兩者都監聽要看實際 Socket 設定與系統行為。"
+      "level": "application",
+      "question": "B有10.1.1.2與10.2.2.2，只繫結10.1.1.2:8000。A連10.2.2.2:8000失敗，下一步？",
+      "answer": [
+        "繫結未匹配目的IP，是直接候選。",
+        "核對服務意圖與是否另有代理，不直接推硬體壞。",
+        "隔離測試更正目標或binding，比較握手、Accept、應答三階段。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "程式碼以address.Split(':')解析2001:db8::1:7000，哪裡有問題？",
+      "answer": [
+        "IPv6本身含冒號，字串無法清楚區分Port。",
+        "應使用[2001:db8::1]:7000表示並由地址/端點型別處理。",
+        "加入IPv4與IPv6測試，保留AddressFamily避免混用。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "DNS解析為::1但服務只監聽127.0.0.1，同機connect失敗，為什麼？",
+      "answer": [
+        "兩個都是回環但位址家族不同，監聽不匹配。",
+        "取得Remote解析結果和IPv4/IPv6Listen證據；不能說localhost必定IPv4。",
+        "修正相容的繫結或選擇策略，在兩家族條件下回歸。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "PID已變，但Port仍7000；可以拿昨日log解釋今日連線嗎？",
+      "answer": [
+        "PID可能因重啟改變，Port重用不說明同程式例項或連線。",
+        "核對程式路徑、啟動時間、版本與當前端點。",
+        "用例項/connection代號避免把舊日誌誤關聯；完成後再判斷當前故障。"
+      ]
     }
   ],
   "recap": [
-    "端點要連同協定、來源 IP:Port、目的 IP:Port 一起讀。",
-    "監聽位址決定服務在哪些本機位址接收，不能只說「Port 有開」。",
-    "回環位址供本機使用；0.0.0.0 監聽不代表外部一定可達。",
-    "IPv4 和 IPv6 都是 IP，但位址與監聽設定要分開確認。",
-    "監聽、TCP 建立及應用層成功是不同證據。"
+    "分清網路介面位址、傳輸端點、Socket與程式。",
+    "以協定及五元組辨認監聽與已建立連線。",
+    "解釋回環、指定IP與萬用繫結如何影響可達範圍。",
+    "讀懂IPv4/IPv6格式與多網卡選址問題。"
   ],
   "sources": [
     {
-      "label": "RFC 791：IPv4 位址",
-      "url": "https://www.rfc-editor.org/rfc/rfc791.html"
+      "label": "Microsoft：Get-NetTCPConnection 欄位",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/nettcpip/get-nettcpconnection?view=windowsserver2025-ps"
     },
     {
-      "label": "RFC 8200：IPv6 規格",
-      "url": "https://www.rfc-editor.org/rfc/rfc8200.html"
+      "label": "Microsoft：TcpListener 地址繫結",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.tcplistener?view=net-10.0"
     },
     {
-      "label": "RFC 5737：IPv4 文件範例位址",
-      "url": "https://www.rfc-editor.org/rfc/rfc5737.html"
-    },
-    {
-      "label": "RFC 3849：IPv6 文件範例位址",
-      "url": "https://www.rfc-editor.org/rfc/rfc3849.html"
-    },
-    {
-      "label": "RFC 9293：TCP Port 與連線",
+      "label": "IETF RFC 9293：3.1、3.3：端點及連線狀態",
       "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/networking-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
+      "label": "網路維護 C# 讀碼模型（Program.cs）",
+      "description": "本章使用 endpoints 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/README.md",
+      "label": "實驗專案操作說明",
+      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
     }
   ]
 }

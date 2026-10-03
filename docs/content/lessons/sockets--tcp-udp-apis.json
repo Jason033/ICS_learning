@@ -1,173 +1,248 @@
 {
-  "intro": "TCP 與 UDP 可以都用 Socket API，但交換資料的方式不同。本章延續虛構 Lab-A 的狀態查詢，只比較程式行為，不預設哪個公司服務採用哪一種。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀範例",
-      "minutes": 14
-    },
-    {
-      "label": "判讀紀錄",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 10
-    }
+  "contentVersion": 2,
+  "intro": "TCP 與 UDP 不是可靠和快速兩個按鈕，而是向程式提供不同的資料模型。選哪種模型，會決定 Receive 的返回值、來源身分、訊息邊界、錯誤及恢復責任應如何解讀。",
+  "prerequisites": [
+    "前章的監聽與連線 Socket；本章重新對照 UDP 的不同呼叫流程。",
+    "位元組是資料長度單位；文字和位元組的轉換會在二進位協定章教清楚。"
   ],
   "goals": [
-    "能依需求選出 TCP 串流或 UDP 資料報的基本讀法。",
-    "能區分 send／recv 與 sendto／recvfrom。",
-    "能指出 UDP 回覆來源與傳送結果的限制。"
+    "比較串流與資料報的資料、邊界、順序和失敗語意。",
+    "依 C# API 與返回值辨認讀到資料、EOF、空資料報或例外。",
+    "以實際協定需求評估可靠性、延遲與補救成本。"
   ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      45
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+  },
   "sections": [
     {
-      "heading": "同一個 Socket 名稱，兩種傳輸觀念",
+      "heading": "先決定程式需要什麼承諾",
+      "kind": "concept",
       "paragraphs": [
-        "TCP 的 SOCK_STREAM 交付有序的位元組串流；應用程式要自己分出 STATUS? 與下一則訊息。UDP 的 SOCK_DGRAM 以資料報送收，一次 sendto 發出一個資料報。",
-        "UDP 保留資料報界線，但可能遺失、重複或亂序；不能把「有界線」理解為「可靠送達」。"
-      ],
-      "table": {
-        "caption": "在程式層比較 TCP 與 UDP",
-        "headers": [
-          "項目",
-          "TCP",
-          "UDP"
-        ],
-        "rows": [
-          [
-            "交換單位",
-            "位元組串流",
-            "資料報"
-          ],
-          [
-            "典型發送",
-            "連線後 send／sendall",
-            "sendto 指定目標"
-          ],
-          [
-            "典型接收",
-            "recv 取部分位元組",
-            "recvfrom 取一份資料報及來源"
-          ],
-          [
-            "應用要處理",
-            "框架、逾時、回覆",
-            "逾時、來源、遺失與必要的重試"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "TCP：先建立連線，再收送",
-      "paragraphs": [
-        "Server 依序 socket、bind、listen、accept；Client connect。伺服器收到的 conn 與客戶端 Socket 才是此次對話的收送端點。",
-        "若兩個狀態請求連續送出，對方可能一次 recv 讀到兩則，也可能多次 recv 才拿滿一則。"
+        "傳輸協定提供的是資料交付規則，不是業務完成保證。TCP 建立連線後，在同一方向提供有順序的位元組串流，透過序號、確認與重傳處理遺失和重複資料；若不能繼續，應用會等、得到錯誤或結束，而不是自動得到「裝置失敗」這個業務答案。UDP 每次傳送一個資料報，保留該次訊息邊界，基本服務不提供按序、重傳或去重保證。",
+        "可靠性和延遲之間沒有單一排名。TCP 遺失較早的位元組時，後面已到的資料可能等待補齊才能交付，稱為串流內的順序阻塞。UDP 讓後續報文可以獨立被接收，應用可選擇捨棄過期音訊，卻也要自行判斷序號缺口、來源、重複與狀態重建。若在 UDP 上加可靠傳輸，成本不會消失，只是轉到自己的程式。",
+        "裝置控制可能同時有不容重複的切換命令與允許掉一筆的週期狀態。必須先說明每項資料的時間有效性、是否有副作用、能否由新狀態覆蓋、丟失後如何恢復，再檢查實際系統使用的協定。不能因為想要「更快」就把 TCP 改成 UDP，也不能因為用了 TCP 就刪除應用 requestId、逾時與對帳。"
       ]
     },
     {
-      "heading": "UDP：指定位址和回覆來源",
+      "heading": "C# 介面如何對映這兩種模型",
+      "kind": "mechanism",
       "paragraphs": [
-        "Server 可 bind 後 recvfrom(max_bytes)，取得 payload 和來源位址；回覆時 sendto(payload, source)。Client 也可 bind 取得固定本機 Port，但簡單請求通常由系統選暫時 Port。",
-        "Client 等回覆時記下目標端點，檢查 recvfrom 的來源是否符合預期。來源地址檢查可避免誤收其他資料報，但不能當作完整的身分驗證。"
+        "低階 Socket 可以建立 Stream/Tcp 或 Dgram/Udp。TCP 伺服器 Bind、Listen、AcceptAsync，客戶 ConnectAsync，連線物件用 SendAsync、ReceiveAsync；UdpClient 包裝 UDP，一次 SendAsync 指定目的端點，一次 ReceiveAsync 返回 Buffer 和 RemoteEndPoint。包裝類別簡化呼叫，但不會把 UDP 變成有 TCP 連線保證的協定。",
+        "UDP 也可以呼叫 Connect。這通常是在本機記住預設遠端與約束收送來源的介面操作，沒有 TCP 三向交握，不證明那個服務存在或願意回覆。某些平臺可能透過 ICMP 回報錯誤，某些情況只能等待逾時；不能把沒有立即錯誤當成遠端接收證據。公司程式若有 UdpClient.Connect，不應畫出一條已經確認建立的 TCP 式連線。",
+        "封裝和版本會影響具體可用 API。教材用 .NET 10 的 Memory 與 CancellationToken 非同步多載；舊 .NET Framework 可能使用同步呼叫、Begin/End 模式或不同 Task 多載。讀碼時先看專案 target framework 與實際方法簽章，再套用資料模型；方法名字相似不代表取消和錯誤處理完全相同。"
+      ]
+    },
+    {
+      "heading": "傳輸緩衝、流量控制與壅塞是三個不同問題",
+      "kind": "concept",
+      "paragraphs": [
+        "應用準備的byte陣列、Socket的核心送出/接收緩衝、網路路徑中的佇列，是不同位置。SendAsync接受bytes後，資料可能仍在本機待傳；遠端TCP確認後，bytes可能仍在遠端核心待應用讀取。各階段速度不同，增加某個buffer只是增加暫存，不一定提高業務吞吐。若消費者長期慢於生產者，再大的有限緩衝最終也會滿。",
+        "TCP流量控制關注接收方還能收多少，視窗可因遠端應用不讀而縮小；壅塞控制關注路徑能承受多少，丟失或延遲影響送出節奏。這兩者都能讓Send或回應變慢，卻需要不同證據。遠端接收緩衝滿且handler卡住，優先查應用消費；路徑擁擠則查包與延遲，不能只看本端CPU低就斷言網路壞。",
+        "UDP不會自動提供相同的可靠送出節奏。高速不斷發報文可能把傳送、接收或路徑佇列壓滿，丟包並不一定發生在無線電或路由器。應量測傳送計數、接收計數與序號缺口，結合取樣點定位；允許丟棄的應用也需要速率限制，不能用「UDP不用確認」當無限傳送理由。"
+      ]
+    },
+    {
+      "heading": "訊息大小、MTU與分段不要混成一種長度",
+      "kind": "concept",
+      "paragraphs": [
+        "鏈路MTU限制一次可在該鏈路承載的網路包大小；TCP應用框架可以大於MTU，因為傳輸層把連續串流分段，接收再提供bytes。一個6KB應用框架不需要等於一個6KB乙太網幀，也不能把抓包裡的某個TCP段當完整框架。相反地，一個抓到的段也可能包含多框的一部分。",
+        "UDP保留應用資料報邊界，但過大的報文可能引發IP層分片、傳送錯誤或路徑MTU相關限制。分片中任一片丟失，會使整則UDP無法重組交付，接收應用不會得到可以繼續補讀的半則；實際行為依IP版本、選項與平臺。應用應遵循協定大小政策，不把UDP理論最大值當現實安全大小。",
+        "教材的小報文只驗證邊界和零長度語意，沒有模擬MTU、擁塞或無線丟失。擴充套件真實系統時先查實際最大報文、傳輸配置、網路範圍與業務期限，再選擇觀測或有限改動；「把Receive陣列變大」只影響某些本機介面空間，不能同時修復MTU、丟失和業務處理慢。"
+      ]
+    },
+    {
+      "heading": "Receive 的零與不足長度需要先看協定",
+      "kind": "mechanism",
+      "paragraphs": [
+        "對非零長度的 TCP 接收請求，返回 n>0 表示讀到那麼多串流 bytes；n=0 表示對方送出方向已結束且本機先前排隊資料已讀完。這是 EOF，不是「目前沒資料」。尚無資料時同步呼叫會等，非同步作業會尚未完成，非阻塞呼叫可能報 WouldBlock。不同狀態不能都用 n==0 表示。",
+        "UDP 零長度資料報是合法的一則資料，不表示對方關閉。UdpClient 返回空 Buffer 仍會帶來源端點，下一個 Receive 可以得到另一則資料報。因此 if(length==0) disconnect 這種共用 TCP/UDP 分支會誤判。若某個應用協定禁止空報文，可以在協定驗證階段拒絕，但不要把它說成 UDP 連線 EOF。",
+        "TCP 接收 buffer 太小，未讀到的串流通常留給後續接收。UDP 是一次訊息：低階接收 buffer 裝不下資料報，依平臺/API 可能截斷或回報 MessageSize，不能期待下一次從截斷處繼續同一個資料報。UdpClient 的包裝管理接收陣列，仍需依協定設定允許的訊息上限；讀碼須分清作業系統封包接收、API buffer 和應用長度檢查三個位置。"
+      ]
+    },
+    {
+      "heading": "例題一：相同八個 bytes 的不同交付",
+      "kind": "worked-example",
+      "paragraphs": [
+        "資料為 A、B、C、D、E、F、G、H。TCP 傳送端分兩次送 ABC 和 DEFGH，接收端要求最多四 bytes。合法讀取可能是 AB、CDEF、GH；也可能 ABCD、EFGH。兩次 Send 的邊界不保留，但拼回的串流順序相同。若應用要求每筆資料兩 bytes，應解析 AB、CD、EF、GH，而不是依 Receive 次數決定訊息數。",
+        "UDP 傳送端送第一則 ABC，第二則 DEFGH。若兩則均完整抵達且使用足夠的 buffer，接收仍是兩則獨立訊息；可能第二則先到，第一則遺失，或重複送達。不能把第二則當成第一則剩餘部分。若使用僅四 bytes 的低階接收 buffer 取 DEFGH，第五個 H 不會在下一次接收自動補回成連續串流，應檢查截斷/錯誤及協定重新查詢策略。",
+        "結論來自交付模型，而非這次作業系統剛好如何排程。若本機執行時 TCP 恰好一次讀到八 bytes，不構成「每次都完整」的證據。必須用切片餵入解析器或限制每次讀取上限，主動驗證合理的不同分段。"
+      ]
+    },
+    {
+      "heading": "例題二：零資料與等待中的接收",
+      "kind": "worked-example",
+      "paragraphs": [
+        "教學 UDP 傳送端先送長度 0 的資料報，再送 01 02 03。第一個 UdpReceiveResult.Buffer.Length=0，但 RemoteEndPoint 是傳送端暫時 Port；第二個結果長度 3 且 bytes 相符。這兩個結果都成功完成 ReceiveAsync，第一筆不是超時，也沒有要求關閉物件。",
+        "換成 TCP，客戶先送完整請求，再 Shutdown(Send)。伺服器先讀到請求，下一次對非空 header buffer 接收得到 0，表示客戶不再送更多 bytes。伺服器仍可以把回覆往另一個方向送，客戶仍可以讀。先前零長度的 UDP 與這裡 EOF，表面都是數字 0，含義卻由傳輸型別、buffer 非零和操作結果一起決定。",
+        "再用已取消 token 等待 UDP 接收，收到 OperationCanceledException。這只表示本次等待被取消，沒有收到 EOF 或確認對方關閉；也不證明傳送端沒有送出下一則。測試必須分別驗證這三種情況，才不會把正常空報文、傳輸結束與本機取消混成一個 disconnected 狀態。"
+      ]
+    },
+    {
+      "heading": "來源辨識不等於授權與關聯",
+      "kind": "maintenance",
+      "paragraphs": [
+        "UDP 資料報帶來源 IP/Port，可用來將回覆與預期物件比對，但位址不是完整的安全認證。跨網路可能有 NAT、代理或多個服務共用入口；不可信網路上也需考慮偽造與重播。教材只在回環測資料模型，不提供真實部署的身分驗證。實際系統需依其協定與威脅環境處理授權和加密。",
+        "即使來源正確，也可能是前一個請求的遲到回覆。應用需要 requestId 或序號、訊息型別與會話世代，才能判定「回的是哪次查詢」；無關聯欄位時，必須遵循協定允許的單筆排程或其他限制，不能自行以最近一次 Send 時間猜配對。TCP 的順序只保證 bytes 順序，不替你區分主動通知與不同請求。",
+        "每種資料都要定義錯誤策略。週期狀態可等下一筆完整快照；增量事件缺一筆則可能要重同步；有副作用命令需要查詢結果或伺服器去重。這是應用邏輯，不應藏在低階「如果超時就 Send」工具裡，否則同一工具對不同命令產生不一致的安全性。"
+      ]
+    },
+    {
+      "heading": "程式讀法：資料報結果包含兩種資訊",
+      "kind": "code-reading",
+      "paragraphs": [
+        "UdpReceiveResult 把資料與來源一起返回。應先確認來源符合本協定接收政策，再驗證資料長度、版本、requestId 和內容，最後才更新應用狀態。這個順序避免把錯誤來源或錯誤格式的 bytes 當成成功回覆；失敗紀錄要說清楚是在來源驗證、格式解析或業務狀態哪一步。",
+        "傳送後立刻關閉 UdpClient 只代表放棄後續收取，不能讓未得到的回覆變成確定未執行。TCP SendAsync 的正數返回同樣只到本機傳輸階段。包裝函式如果叫 SendCommandAsync，應追其實作看它究竟等待 Send，還是也等待相關應用回覆；名稱不能替代實際等待範圍。"
       ],
       "code": {
-        "title": "概念片段：一個 UDP 請求與回覆",
-        "text": "server_data, client_address = server.recvfrom(1024)\nserver.sendto(b\"OK,READY\", client_address)\nreply, source_address = client.recvfrom(1024)"
+        "title": "教材 UDP 空報文；不把 Buffer 長度當 TCP EOF",
+        "text": "await udpSender.SendAsync(ReadOnlyMemory<byte>.Empty, udpEndpoint, ct);\nUdpReceiveResult result = await udpReceiver.ReceiveAsync(ct);\nConsole.WriteLine($\"bytes={result.Buffer.Length} from={result.RemoteEndPoint}\");\n// 空資料報仍有來源；應用可依自己的格式接受或拒絕它。"
       }
     },
     {
-      "heading": "sendto 成功與收到回覆是兩個事件",
+      "heading": "實作：分別驗證傳輸而非跑一次就下通則",
+      "kind": "lab",
       "paragraphs": [
-        "UDP sendto 回傳送出位元組數，沒有 TCP 式的連線握手；不能由這個返回值推定對方存在或已處理。需要回覆時，應用程式要等待並驗證。",
-        "若等待逾時，只能說本次未在期限內取得匹配回覆，可能是封包沒到、伺服器沒回、回覆沒到或時間太短。"
+        "解壓 C# 教材模型後用 .NET 10 執行 dotnet run。找 application response after client half-close、zero-length UDP datagram retains sender endpoint、next UDP datagram independently delivered 與 pre-cancelled pending UDP receive 四個 PASS。記錄它們分別驗證的操作，勿用一個「測試成功」涵蓋所有含義。",
+        "將 UDP 第一筆改為 {9}，相應調整第一個斷言為長度 1 且值為 9，驗證第二筆仍不變；再故意保留舊空報文斷言，觀察是應用斷言失敗，不是 TCP EOF。復原兩行並重新完整執行。這裡沒有人工丟包測試，不能聲稱驗證外部 UDP 可靠性；若自己的環境無 SDK，依輸出與程式追算亦可完成本章練習。"
       ]
     },
     {
-      "heading": "接收緩衝太小的差異",
+      "heading": "診斷：UDP 有送出紀錄卻沒看到預期結果",
+      "kind": "diagnostic-case",
       "paragraphs": [
-        "TCP 的 recv 大小限制一次取走多少串流位元組；剩餘位元組仍待後續接收。UDP 的單次接收緩衝若小於資料報，剩餘資料依 API／平台可能被截斷丟棄，不能當下一則拼回。",
-        "因此先約定最大資料報大小，查明所用語言及平台的截斷行為。Lab-A 只有短字串，不示範大型 UDP 資料報。"
-      ]
-    },
-    {
-      "heading": "在本機跑兩種版本",
-      "paragraphs": [
-        "TCP 與 UDP 腳本都在本機交換相同的虛構 STATUS?／OK,READY，對照輸出中的 connected 與 source。UDP 腳本會驗證回覆來源與內容。",
-        "腳本正常只代表本機這次運作；真正服務使用哪種傳輸，要查它的規格與實際紀錄。"
+        "案例甲與乙都只有 sendAccepted，三秒內沒有顯示更新。甲在接收端沒有報文紀錄；乙有 recv bytes=0 from=expected，下一行卻寫 EOF/dispose。對甲，候選原因包括路由/防火牆、目的 Port、接收流程與丟失；先取得來源端點及接收端是否繫結的證據，再決定在哪段觀測。不能僅以本端沒有例外宣告網路正常。",
+        "乙的資料已到 API，故障在共用 TCP/UDP 零長度判斷。若應用空報文定義為心跳，有限修正是將 UDP 空資料送進協定判讀，保持接收迴圈；若協定禁止空報文，記為格式拒絕而非連線結束。回歸須包含空報文、正常報文、錯誤來源與取消，確認各自分類，不能只驗證第二筆又出現。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【選擇】哪一種 API 自帶資料報邊界？",
-      "answer": "UDP 的資料報；TCP 只有位元組串流。"
+      "question": "TCP 提供有序串流，為何仍要有 requestId？",
+      "level": "foundation",
+      "answer": [
+        "TCP 只排列位元組，不知道哪個是請求、回覆或事件。",
+        "一條連線可以有多筆同時未完成請求，順序交付也不代表業務按傳送順序完成。",
+        "requestId 是應用關聯規則，應與訊息型別和會話一起核對。"
+      ]
     },
     {
-      "question": "【TCP】accept 回傳的 conn 可以與 Client 雙向收送嗎？",
-      "answer": "可以。"
+      "question": "UDP Connect 成功和 TCP Connect 成功有何不同？",
+      "level": "foundation",
+      "answer": [
+        "UDP 不用 TCP 的交握建立可靠串流，Connect 通常設定本機預設遠端與來源約束。",
+        "沒有立即錯誤不能證明遠端服務存在；TCP Connect 則表明傳輸連線建立，仍不證明業務可用。",
+        "兩者都需自己的應用回覆作進一步證據。"
+      ]
     },
     {
-      "question": "【UDP】recvfrom 比 recv 多提供什麼？",
-      "answer": "發送方位址，便於確認來源及回覆。"
+      "question": "TCP 送 12 bytes，讀取依序 1、8、3。能否說第二次是另一則訊息？",
+      "level": "application",
+      "answer": [
+        "各次返回僅是切片，合起來是 12 bytes。",
+        "訊息由應用格式定義，如六個兩 bytes 單元或一個長度框架，不能由 8 決定。",
+        "按格式累積解析，驗證所有不同分段產生同一訊息列表。"
+      ]
     },
     {
-      "question": "【限制】UDP sendto 回傳 7 能證明 Server 收到了嗎？",
-      "answer": "不能；只反映本端 API 接受的位元組數。"
+      "question": "UDP 一則 10 bytes，低階接收 buffer 長 6。下一次 Receive 能補剩餘 4 bytes 嗎？",
+      "level": "application",
+      "answer": [
+        "UDP 保留資料報單位，過小 buffer 可能截斷或報 MessageSize，具體依平臺與 API。",
+        "不能把剩下四 bytes 當作 TCP 串流待讀資料。",
+        "依協定使用充分 buffer 並檢查截斷/長度；回歸完整、超上限和過小接收三種情況。"
+      ]
     },
     {
-      "question": "【失敗】UDP 等候逾時能斷言伺服器沒有執行嗎？",
-      "answer": "不能；請求或回覆任一方向都可能沒有被觀測到。"
+      "question": "UDP Receive 得到空 Buffer 且正確來源，隨後又得到五 bytes。第一筆能否當 disconnected？",
+      "level": "application",
+      "answer": [
+        "空 Buffer 可以是合法空資料報，並非 UDP EOF。",
+        "後續五 bytes 正好驗證物件仍可收下一筆，並不因前一筆長度 0 結束。",
+        "應依應用規定接受或格式拒絕，保持傳輸與協定錯誤分開。"
+      ]
     },
     {
-      "question": "【緩衝】TCP recv 太短與 UDP recvfrom 太短有什麼不同？",
-      "answer": "TCP 剩餘位元組可後續讀；UDP 超出單份緩衝的部分可能被截斷。"
+      "question": "r8 查詢逾時後發 r9，收到來源正確但 requestId=r8 的回覆。可以填入 r9 的結果嗎？",
+      "level": "diagnosis",
+      "answer": [
+        "來源只指出來自哪個端點，r8 指出回覆關聯的是舊請求。",
+        "把它填給 r9 會篡改關聯，即使內容恰好相同也失去可信時序。",
+        "依協定處理遲到 r8、記錄 r9 仍等待；回歸兩個不同結果的交錯回覆。"
+      ]
     },
     {
-      "question": "【來源】收到 OK,READY 就可忽略來源嗎？",
-      "answer": "不應忽略；至少核對預期端點，正式系統還需依規格處理身分驗證。"
+      "question": "音訊資料序號 70、72、71；協定規定播放期限過後丟棄。是否應重傳全部直到順序完整？",
+      "level": "diagnosis",
+      "answer": [
+        "先依播放期限和緩衝策略判定各包是否仍有使用價值。",
+        "若 71 已過期，等待或重傳會延誤更後面的音訊；UDP 的補救由應用定義，不能套用控制命令的必達策略。",
+        "測試不同遲到幅度，觀測丟棄與播放延遲，不能只以收齊率判斷品質。"
+      ]
     },
     {
-      "question": "【應用】兩則 TCP send 一定對應兩次 recv 嗎？",
-      "answer": "不一定；邊界由應用協定決定。"
+      "question": "同樣沒有回覆，甲接收端未見資料、乙已見報文但來源被拒絕。怎樣寫兩個不同結論？",
+      "level": "diagnosis",
+      "answer": [
+        "甲僅定位到傳送與接收之間或接收觀測缺口，仍須查目的端點及接收責任。",
+        "乙已證明到達接收 API，但未透過來源規則，應核對期望來源是否符合實際協定與代理/NAT。",
+        "不要在無證據下放寬來源；先確認規則，再回歸合法與非法來源。"
+      ]
     }
   ],
   "recap": [
-    "TCP 是串流，UDP 是資料報。",
-    "回傳送出成功不是遠端已處理的證據。",
-    "UDP 接收要同時記內容、來源和截斷可能。"
+    "比較串流與資料報的資料、邊界、順序和失敗語意。",
+    "依 C# API 與返回值辨認讀到資料、EOF、空資料報或例外。",
+    "以實際協定需求評估可靠性、延遲與補救成本。"
   ],
   "sources": [
     {
-      "label": "Python 官方：socket 模組與各呼叫的返回值",
-      "url": "https://docs.python.org/3/library/socket.html"
+      "label": "Microsoft：TCP ReceiveAsync 返回語意",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0"
     },
     {
-      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
-      "url": "https://docs.python.org/3/howto/sockets.html"
+      "label": "Microsoft：UdpClient 非同步接收與結果",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.udpclient.receiveasync?view=net-10.0"
     },
     {
-      "label": "IETF RFC 9293：TCP 是位元組串流",
-      "url": "https://www.rfc-editor.org/rfc/rfc9293"
+      "label": "Microsoft：UDP Connect",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.udpclient.connect?view=net-10.0"
     },
     {
-      "label": "IETF RFC 768：UDP 資料報",
-      "url": "https://www.rfc-editor.org/rfc/rfc768"
+      "label": "IETF RFC 768：UDP 資料報格式與服務",
+      "url": "https://www.rfc-editor.org/rfc/rfc768.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 串流、連線與關閉機制",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
     }
   ],
   "resources": [
     {
       "label": "下載 TCP 本機練習",
       "path": "./assets/labs/socket-tcp-lab.py",
-      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度前綴與分段讀取。"
+      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度字首與分段讀取。"
     },
     {
       "label": "下載 UDP 本機練習",
       "path": "./assets/labs/socket-udp-lab.py",
       "description": "標準函式庫；只用 127.0.0.1 的虛構 STATUS?／OK,READY 資料報。"
+    },
+    {
+      "label": "下載 C# Socket 維護教材模型",
+      "path": "./assets/labs/sockets-maintenance-lab.zip",
+      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
     }
   ]
 }

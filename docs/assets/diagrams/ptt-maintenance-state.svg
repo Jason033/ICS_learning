@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 720" role="img" aria-labelledby="title desc">
+<title id="title">PTT 第二版：意圖、權利、就緒與結束</title>
+<desc id="desc">本地Lab模型需權利時由Idle按下到WaitingGrant，同世代Grant到Keying，同世代Ready到Tx。Grant不是Ready，Ptt不是音訊。Release從任何狀態撤銷意圖和輸出，增加世代回Idle；持有截止到Fault且必須先鬆開。圖不表示實體設備狀態。</desc>
+<rect width="760" height="720" rx="24" fill="#f6f8f4"/>
+<g font-family="sans-serif" fill="#14342e">
+<text x="32" y="43" font-size="24" font-weight="700">控制與音訊要通過不同條件</text>
+<text x="32" y="75" font-size="17">純記憶體 Lab；RequireGrant=true；不是原廠狀態圖</text>
+<rect x="32" y="100" width="330" height="72" rx="12" fill="#dcefe7"/>
+<text x="49" y="129" font-size="21" font-weight="700">Idle　沒有本次意圖</text>
+<text x="49" y="155" font-size="16">Held / Ptt / Ready / Audio 全 false</text>
+<text x="195" y="200" text-anchor="middle" font-size="16">↓ Press：非 Busy，建立新 Epoch</text>
+<rect x="32" y="221" width="330" height="72" rx="12" fill="#e6e9f7"/>
+<text x="49" y="250" font-size="21" font-weight="700">WaitingGrant　等權利</text>
+<text x="49" y="276" font-size="16">Held=true；Ptt=false；Audio=false</text>
+<text x="195" y="321" text-anchor="middle" font-size="16">↓ 同 Epoch 的 Grant，且仍 Held</text>
+<rect x="32" y="342" width="330" height="72" rx="12" fill="#fff0d9"/>
+<text x="49" y="371" font-size="21" font-weight="700">Keying　已要求，等就緒</text>
+<text x="49" y="397" font-size="16">Ptt=true；Ready=false；Audio=false</text>
+<text x="195" y="442" text-anchor="middle" font-size="16">↓ 同 Epoch 的 Ready，且仍 Held</text>
+<rect x="32" y="463" width="330" height="72" rx="12" fill="#dcefe7"/>
+<text x="49" y="492" font-size="21" font-weight="700">Tx　本地准入成立</text>
+<text x="49" y="518" font-size="16">四旗標皆 true，Frame 才計送出</text>
+<rect x="392" y="100" width="336" height="180" rx="12" fill="#e8ece6"/>
+<text x="411" y="131" font-size="20" font-weight="700">Release：任何狀態都可結束</text>
+<text x="411" y="166" font-size="17">關 Audio / Ptt / Ready</text>
+<text x="411" y="195" font-size="17">撤銷 Held，增加 Epoch，回 Idle</text>
+<text x="411" y="229" font-size="17">舊 Grant / Ready 不能再啟動</text>
+<text x="411" y="256" font-size="16">本地歸零 ≠ 實體已停止</text>
+<rect x="392" y="304" width="336" height="206" rx="12" fill="#f8e7df"/>
+<text x="411" y="336" font-size="20" font-weight="700">Tick 截止 → Fault</text>
+<text x="411" y="374" font-size="17">關輸出，Held 仍保留 true</text>
+<text x="411" y="404" font-size="17">人仍按著時不能自動再啟動</text>
+<text x="411" y="440" font-size="17">先 Release，再新 Press</text>
+<text x="411" y="478" font-size="16">Tick 需呼叫；不是自主硬體計時器</text>
+<text x="32" y="576" font-size="18" font-weight="700">直接模式：不需要 Grant，Press 直接進 Keying</text>
+<text x="32" y="613" font-size="17">不變條件：送出需 Held、Ptt、Ready、Audio 與 Tx 同時成立</text>
+<text x="32" y="651" font-size="17">Busy 只限制新 Press；Tx 是本地狀態，不證明 RF 或對端</text>
+<text x="32" y="688" font-size="16" fill="#52645c">真正設備事件、實體解除與回饋需按現有版本契約另核對。</text>
+</g></svg>

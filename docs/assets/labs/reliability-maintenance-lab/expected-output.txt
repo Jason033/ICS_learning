@@ -1,0 +1,51 @@
+
+[deadline]
+attempt=1 start=0 allowed=100
+attempt=2 start=130 allowed=100
+local waiting expired at 250; remote outcome is not inferred.
+
+[retry]
+same ID: effects=1, result=applied-1
+same ID / different payload: conflict
+retry=1 window=100 selected=38
+retry=2 window=200 selected=175
+retry=3 window=400 selected=265
+retry=4 window=400 selected=20
+
+[health]
+transport=true businessReady=False
+all verified businessReady=True
+subscription lost: businessReady=false; cached state must be labelled stale.
+
+[queue]
+second=1 depth=3 dropped=0
+second=2 depth=6 dropped=0
+second=3 depth=9 dropped=0
+second=4 depth=12 dropped=0
+second=5 depth=12 dropped=3
+second=6 depth=12 dropped=3
+Channel capacity=2 / Wait: TryWrite(3)=false
+
+[ordering]
+session=B version=2 value=Busy
+
+[race]
+forced interleaving: count=1
+lock protected: count=2
+wait graph: A holds X -> waits Y; B holds Y -> waits X (cycle)
+
+[async]
+long-handler: ready=0 starts=0 queueWait=0
+status-callback: ready=20 starts=500 queueWait=480
+heartbeat: ready=100 starts=502 queueWait=402
+logical UI model only: .NET Console has no WPF Dispatcher.
+
+[evidence]
+op-7,1,B,enqueue,0
+op-7,1,B,dequeue,80
+op-7,1,B,send,82
+op-7,1,B,accepted,90
+op-7,1,B,completed,110
+op-7,1,B,display,150
+queue=80, send-to-complete=28, completed-to-display=40
+PASS: fictional invariants checked; no network/device access.

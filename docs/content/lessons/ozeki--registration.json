@@ -1,240 +1,321 @@
 {
-  "intro": "本章用 SIP 註冊做第一個可追查的流程。你會把設定、送出 REGISTER、伺服器回覆和 SDK 狀態事件拆開看；官方範例的具體方法要依實際版本核對，練習紀錄全是虛構。",
-  "plan": [
-    {
-      "label": "先看註冊目的",
-      "minutes": 8
-    },
-    {
-      "label": "核對設定欄位",
-      "minutes": 10
-    },
-    {
-      "label": "追 REGISTER 與回覆",
-      "minutes": 12
-    },
-    {
-      "label": "比較失敗位置",
-      "minutes": 12
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 8
-    }
+  "contentVersion": 2,
+  "intro": "註冊不是建立一條永遠不斷的電話線，而是帳號、目前聯絡位置、有效期限和伺服器認證的一組關係。這章從 SIP 註冊的目的開始，連到 Ozeki 線路物件、事件、包裝與畫面，解釋為什麼401不一定失敗、註冊成功仍可能接不到來電。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
   ],
+  "studyTime": {
+    "reading": [
+      15,
+      25
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 registration 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能說清楚帳號、認證與伺服器設定各扮演什麼角色。",
-    "能讀出「要求註冊」與「已註冊」之間還缺的證據。",
-    "能根據虛構紀錄縮小註冊失敗的位置。"
+    "區分顯示名、使用者、認證身分、伺服器與本機媒體埠。",
+    "追蹤註冊命令、認證挑戰、最終回覆、事件和UI的不同階段。",
+    "鑑別拒絕、沒回覆、事件漏接與錯線路，並設計可回歸的修正。"
   ],
   "sections": [
     {
-      "heading": "註冊是告訴電話系統去哪裡找你",
+      "heading": "為何需要註冊：帳號不是目前的網路位置",
+      "kind": "concept",
       "paragraphs": [
-        "在使用 PBX 帳號的教學情境裡，SIP 用戶端以 REGISTER 告知伺服器目前的可聯繫位置，並按設定進行認證；它常是接收來電的前置步驟。直撥 IP 或不同產品配置可能不需要同樣的註冊步驟，所以先讀系統配置，不要把註冊當所有通話的通則。",
-        "一通電話的 INVITE 和帳號的 REGISTER 是不同 SIP 請求；看到註冊成功也不能證明已撥號、對端已接聽或音訊正常。"
-      ],
-      "flow": [
-        "帳號與伺服器設定",
-        "發出 REGISTER",
-        "伺服器回覆",
-        "狀態事件",
-        "之後的呼叫"
-      ],
-      "note": "本章只解釋官方 SIP 軟體電話範例，不表示公司系統必然使用 PBX、哪個 IP 或哪種認證。"
+        "別人撥1001，電話系統需要知道這個帳號現在在哪個端點。帳號代表邏輯身分；電腦的IP、監聽端口與連接可能隨網路或程式重啓變化。SIP REGISTER讓用戶代理把帳號與Contact聯絡位置的綁定提交給registrar。伺服器之後如何路由來電仍取決於代理與PBX政策，所以“有綁定”不是整條來電鏈路的保證。",
+        "註冊有有效期限，和通話不同。你可以註冊後沒有通話，也可以某些環境不靠REGISTER而直接呼叫；這些模式要按配置辨認。註冊成功通常說明伺服器接受這次註冊處理，不證明媒體會通、不證明遠端號碼存在，也不證明麥克風可用。把“線已註冊”顯示為“電話接通”會把三個不同層的問題混淆。",
+        "長期程式還要處理更新與過期。若綁定有效120秒、客戶端100秒刷新、某次刷新失敗，之前成功事件不能永久代表當前可用。維護程式應記錄當前線狀態、最近成功時間、失敗／斷線資訊與事件所屬配置世代。實際刷新機制和狀態API應由SDK管理契約決定；不應另寫無限循環Register與SDK自動刷新搶同一條線。"
+      ]
     },
     {
-      "heading": "設定欄位不要混成「一組帳號」",
+      "heading": "七個帳號參數各負責什麼",
+      "kind": "concept",
       "paragraphs": [
-        "官方 C# 範例可見 displayName、userName、authenticationId、registerPassword、domainHost、domainPort 等欄位。名稱相似但用途不同：顯示名稱不是密碼，認證 ID 也未必等於使用者名稱；實際值由電話系統文件提供。",
-        "若連到不同通訊協定、傳輸方式或位址，還要看實際 SDK／PBX 設定。本教材不提供任何真實伺服器或可用帳密。"
+        "SIPAccount 的官方教學構造參數包含 registrationRequired、displayName、userName、authenticationId、registerPassword、domainHost、domainPort。displayName是給人看的名稱，userName是SIP邏輯賬號，authenticationId是認證用身分，密碼與認證身分配對，host/port指出註冊伺服器。很多小範例讓這些文字都一樣，看起來像“一組賬號”；公司設置可能不同，抄同一個號碼進所有欄位會隱藏錯誤。",
+        "例如顯示名“值班台”、SIP用戶1001、認證身分auth-1001、伺服器pbx.lab.invalid:5060。呼叫1001和用auth-1001驗證是兩件事。認證失敗不能只檢查userName，來電路由錯誤也不能只檢查authenticationId。維護時先從配置讀取點追每個欄位到構造參數，檢查順序、空白、預設值與覆蓋來源，別把UI欄位標題當作程式傳值證據。",
+        "DomainPort 是遠端 SIP 服務的端口；SoftPhoneFactory.CreateSoftPhone(5000,10000) 的數字在核對教學中是媒體端口範圍，不是把SIP伺服器設在5000。Transport 也很重要：UDP、TCP、TLS的組合須與伺服器匹配；TLS有證書驗證，不只是改成5061。下列數據為虛構，不會連接此域名，練習只用來建立字段角色。"
       ],
       "table": {
-        "caption": "官方範例的常見欄位",
+        "caption": "虛構設定，分清用途",
         "headers": [
           "欄位",
-          "教學解讀",
-          "先核對"
+          "值",
+          "用途"
         ],
         "rows": [
           [
-            "domainHost／domainPort",
-            "要連的伺服器名稱／Port",
-            "是否為該環境正確的伺服器"
+            "DisplayName",
+            "值班台",
+            "給人辨識"
           ],
           [
-            "userName",
-            "對外的 SIP 使用者身分",
-            "是否與帳號配置一致"
+            "UserName",
+            "1001",
+            "SIP賬號/路由身分"
           ],
           [
-            "authenticationId／registerPassword",
-            "認證資料",
-            "是否由授權管理處取得；勿貼日誌"
+            "AuthenticationId",
+            "auth-1001",
+            "認證輸入"
           ],
           [
-            "displayName",
-            "顯示用名稱",
-            "不要當成認證 ID"
+            "DomainHost",
+            "pbx.lab.invalid",
+            "伺服器主機"
           ],
           [
-            "registrationRequired",
-            "範例是否要求註冊",
-            "部署模式是否真的需要"
+            "DomainPort",
+            "5060",
+            "伺服器端口"
+          ],
+          [
+            "Media range",
+            "5000–10000",
+            "本機媒體端口範圍"
           ]
         ]
       }
     },
     {
-      "heading": "方法呼叫回來，不代表伺服器同意",
+      "heading": "Ozeki註冊的物件與順序",
+      "kind": "mechanism",
       "paragraphs": [
-        "舊型官方範例在建立 phone line 後呼叫 RegisterPhoneLine，並透過註冊狀態事件知道後續結果。較新範例以自寫 Softphone 類別包裝註冊；不論哪種寫法，都要把「本機發起」和「收到伺服器回覆／事件」分開。",
-        "SIP 認證情境可能先收到 401 challenge，再帶上認證資訊重送 REGISTER，最後得到 200 OK。不能把所有 401 都直接判成最後失敗；需要看後續是否成功。"
+        "官方註冊教學先建立ISoftPhone核心，再用SIPAccount建立IPhoneLine，訂閱line.RegistrationStateChanged，最後core.RegisterPhoneLine(line)。順序有理由：你需要先有線才能訂閱這條線，先有訂閱才能可靠觀察後續過程。外層Softphone.Register可以一次做完這些動作，但它只是包裝；讀公司代碼要展開看裡面到底建立多少條線、訂哪一個物件。",
+        "在這一模型中，創建線和發送註冊不是同一動作。CreatePhoneLine完成不等同伺服器接受；RegisterPhoneLine方法返回也不等同RegistrationSucceeded已到達。方法可能同步拋本地錯誤，伺服器拒絕則可能通過後續狀態事件報告；兩條錯誤路徑都需處理。只在按鈕事件try/catch顯示例外，漏掉事件里的Error，UI會一直停在“註冊中”。",
+        "下面是已核對的SDK操作形態，但不是可直接跑的完整類：account需正確建立，OnLine需使用實際版本事件委託。真實SDK未安裝，不能宣稱編譯驗證；純Lab的註冊模型已在.NET10運行通過。把兩者分開後，你仍能精確追“物件、訂閱、命令、通知”四階段，再把模型映射到真實宣告。"
       ],
-      "table": {
-        "caption": "虛構教學時間線",
-        "headers": [
-          "時間",
-          "觀察",
-          "能支持"
-        ],
-        "rows": [
-          [
-            "00:00.000",
-            "應用程式要求註冊",
-            "本機操作已發出"
-          ],
-          [
-            "00:00.030",
-            "REGISTER 到達擷取點",
-            "本機送出訊號"
-          ],
-          [
-            "00:00.080",
-            "401 Unauthorized challenge",
-            "伺服器要求認證；尚未定論"
-          ],
-          [
-            "00:00.100",
-            "第二筆 REGISTER 帶認證",
-            "用戶端嘗試回答 challenge"
-          ],
-          [
-            "00:00.150",
-            "200 OK 與註冊狀態成功",
-            "此觀測點的註冊流程成功"
-          ]
-        ]
-      },
-      "note": "這是自行編寫的教學紀錄；真實封包順序與回應可能不同，不能用作公司流程證明。",
       "code": {
-        "title": "舊型官方範例的閱讀順序縮寫；省略參數，不能直接執行",
-        "text": "phone = SoftPhoneFactory.CreateSoftPhone(...);\nline = phone.CreatePhoneLine(account);\nline.RegistrationStateChanged += OnRegistrationChanged;\nphone.RegisterPhoneLine(line);\n// 真正是否註冊成功：看回應與 OnRegistrationChanged"
+        "title": "核對過的官方成員，需當前組件與handler宣告",
+        "text": "ISoftPhone core = SoftPhoneFactory.CreateSoftPhone(5000, 10000);\nIPhoneLine line = core.CreatePhoneLine(account);\nline.RegistrationStateChanged += OnLine;\ncore.RegisterPhoneLine(line);"
       }
     },
     {
-      "heading": "失敗時先分四個位置",
+      "heading": "認證挑戰為何會先出現401",
+      "kind": "concept",
       "paragraphs": [
-        "若 SDK 說註冊失敗，不要只改密碼。先看應用是否真的提出註冊、封包有沒有離開、伺服器是否回應、回應碼與事件是否相符。",
-        "若封包顯示 200 OK 但畫面仍顯示未註冊，要查事件處理、狀態轉發或後續過期／重新註冊；若沒有看到封包，也要確認抓包位置與篩選沒有漏掉。"
+        "REGISTER可先沒有認證資訊，伺服器用401和WWW-Authenticate要求客戶端按指定realm、nonce等資料計算認證回應。客戶端再發送帶Authorization的REGISTER，伺服器驗證後可能200。401在這個時序是挑戰，不是最終“密碼錯”；但重復401且沒有成功可能與認證身分、密碼、realm或算法／配置不一致相關，仍要查後續處理。",
+        "用 Call-ID、CSeq method、branch及端點把回應配回同一次交易。只有一個狀態碼的截圖很容易看錯：200可能是OPTIONS回應，401可能屬於另一個賬號，舊REGISTER的200可能晚於新線配置。至少保留method、line/session關聯、請求與最終結果。SIP Call-ID有助關聯，但完整dialog身分還包含tags；註冊交易也不等同通話dialog。",
+        "SDK通常負責SIP認證實現，應用不應自己在紀錄里拼密碼或重算摘要。維護者需驗證配置傳入、挑戰是否到達、SDK是否發後續請求、伺服器是否接受，再看事件層的結果。如果挑戰後沒有新請求，問題範圍偏客戶端認證處理；如果帶認證請求已到伺服器並被拒絕，才需查伺服器政策與賬號參數。這種分層可避免只看到401就重裝SDK。"
+      ]
+    },
+    {
+      "heading": "例題一：從兩次REGISTER讀出正確結果",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入時間線是0ms發REGISTER CSeq=1，20ms回401，21ms發帶認證的REGISTER CSeq=2，45ms回200，48ms收到line L1的RegistrationSucceeded，55msUI顯示已註冊。先分別計算交易與顯示延遲：第二次請求到200為24ms，200到SDK事件3ms，事件到UI7ms。這些數字用於理解觀測點，不是廠商保證的延遲。",
+        "結論是這段記錄支持L1本次註冊已被接受；401未否定隨後成功。若UI在22ms就顯示失敗，說明應用在最終結果前錯誤解釋挑戰，最小修正是依SDK最終狀態更新業務顯示，不用抓包中的每一個401直接驅動UI。若55ms顯示的是L2，則事件歸屬或UI映射有問題，不能把整個程式註冊狀態合成一個true。",
+        "對照事件記錄的C#原則是每條線有獨立結果。完整Lab示範先接收403失敗再200成功，handler同時記錄LineId、SipStatus、State。它不模擬Digest算法，只教應用怎樣接收終態；真實認證細節由SIP與SDK驗證，不能把Lab.Register(200)當真實註冊。"
       ],
+      "code": {
+        "title": "完整 Lab 註冊結果追蹤；對應 registration 情境",
+        "text": "var line = new LabLine(\"L1\");\nvar history = new List<LabRegistrationEvent>();\nline.Changed += e => { history.Add(e); Console.WriteLine($\"{e.LineId} {e.SipStatus} {e.State}\"); };\nline.Register(403); // L1 403 Failed\nline.Register(200); // L1 200 Registered\nConsole.WriteLine(history.Count); // 2\nConsole.WriteLine(line.State); // Registered"
+      },
       "table": {
-        "caption": "依觀測分段排查",
+        "caption": "虛構抓包與應用時間線",
         "headers": [
-          "看到什麼",
-          "可先查",
-          "尚不能斷言"
+          "ms",
+          "來源",
+          "內容"
         ],
         "rows": [
           [
-            "沒有 REGISTER",
-            "方法是否呼叫、解析與抓包位置",
-            "不能直接說伺服器壞"
+            "0",
+            "網路",
+            "REGISTER CSeq=1"
           ],
           [
-            "REGISTER 有去無回",
-            "目的位址、傳輸、路徑與伺服器觀測",
-            "不能直接說密碼錯"
+            "20",
+            "網路",
+            "401 challenge"
           ],
           [
-            "401 後無第二筆 REGISTER",
-            "程式是否處理 challenge、帳密設定",
-            "不能把首筆 401 當最終原因"
+            "21",
+            "網路",
+            "REGISTER CSeq=2 + authentication"
           ],
           [
-            "最終拒絕回應",
-            "回應碼、帳號配置與伺服器 log",
-            "不能猜哪個欄位錯"
+            "45",
+            "網路",
+            "200 for REGISTER CSeq=2"
           ],
           [
-            "200 OK 但 UI 顯示失敗",
-            "SDK 事件、轉發與時間順序",
-            "不能只靠 UI 判伺服器拒絕"
+            "48",
+            "SDK",
+            "L1 RegistrationSucceeded"
+          ],
+          [
+            "55",
+            "UI",
+            "L1 已註冊"
           ]
         ]
       }
     },
     {
-      "heading": "寫一份可重測的註冊觀察單",
+      "heading": "例題二：兩條線不能共用一個成功布林值",
+      "kind": "worked-example",
       "paragraphs": [
-        "在授權測試環境中，固定帳號與伺服器設定，記下開始時間、SDK 事件、SIP 回應與最後畫面。每次只改一個條件，才知道哪個變因造成差異。不要在公開練習檔放真實帳密或 Authorization 原文。"
+        "輸入是L-A註冊成功，L-B註冊被拒絕；用戶在B面板點擊撥號。錯誤程式用anyRegistered=true開啓所有撥號按鈕，因A成功允許B撥出。這個布林值丟失了“哪一條線成功”的關鍵身分，錯誤並非簡單等待時間問題。正確模型把結果按line ID保存，發話時檢查所選線的狀態，再把該線傳給建立通話的方法。",
+        "以下Lab用字典建立獨立狀態。A的200更新A，B的403更新B；最終A=true、B=false。如果查不到線記錄，不能預設為可用。真實系統還需區分NoRegNeeded模式、註冊中和錯誤，不能直接把所有非失敗狀態當已成功。字典只演示獨立歸屬，業務准入規則要明確列出狀態。",
+        "重新配置同一線時還要區分世代。賬號B1替換為B2，B1的成功事件晚到，不應開啓B2。解決可為每次配置分配generation並在接收時核對，或者依實際SDK物件身分隔離。需要同步或單一執行佇列保證檢查與更新原子化，否則“先檢查當前線、後面被換線”的競態仍會發生；並行章會展開這個問題。"
       ],
-      "steps": [
-        "記下產品／SDK 版本與範例來源。",
-        "記下發起註冊的方法呼叫時間。",
-        "核對 REGISTER、回應碼與是否有第二次請求。",
-        "核對對應線路的狀態事件與 UI。",
-        "寫出目前知道、仍不知道與下一個證據。"
+      "code": {
+        "title": "兩條 LabLine 的完整路由",
+        "text": "var a = new LabLine(\"L-A\");\nvar b = new LabLine(\"L-B\");\nvar states = new Dictionary<string, string>();\nvoid Apply(LabRegistrationEvent e) => states[e.LineId] = e.State;\na.Changed += Apply;\nb.Changed += Apply;\na.Register(200);\nb.Register(403);\nbool CanUse(string id) => states.TryGetValue(id, out var state) && state == \"Registered\";\nConsole.WriteLine(CanUse(\"L-A\")); // True\nConsole.WriteLine(CanUse(\"L-B\")); // False"
+      }
+    },
+    {
+      "heading": "拒絕、沒有回覆、事件漏接三種不同失敗",
+      "kind": "concept",
+      "paragraphs": [
+        "伺服器發403表示這個請求在伺服器處理路徑中得到拒絕；它不單獨證明密碼錯。策略、賬號狀態、地址限制或請求要求不符都可能相關。只有客戶端抓到發出而沒有回應，則可能請求未到、回應未回來、transport不匹配、伺服器未處理或抓錯觀察點。兩端抓包或伺服器紀錄才能縮小方向，不應直接說網路絕對斷線。",
+        "若伺服器紀錄與抓包都顯示200，但應用沒有成功事件，可查訂閱物件、訂閱時間、事件轉發和SDK狀態。若handler有成功而UI仍未更新，再查線程派送、過濾條件和狀態覆蓋。將所有症狀都顯示“註冊失敗，請重試”，會丟掉最有用的差異，也可能引發無意義重註冊。",
+        "逾時尤其要細分：應用自己等5秒超時，不代表SDK已取消，也不代表伺服器沒有接受。晚到成功應怎麼處理，由當前操作世代與UI策略決定；關閉舊線之後不能讓舊成功重開按鈕。重試要有上限與間隔，並避免同時建立一堆line。註冊涉及密碼與伺服器負擔，重復按按鈕應由狀態規則控制，不能只靠按鈕視覺上灰掉。"
+      ]
+    },
+    {
+      "heading": "註冊成功但接不到來電：綁定與可達性還有距離",
+      "kind": "concept",
+      "paragraphs": [
+        "REGISTER 200證明伺服器接受對應請求，不證明未來入站包能到本機。Contact可能指到不合適的地址、NAT映射可能過期、網路策略可能允許出站卻不允許入站，PBX也可能將呼叫路由到別的賬號。先確認被呼叫的SIP身分與註冊綁定，再用伺服器與客戶端觀測確認INVITE是否到達。",
+        "如果INVITE到網路介面但IncomingCall沒進包裝，要檢查核心是否是註冊使用的同一個實例、來電訂閱是否有效、消息是否由目標程式接收。若IncomingCall已觸發而UI不顯示，則與路由可達性不同，進入應用事件鏈。不能在所有情況都開大防火牆端口，因為某些案例根本是把來電訂到另一份核心。",
+        "註冊狀態過期也會造成“剛啓動能接，過幾分鐘不行”。保留有效期、刷新請求與事件，再比較持續入站通話。驗收需要跨刷新週期和網路恢復，除了一次啓動成功，還要驗證失敗後狀態會撤銷、重獲成功不會多訂一次事件。這裡的網路與狀態機制，說明為何註冊章要建立完整觀念，而不是只教四行方法。"
+      ]
+    },
+    {
+      "heading": "追碼實作：驗證觀測與實際狀態可以不同",
+      "kind": "lab",
+      "paragraphs": [
+        "執行registration，先在bad.Register和Changed訂閱設中斷點，說明為何seen=0而State=Registered；再看good先訂閱，403和200均可觀察。改一個變因：把good訂閱移到第一次Register後，預期failure_is_observed失敗。復原後再把200改503，預期success_is_observed失敗。兩次實驗分別改變觀察能力和真實模型結果，不能混在一起。",
+        "第二個任務按例題二加兩條線，在紙上寫事件ID→字典鍵→CanUse的結果，再逐步執行。故障版故意全部寫入固定鍵L-A，你會發現B更新覆蓋A。修正為e.LineId後，驗收各自獨立。練習產物應包含輸入、事件序列、最終狀態與錯誤位置，而不是只保存控制台截圖。",
+        "真實工程映射卡再列CreatePhoneLine、訂閱、RegisterPhoneLine、包裝轉發、UI更新五個位置。對每個位置寫物件身分與失敗輸出，找到公司代碼後就能沿這五點閱讀。Lab不使用PBX，不測試認證算法；這一限制不會妨礙你學會應用層歸屬、時序和狀態資訊如何保留。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：同樣一直顯示「註冊中」",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "案例甲與乙都顯示註冊中超過5秒。甲的網路記錄是REGISTER→200，line.State在診斷快照已成功，訂閱紀錄卻在Register後；乙記錄REGISTER→401→帶認證REGISTER→403，handler也收到Error，但包裝switch只寫成功分支。開始不能把兩案都歸密碼或網路，必須先問控制結果和狀態顯示在哪層不同。",
+        "甲修正為先訂閱後操作，並按SDK支持方式取得初始化快照；驗收快速響應和慢響應、重新配置、程式關閉後晚到事件。乙補失敗轉發與UI終態，不改正確密碼或伺服器；驗收403時撤銷准入並給出可追查錯誤、再次成功可恢復、A/B線互不影響。兩案的修正範圍都是已確認的程式邊界，差異在事件接收與事件表達。",
+        "真正伺服器拒絕仍是乙的輸入條件，不是UI修正能消除。修好顯示後，才能在清楚狀態下繼續查403原因。工程報告應分別寫“顯示卡住已修”“註冊拒絕仍需伺服器證據”；否則一次改變顯示會被誤報成電話系統恢復。你需要同時能說明根本操作與用戶可見狀態，才足以維護長期系統。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【分工】REGISTER 與 INVITE 差在哪裡？",
-      "answer": "REGISTER 是向電話系統登記目前可聯繫的位置／身分；INVITE 是建立一通通話的請求。"
+      "question": "【基礎】註冊、通話和媒體分別回答什麼問題？",
+      "level": "foundation",
+      "answer": [
+        "註冊描述賬號與聯絡位置／有效期；通話描述一次呼叫的建立與終止；媒體描述音訊如何流動。",
+        "註冊成功不是通話成功，InCall不是雙向聲音成功。",
+        "分別記錄line、call和媒體方向的證據，才能定位故障層。"
+      ]
     },
     {
-      "question": "【證據】RegisterPhoneLine 呼叫完成，就能說註冊成功嗎？",
-      "answer": "不能。要看伺服器回覆與對應線路的狀態事件；方法呼叫本身只代表發起。"
+      "question": "【基礎】UserName=1200、AuthenticationId=login-8，接不到1200時可以直接把認證名改1200嗎？",
+      "level": "foundation",
+      "answer": [
+        "UserName和認證身分負責不同角色，不能從名字不同推定錯誤。",
+        "先對照伺服器賬號與註冊綁定，檢查1200的路由和Contact。",
+        "只有認證資料確實不符才修改認證名；驗收註冊與來電分別測。"
+      ]
     },
     {
-      "question": "【401】第一筆 REGISTER 得到 401，一定是密碼錯嗎？",
-      "answer": "不一定。常見流程會先用 401 發出認證 challenge，再看有無帶認證的重送及最後回覆。"
+      "question": "【基礎】CreateSoftPhone(5000,10000)能代表註冊伺服器port=5000嗎？",
+      "level": "foundation",
+      "answer": [
+        "核對教學習慣中這是媒體端口範圍，不是遠端伺服器設置。",
+        "伺服器由SIPAccount的DomainHost/DomainPort等配置決定。",
+        "讀多載宣告和實值來源，不能把所有port視為同一參數。"
+      ]
     },
     {
-      "question": "【缺包】抓包沒看到 REGISTER，可以直接說 SDK 沒送嗎？",
-      "answer": "不行。先核對抓包網卡、位置、時間與篩選；再看程式方法／SDK 記錄。"
+      "question": "【應用】REGISTER1在10ms發、401在30ms到；REGISTER2在35ms發、200在80ms到；事件85ms、UI101ms。算三個延遲並結論。",
+      "level": "application",
+      "answer": [
+        "第二次請求到200：80-35=45ms。網路成功到事件：85-80=5ms。事件到UI：101-85=16ms。",
+        "首401是後續認證流程的挑戰，不能當作最終失敗。",
+        "這些是本次觀測差值，需確認同一line與請求；不能據此設所有環境45ms超時。"
+      ]
     },
     {
-      "question": "【200】SIP 200 OK 已到，但畫面說未註冊，下一步查什麼？",
-      "answer": "查對應線路的事件、事件轉發、過期或重新註冊的時間；不要只看單筆 200 OK 或 UI。"
+      "question": "【應用】L-A=Registered，L-B=Failed，包裝用anyRegistered開B按鈕。修正數據模型。",
+      "level": "application",
+      "answer": [
+        "全局布林丟失line歸屬，A成功使B誤獲准入。",
+        "按line ID或物件分別保存狀態，B按鈕和CreateCallObject都使用B的判斷。",
+        "回歸A/B成功失敗互換、未知line、重新配置，確保不會跨賬號串用。"
+      ]
     },
     {
-      "question": "【欄位】displayName 和 authenticationId 可不經核對直接填相同嗎？",
-      "answer": "不可。它們角色不同，值要依電話系統提供的配置核對。"
+      "question": "【應用】舊配置generation=3成功事件在generation=4已開始之後到達，當前4尚未成功。該怎麼處理？",
+      "level": "application",
+      "answer": [
+        "舊事件對應舊配置，不能升級新配置的狀態。",
+        "接收時核對物件與generation，在一致的同步規則內更新；舊事件可記錄但不應用當前UI。",
+        "測試3失敗/成功晚到、4成功及重新配置，驗證當前准入只由當前世代決定。"
+      ]
     },
     {
-      "question": "【邊界】註冊成功能證明來電與聲音一定正常嗎？",
-      "answer": "不能。來電路由、通話控制、媒體協商及音訊播放都要另外驗證。"
+      "question": "【診斷】客戶端沒有回應，伺服器卻記錄200已發；雙方時鐘差未知。先查甚麼？",
+      "level": "diagnosis",
+      "answer": [
+        "請求到達且伺服器發回應，範圍偏回應路徑或客戶端觀察，不支持完全沒到伺服器。",
+        "用請求身分、端點和伺服器本地事件順序關聯，避免直接減不同步時間戳。",
+        "查transport/NAT/抓包位置及客戶端是否接收，再定位SDK處理；驗收兩端關聯記錄與最終line狀態。"
+      ]
+    },
+    {
+      "question": "【診斷】200 REGISTER已確認、IncomingCall未觸發，但客戶端接口看見INVITE。列兩個應用候選原因及區別證據。",
+      "level": "diagnosis",
+      "answer": [
+        "可能來電訂在另一核心，或目標核心的事件轉發／過濾漏掉來電；也可能消息未被目標程式接收。",
+        "比較註冊core ID、IncomingCall訂閱publisher、網路接收與SDK紀錄；handler入口存在與否決定下一層。",
+        "修正確認的訂閱或過濾，回歸兩通連續來電與重註冊，不盲目改賬號或開放全部端口。"
+      ]
     }
   ],
   "recap": [
-    "註冊請求、伺服器回覆與 SDK 狀態事件是不同證據。",
-    "初次 401 可能是認證流程的一步，要看後續。",
-    "先定位失敗層級，再調整設定。"
+    "註冊是一組賬號到聯絡位置的有期限關係，不是聲道。",
+    "先訂閱再開始操作，保存line與配置世代，避免把舊成功套到新線。",
+    "認證、網路回覆、事件與UI需要分別驗證，修顯示不等於修伺服器拒絕。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 registration，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
+    }
   ],
   "sources": [
     {
-      "label": "Ozeki 官方 SIP 註冊範例",
-      "url": "https://voip-sip-sdk.com/p_7095-register-to-sip-pbx.html"
-    },
-    {
-      "label": "Ozeki 官方較新註冊教學",
+      "label": "Ozeki：SIPAccount與RegistrationStateChanged",
       "url": "https://voip-sip-sdk.com/p_7535-how-to-register-to-a-pbx-using-sip-account.html"
     },
     {
-      "label": "Ozeki 官方開發指南",
-      "url": "https://www.voip-sip-sdk.com/p_7332-voip-sdk-developers-guide.html"
+      "label": "RFC3261 §10 註冊、§22 認證",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261.html#section-10"
+    },
+    {
+      "label": "Ozeki：TLS配置與註冊事件",
+      "url": "https://www.voip-sip-sdk.com/p_7383-how-to-encrypt-voip-sip-calls-with-sip-encryption.html"
+    },
+    {
+      "label": "Microsoft：訂閱與解除事件",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/how-to-subscribe-to-and-unsubscribe-from-events"
     }
   ]
 }

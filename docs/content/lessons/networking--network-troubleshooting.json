@@ -1,186 +1,293 @@
 {
-  "intro": "這是〈電腦網路〉主題的整合練習。你會從一個模擬故障報告出發，先描述症狀和成功條件，再逐層檢查端點、名稱、位址、鏈路、路由、傳輸與程式回覆。重點是找出下一個最有辨識力的證據，不是猜一個最像的原因。",
-  "plan": [
-    {
-      "label": "建立故障定位順序",
-      "minutes": 9
-    },
-    {
-      "label": "分析三組模擬證據",
-      "minutes": 14
-    },
-    {
-      "label": "設計最小重測",
-      "minutes": 8
-    },
-    {
-      "label": "完成整合練習",
-      "minutes": 14
-    }
+  "contentVersion": 2,
+  "intro": "這一章把網路原理用於陌生故障：先建正常路徑，再提出能被反證的候選，透過分階段資料找到限制機制，並給出有回歸驗證的有限修正。讀者將練習完整推理，而非背一串工具。",
+  "prerequisites": [
+    "本章會用/27與TCP byte編號；需要時查路由及TCP章的對應例題。",
+    "故障資料是原創固定案例，未代表公司真實系統。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      19
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+  },
   "goals": [
-    "能寫出一份清楚的故障描述及成功標準。",
-    "能按 IP／Port、鏈路、路由、傳輸、應用回覆定位最後有證據的位置。",
-    "能判斷一項觀察支持什麼、尚未排除什麼。",
-    "能用一次只改一個條件的方式驗證候選原因。"
+    "由配置與程式碼重建正常請求/回覆路徑。",
+    "以可區分的預測安排多測點與最小變因。",
+    "根據下一輪資料更新假設，而非重複猜測。",
+    "寫出症狀、機制、修正、驗證及影響範圍。"
   ],
   "sections": [
     {
-      "heading": "先把「連不上」改寫成可檢查的問題",
+      "kind": "concept",
+      "heading": "排錯是檢驗模型，不是從症狀猜答案",
       "paragraphs": [
-        "一句「網路壞了」不足以開始除錯。先說明誰在什麼時間，使用什麼協定、來源與目的端點，做了什麼操作，預期什麼回覆，實際看見什麼。若程式使用名稱，也要記錄解析後的 IP。",
-        "成功標準要分層：能到主機、TCP 建立、收到應用回覆、設備完成動作，四者不等價。記下正常對照組，例如同一端點昨天可用、同網段另一台可用，但也要說清條件是否相同。"
+        "「連不上」至少可能指名稱無結果、路由無下一站、ARP失敗、TCP無法建立、資料流不完整、命令錯誤、業務排隊或UI未更新。先寫成功條件及失敗階段，讓同一名詞不再覆蓋不同機制。正常路徑是預測模型：輸入名稱應解析到哪個地址，哪個route勝出，ARP誰，哪邊監聽，傳送的bytes如何形成一訊息，何時需要應用結果。",
+        "候選假設必須給可觀測預測。例如H1是服務只繫結回環，則B表應127.0.0.1 Listen、外部SYN不匹配；H2是B應用不讀，則TCP建立且資料ACK，recv計數不前進，視窗可能縮小；H3是錯誤路線，則實際下一站與配置意圖不同，B沒見相符SYN。預測讓下一項資料可以支援或削弱候選，而不是所有輸出都能解釋成自己原猜測。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "觀測鏈怎樣從多可能性縮小到有限解釋",
+      "paragraphs": [
+        "沿A操作→解析→路由/鄰居→傳輸→B read/parse/處理→回覆→A read/parse/UI排列；每點先記資料源與時間窗。比較前後兩個測點有助於圈範圍，但缺證據不是直接證明某一具體裝置故障。抓錯介面、capture filter、截斷、掉包、時間偏移與log漏記都能改變觀測。先驗證測量器的涵蓋範圍，才把無資料當機制證據。",
+        "優先選能區分候選的測試，而不是最熟悉的工具。ping在TCP握手已成功的情況下資訊可能很少；B parser raw bytes則能區分缺終止符與處理錯誤。主動改動成本高時先用只讀資料；實際重現有條件時只改一個變數。修正後重新驗證到應用結果與未受影響功能，不止看原錯誤消失。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：完整正常路徑以計算而非名詞串接",
+      "paragraphs": [
+        "給A=192.0.2.70/26，gateway192.0.2.65，B=198.51.100.20:7000；A服務客戶端，B TCP listener繫結198.51.100.20。A /26 network為192.0.2.64，廣播.127，所以B不在本地；按/0經.65，ARP物件.65。A選來源Port55000，frame A-MAC→GW-MAC；無NAT時IP目的保持B。路由器轉送TTL減1，再查B本地MAC。",
+        "A ISN3000，SYN消耗1，8-byte查詢seq3001–3008，B ACK3009。B Read可能3+5，累積LF後解析STATUS?，回9-byte結果。應用日誌Q31從開始0ms至結果80ms，deadline500，滿足本次教學門檻。這個模型給出了每步預測；實際故障資料若偏離，應標最早不同處，不重查已證明的下游猜測。"
       ],
       "table": {
-        "caption": "把模糊報告寫成可查資料",
+        "caption": "例題一：完整正常路徑以計算而非名詞串接",
         "headers": [
-          "模糊說法",
-          "可查的描述"
+          "階段",
+          "正常預測",
+          "證據形式"
         ],
         "rows": [
           [
-            "「B 不通」",
-            "A 於 10:02 連 B 的 TCP 7000，connect 逾時"
+            "路由",
+            "/0→192.0.2.65",
+            "route與實際來源介面"
           ],
           [
-            "「有回應但還是不行」",
-            "TCP 建立且收到 ACK，但 2 秒內沒有應用回覆"
+            "鄰居",
+            "ARP .65得到GW-MAC",
+            "快取/雙端ARP"
           ],
           [
-            "「語音卡」",
-            "尖峰時段某方向音訊有突發丟包與斷續主觀回報"
+            "TCP",
+            "握手、ACK3009",
+            "五元組及SEQ/LEN"
+          ],
+          [
+            "B parser",
+            "3+5累積完整LF訊息",
+            "逐次RX與parse狀態"
+          ],
+          [
+            "應用結果",
+            "Q31 READY at80ms",
+            "相關ID與成功語意"
           ]
         ]
-      },
-      "note": "本章的 B 是虛構測試服務，不代表任何公司設備。"
+      }
     },
     {
-      "heading": "沿資料路徑查，不跨越沒有證據的段落",
+      "kind": "worked-example",
+      "heading": "例題二：時間差要先校準再推根因",
       "paragraphs": [
-        "可先畫 A 程式 → A 網路設定 → 本地鏈路 → 路由／政策 → B 網路設定 → B 程式 → 回覆。每到一段，問「看到了什麼」和「還沒有看到什麼」。",
-        "抓包若在 A 端只看見送出，不等於 B 已收到；B 端看見 TCP ACK，也不等於 B 程式已處理。某一點沒有封包時，先確認介面、時間和篩選正確。"
-      ],
-      "flow": [
-        "確認 A 的目的端點",
-        "確認本地鏈路與下一站",
-        "確認中間路徑",
-        "確認 B 收到與監聽",
-        "確認應用回覆與回程"
-      ],
-      "note": "路由可能不對稱；不要只追去程。"
-    },
-    {
-      "heading": "案例一：B 本機可連，A 遠端卻連不上",
-      "paragraphs": [
-        "模擬 B 在自己的電腦上用 127.0.0.1:7000 連線成功；A 連 B 的 198.51.100.20:7000 失敗。B 的監聽輸出只列出 127.0.0.1:7000。最直接的候選原因是服務只綁定回環位址。",
-        "但仍要確認是否有代理或轉發服務，以及 A 端是否另有路由問題。若在授權測試環境把服務改為適當的外部監聽位址，重測時保持其他條件不變，才較能判斷綁定是否關鍵。"
+        "A log顯示10:00:00.100送請求；B log顯示10:00:00.080收到；不能直接算網路−20ms。已確認B時鐘慢A40ms，則將B時刻加40，校正為A參考10:00:00.120，單向觀測差20ms。若同步誤差±5ms，這個差只能視為約15–25ms。日期、時區與時鐘偏差是三個問題，不能看到8小時就自動當網路延遲。",
+        "B同機單調計時記錄parse開始t=0、排隊結束t=300、工作完成t=350；這段queue300與processing50可直接相減，不需要A/B跨機同步。A總響應420ms，尚餘70ms可能含雙向網路與其他處理，但不能把420−350=70全部叫往返網路，因為邊界未完全對齊。先列起訖事件再相減，時間數字才支援機制。"
       ],
       "code": {
-        "title": "模擬證據組 A",
-        "text": "B 本機：連 127.0.0.1:7000 成功\nB 監聽：TCP 127.0.0.1:7000 LISTEN\nA 遠端：連 198.51.100.20:7000 失敗"
-      },
-      "note": "不要把 0.0.0.0 監聽當成通用修復方案；正式設定需考慮安全政策。"
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "A reference clock: TX 10:00:00.100\nB wall clock:      RX 10:00:00.080\nKnown correction:  B + 40ms -> 10:00:00.120\nObserved A-to-B difference: 20ms, synchronization uncertainty +/-5ms\nB monotonic: parse=0, dequeued=300, finished=350\nB queue=300ms; work=50ms\nA elapsed response=420ms; remaining spans are not all identified."
+      }
     },
     {
-      "heading": "案例二：A 送出 SYN，B 沒看到",
+      "kind": "code-reading",
+      "heading": "讓異常日誌儲存階段，而不是捕獲後寫同一句失敗",
       "paragraphs": [
-        "模擬 A 從 192.0.2.10 發往 198.51.100.20:7000，A 抓包有 SYN，B 的指定介面沒有。先確認雙端時間、抓包介面與篩選。若無誤，問題位於 A 送出之後、B 觀測點之前；可能涉及 A 路由、VLAN、閘道、中間路由、防火牆或 NAT。",
-        "下一個有辨識力的檢查是 A 的路由表及下一站、閘道與中間設備的對應紀錄。若 B 端抓到 SYN 但沒有 SYN/ACK，方向就轉向 B 的監聽、主機政策與回程，不必繼續猜中間鏈路。"
+        "假設所有異常都被catch(Exception)後寫「網路error」，原始connect、EOF、格式與deadline差異消失。下面原創片段將phase先設定再進入對應await/parser，失敗保留phase、elapsed與error type。這樣log是證據模型的輸出，不是只積累文字。trace/request代號幫助關聯同回合，實際bytes在相應階段另記錄。",
+        "Stopwatch量elapsed不隨一般系統校時改變；DateTimeOffset適合對人顯示絕對時間。它們不能互相替代。不要把所有異常自動重試：業務已經執行但結果未知，可能造成重複副作用。歸類後才按操作契約恢復。示範不實現公司API，也不是通用全異常捕獲模板。"
       ],
       "code": {
-        "title": "模擬證據組 B",
-        "text": "A 抓包：10:02:01  192.0.2.10:54000 → 198.51.100.20:7000  SYN\nB 端目標介面：同一時窗沒有相符封包\nA 路由表：下一站 192.0.2.1"
-      },
-      "note": "A 端看見送出不代表它一定已離開網卡；抓包機制與觀測位置仍要確認。"
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "string phase = \"created\";\nstring requestId = \"Q31\";\nvar elapsed = System.Diagnostics.Stopwatch.StartNew();\ntry {\n    phase = \"connect\";\n    await ConnectLabAsync();\n    phase = \"write\";\n    await WriteLabAsync();\n    phase = \"read-complete-message\";\n    byte[] reply = await ReadLabMessageAsync();\n    phase = \"parse-and-match\";\n    ParseLabReply(requestId, reply);\n    phase = \"application-success\";\n} catch (Exception e) {\n    Console.WriteLine($\"request={requestId} phase={phase} elapsedMs={elapsed.Elapsed.TotalMilliseconds:F1} error={e.GetType().Name}\");\n    throw; // preserve stack; outer policy decides recovery\n}\n// Lab methods mark responsibilities only; no vendor API is implied."
+      }
     },
     {
-      "heading": "案例三：TCP 已建立，命令沒有結果",
+      "kind": "maintenance",
+      "heading": "如何選擇工具與記錄改變前後",
       "paragraphs": [
-        "模擬 A 看見 SYN、SYN/ACK、ACK，也送出了應用資料。B 回了 TCP ACK，但 A 未收到業務回覆。這些證據顯示 TCP 連線與傳輸確認存在；它們沒有證明 B 程式已讀取完整訊息。",
-        "接著查 B 的程式 log：是否讀取、累積完整訊息、解析、排入處理、產生回覆？若 B 有送回覆，再比對雙端封包、A 讀取及解析。不要把「網路通」直接等於「程式對」。"
-      ],
-      "code": {
-        "title": "模擬證據組 C",
-        "text": "A：TCP 建立成功；送出 8 位元組命令\nB：TCP ACK 已送出；應用程式 log 尚未找到命令處理紀錄\nA：2 秒後 read timeout"
-      },
-      "note": "抓不到程式 log 不代表程式沒有處理；也可能記錄層級或時間戳不一致。"
+        "Windows ipconfig /all看配置，route print看候選路由，arp -a看鄰居，Get-NetTCPConnection看本機TCP端點；Test-NetConnection可對授權目標測試特定TCPPort。工具各驗證不同層。netstat顯示Established不能證明訊息正確；命令工具某時刻成功也不能替代故障那一刻程式的端點。過濾需保留IP、Port、protocol、PID及時間。",
+        "變更記錄至少包括原值、變值、預期影響、結果、回復方式及範圍。別一次改mask、DNS、埠、timeout四項後宣稱找到根因。可以有多個故障，例如binding修正讓握手成功，parser仍不接受。報告應明確第一階段已解決與下一階段現有證據，用累計機制模型持續推進。"
+      ]
     },
     {
-      "heading": "把假設轉成最小的重測",
+      "kind": "diagnostic-case",
+      "heading": "綜合情境A：有ACK，卻沒得到READY",
       "paragraphs": [
-        "一個好的重測只改一個條件，並清楚定義「改善」指標。例如改正目的 Port 後，原本沒有 SYN/ACK、現在有 SYN/ACK，這支持 Port 設定是連線問題的一部分；但若應用回覆仍失敗，仍有下一段要查。",
-        "記錄每一次變更前後的時間、設定、封包與程式結果。若沒有權限更動正式環境，就先用唯讀證據和隔離測試環境縮小範圍。"
+        "輸入：Q42 timeout500ms；A endpoint192.0.2.70:55001→B:7000；A Write8、peer ACK確認8；B log read3，隨後parser error，reply0。候選包含應用訊息格式、read邊界假設、處理例外。請先畫資料路徑，選要補哪項資料，不看答案先寫每個候選預測。",
+        "第二輪資料：第一次read=53 54 41，第二段54 55 53 3F 0A在網卡可見，程式碼在首個ReadAsync後立刻ParseCommand，且異常後結束接收任務。這組資料已足以設計一個有限修正及回歸，但需由練習回答機制與驗證。模型diagnose --fault重現同樣讀邊界假設；不是真實TCP包生成器。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "綜合情境B：名稱能解析，握手小包正常，大資料失敗",
+      "paragraphs": [
+        "輸入：同一目標/Port，小請求成功，大回覆卡住；有效rwnd一直充足。候選包括應用最大訊息限制、路徑MTU與反饋、負載掉包。第一輪只憑小包正常不夠區分。選擇能同時看B send長度、途經出口MTU、A接收長度與parser狀態的資料，避免先增加500ms期限。",
+        "第二輪：B send4096 application bytes，發出的IP packet1500 DF1；隧道出口1400記drop too-big；源端未得到ICMP反饋；A一直停在缺首段。請在練習中提出原因與修正邊界，並説明為何MSS策略不能自動修所有UDP。這個情境用MTU機制檢驗概念，不要求讀者操作生產閘道器。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：提交一份別人能獨立理解的故障報告",
+      "paragraphs": [
+        "執行 diagnose --fault與diagnose，逐行對照APP、CAP、SERVER資料。寫一段症狀、三項候選預測、最有辨識力的下一步、第二輪解釋、有限修正與回歸表。然後不用複製正文，完成下面陌生資料題的報告。若有SDK可改chunks輸入測試分段，但主要產物是因果說明，不能用多張PASS截圖替代。",
+        "正常模型只印固定成功，不能證明真實回歸透過。你必須提出真正應測的一次完整、任意分段、兩筆合併、EOF半筆、過長無終點、晚到結果等條件。每個測試說明預期和失敗如何解釋。復原模型，附上假設範圍、未涉及實際硬體、尚需授權檔案的專案。"
       ],
       "steps": [
-        "寫出候選原因及其預期可觀察結果。",
-        "選最小、可逆且有權限的檢查或變更。",
-        "保持其他條件不變，記下前後證據。",
-        "更新結論：支持、排除，或仍無法判斷。"
-      ],
-      "note": "教材的模擬案例不等於公司事故處置流程；現場應依授權與變更程序進行。"
+        "先給成功定義與正常路徑；列原始資料來源。",
+        "將候選寫成可反證預測，選擇只讀或最小變因。",
+        "取得模型第二輪資料後更新解釋，不刪掉原失敗資料。",
+        "填寫修正前後與回歸條件，最後用白話寫機制和影響範圍。"
+      ]
     },
     {
-      "heading": "完成本主題後，怎樣知道自己真的懂了",
+      "kind": "maintenance",
+      "heading": "達標是能推到陌生情境，並知道自己改了哪項契約",
       "paragraphs": [
-        "不用背完每個 RFC，也不必一開始就會設定交換器。你應能看到一段封包或 log 時，指出協定、端點、方向、下一站、可能的網路邊界，以及它究竟證明哪一步。",
-        "若仍覺得一串名詞散開，回到第一章的五個節點，再把本主題的 Ethernet、ARP、路由、DNS、TCP／UDP、NAT、MTU、QoS 等放到對應節點或路徑上。之後可獨立進入 Wireshark、Socket 或其他主題，不需把所有課程綁成一套公司架構。"
-      ],
-      "bullets": [
-        "能畫出一個請求與回覆的雙向路徑。",
-        "能把「沒有連上」細分成位址／路由／傳輸／應用的證據。",
-        "能提出下一個檢查及其預期結果。"
+        "現在的評價不是會列IP、ARP、TCP名詞，而是給一組新配置能算路徑；給一個時間線能區分階段；給程式能指出假設與協議衝突；給修正能解釋驗證覆蓋什麼。並非每次故障都有確定根因，如果新證據不區分候選，就應明確資料不足並選擇下一步，而不是換一句「未知」結束。",
+        "回顧概念時畫端到端與逐跳兩層圖：端到端有名稱、協議、訊息、TCP編號及應用結果；逐跳有路由、MAC、VLAN、MTU與佇列。把一個現象放回相應機制，才能決定要查程式、OS、鏈路或裝置。此能力可遷移到Wireshark、Socket與其他獨立主題，不等於已取得公司的實際架構。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "報告只寫「B 不通」。你至少要補哪些資訊，才能開始定位？",
-      "answer": "補來源與目的、協定與 Port、發生時間、操作與預期回覆、實際錯誤、是否用名稱、正常對照條件。"
+      "level": "foundation",
+      "question": "報告只寫「網路timeout」，至少補什麼才能選測試？",
+      "answer": [
+        "補操作成功條件、失敗階段、端點/協議、時間窗、版本與正常基準。",
+        "區分connect與應用read期限，並列已有bytes/狀態。",
+        "這些資料讓假設可做預測，再選擇區分測試。"
+      ]
     },
     {
-      "question": "B 只監聽 127.0.0.1:7000；A 要從遠端連 B 的對外 IP。最直接的候選原因是什麼？",
-      "answer": "服務只綁定本機回環位址；仍需確認是否存在代理／轉發，並用授權測試驗證。"
+      "level": "foundation",
+      "question": "為什麼握手成功後仍不能跳過訊息格式？",
+      "answer": [
+        "握手建立TCP狀態，byte stream不理解應用協議。",
+        "訊息邊界、編碼與業務語意仍由parser處理。",
+        "用raw bytes與parse狀態把傳輸和業務連起來驗證。"
+      ]
     },
     {
-      "question": "A 有 SYN，B 沒看到。能直接改 B 的應用程式嗎？",
-      "answer": "不宜。先確認抓包位置與時間，再查 A 的路由、下一站、中間路徑與政策；尚無證據表示 B 程式收到連線。"
+      "level": "application",
+      "question": "新A=10.4.5.99/27，G=10.4.5.97，B=10.4.6.1，畫ARP與IP目的。",
+      "answer": [
+        "/27 block32，.99在.96–.127，所以G同網段而B不匹配。",
+        "按gateway route先ARP.97，frame目的G-MAC，IP目的10.4.6.1。",
+        "回程B也需到A網路的route，單向有SYN不等於全程。"
+      ]
     },
     {
-      "question": "A 收到 SYN/ACK，但後續沒有應用回覆。哪兩組證據最重要？",
-      "answer": "看 B 是否收到並處理完整應用資料，以及 B 是否送出回覆；再對照 A 是否收到並解析。"
+      "level": "application",
+      "question": "A TX14:00:00.200，B RX14:00:00.180，B時鐘慢50ms±3，觀測單向差？",
+      "answer": [
+        "B校正加50為14:00:00.230。",
+        "差30ms，單純同步不確定度下約27–33ms。",
+        "工具時間戳精度等誤差另需計；不能先判−20ms網路。"
+      ]
     },
     {
-      "question": "A 端 ping B 成功，connect B:7000 失敗。能排除網路政策問題嗎？",
-      "answer": "不能。ICMP 與 TCP 7000 可能受不同政策處理；還要看監聽與 TCP 封包。"
+      "level": "diagnosis",
+      "question": "綜合A請說明原因、有限修正與三個回歸。",
+      "answer": [
+        "8bytes正確到達且首讀僅3，程式碼把read邊界誤當message邊界，異常後停止接收導致無回覆。",
+        "修正為有界累積直到LF再解析，保留未消費資料。",
+        "回歸完整8、3+5、兩筆合併，並補EOF半筆與過長限制；確認相符READY不是只看ACK。"
+      ]
     },
     {
-      "question": "改了目的 Port 後握手成功，但畫面仍顯示失敗。應如何更新結論？",
-      "answer": "Port 設定可能解決了連線階段；畫面失敗仍需查應用資料、回覆與畫面處理，不能宣稱整個故障已解決。"
+      "level": "diagnosis",
+      "question": "綜合B優先原因是什麼？兩項修正政策各需驗證什麼？",
+      "answer": [
+        "路由出口明確too-big DF drop而源端無反饋，符合PMTU反饋缺口；不優先判parser長度。",
+        "按正式政策允許適當反饋或調整隧道/相應TCP MSS，需要驗真實packet符合路徑與大結果完整。",
+        "兩方向、小/大負載回歸；UDP不因TCP MSS改變而必然修好，需獨立測。"
+      ]
     },
     {
-      "question": "要比較修正前後效果，為什麼應盡量只改一個條件？",
-      "answer": "否則無法辨認是哪個變更造成差異；應保持端點、時間窗口、測試方法等條件可比。"
+      "level": "diagnosis",
+      "question": "新資料：A收到全部回覆，Parse成功，UI仍舊值；網路要先怎麼改？",
+      "answer": [
+        "當前缺口在parse以後UI狀態/事件排程，傳輸已有完整結果證據。",
+        "查request/connection generation是否相符、UI更新是否丟棄或被舊回覆覆蓋。",
+        "修正本機狀態規則後測亂序與晚到，保留網路基準，不先改路由。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "變更mask與DNS與timeout同時後成功，可宣稱DNS唯一根因？",
+      "answer": [
+        "不能；多個變因共變無法分離貢獻。",
+        "在隔離環境按原基準分別變化，結合每段證據檢驗各候選。",
+        "若無法安全復現，報告確定改善與未確認機制，不編唯一根因。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新TCP seq4001 len100，ACK4101，但APP記錄read50後停止；已知與未知是什麼？",
+      "answer": [
+        "ACK4101支援對端TCP連續確認100bytes，APP只記錄50。",
+        "其餘是否未read、漏log或任務結束需要程式接收證據；不能說網路只傳50。",
+        "檢查讀迴圈/EOF/異常與快取，按訊息邊界驗證剩餘50的處理。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "測試只做20次空載成功，使用者高峰才失敗，該如何擴展驗收？",
+      "answer": [
+        "空載只驗證該條件，不覆蓋到達速率、佇列與資源競爭。",
+        "固定版本與請求，加入代表性併發/資料量，量應用tail、錯誤、queue、視窗及CPU。",
+        "預定門檻後比前後，同步保留失敗樣本與恢復過程，避免只報平均最好值。"
+      ]
     }
   ],
   "recap": [
-    "把症狀寫成可檢查的端點、時間、操作與結果。",
-    "沿雙向資料路徑找最後有證據、第一個沒證據的環節。",
-    "監聽、握手、ACK、應用回覆與設備結果不能互相代替。",
-    "選能區分候選原因的下一個觀測點，避免同時改很多設定。",
-    "本主題建立通用網路判斷力，不聲稱知道公司實際拓撲。"
+    "由配置與程式碼重建正常請求/回覆路徑。",
+    "以可區分的預測安排多測點與最小變因。",
+    "根據下一輪資料更新假設，而非重複猜測。",
+    "寫出症狀、機制、修正、驗證及影響範圍。"
   ],
   "sources": [
     {
-      "label": "RFC 9293：TCP 連線與確認",
+      "label": "IETF RFC 1812：路由轉送與下一站",
+      "url": "https://www.rfc-editor.org/rfc/rfc1812.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP狀態與資料交付",
       "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
     },
     {
-      "label": "RFC 791：IPv4 封包與路由基礎",
-      "url": "https://www.rfc-editor.org/rfc/rfc791.html"
+      "label": "IETF RFC 1191：MTU反饋機制",
+      "url": "https://www.rfc-editor.org/rfc/rfc1191.html"
     },
     {
-      "label": "RFC 2681：RTT 量測條件",
-      "url": "https://www.rfc-editor.org/rfc/rfc2681.html"
+      "label": "Microsoft：Test-NetConnection測試範圍",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/networking-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
+      "label": "網路維護 C# 讀碼模型（Program.cs）",
+      "description": "本章使用 diagnose 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/README.md",
+      "label": "實驗專案操作說明",
+      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
     }
   ]
 }

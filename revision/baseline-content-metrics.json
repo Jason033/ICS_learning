@@ -1,0 +1,2077 @@
+[
+  {
+    "topic": "networking",
+    "chapter": "one-conversation",
+    "title": "一次網路通訊的全貌",
+    "content_version": 1,
+    "body": 4633,
+    "paragraphs": 21,
+    "sections": 11,
+    "exercises": 9,
+    "answer_chars": 776,
+    "section_kinds": {
+      "untyped": 11
+    },
+    "exercise_levels": {
+      "untyped": 9
+    },
+    "sources": 6,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      13,
+      22
+    ],
+    "legacy_minutes": 60
+  },
+  {
+    "topic": "networking",
+    "chapter": "addresses-and-ports",
+    "title": "IP、Port 與端點",
+    "content_version": 1,
+    "body": 1802,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 5,
+    "answer_chars": 287,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 5,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      9
+    ],
+    "legacy_minutes": 40
+  },
+  {
+    "topic": "networking",
+    "chapter": "ethernet-vlan",
+    "title": "Ethernet、MAC、ARP 與 VLAN",
+    "content_version": 1,
+    "body": 1515,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 5,
+    "answer_chars": 201,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 35
+  },
+  {
+    "topic": "networking",
+    "chapter": "routes",
+    "title": "子網、閘道與路由",
+    "content_version": 1,
+    "body": 1431,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 5,
+    "answer_chars": 243,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      7
+    ],
+    "legacy_minutes": 40
+  },
+  {
+    "topic": "networking",
+    "chapter": "tcp-udp",
+    "title": "TCP、UDP 與應用程式回覆",
+    "content_version": 1,
+    "body": 1346,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 5,
+    "answer_chars": 205,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 2,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 40
+  },
+  {
+    "topic": "networking",
+    "chapter": "dns-dhcp-nat",
+    "title": "DNS、DHCP 與 NAT",
+    "content_version": 1,
+    "body": 1505,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 5,
+    "answer_chars": 177,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 35
+  },
+  {
+    "topic": "networking",
+    "chapter": "multicast",
+    "title": "單播、廣播、群播與 IGMP",
+    "content_version": 1,
+    "body": 1145,
+    "paragraphs": 8,
+    "sections": 4,
+    "exercises": 5,
+    "answer_chars": 186,
+    "section_kinds": {
+      "untyped": 4
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 35
+  },
+  {
+    "topic": "networking",
+    "chapter": "mtu-qos",
+    "title": "MTU、封包大小與 QoS",
+    "content_version": 1,
+    "body": 1170,
+    "paragraphs": 8,
+    "sections": 4,
+    "exercises": 5,
+    "answer_chars": 188,
+    "section_kinds": {
+      "untyped": 4
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 35
+  },
+  {
+    "topic": "networking",
+    "chapter": "performance",
+    "title": "頻寬、延遲、丟包與 Jitter",
+    "content_version": 1,
+    "body": 1222,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 5,
+    "answer_chars": 180,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 35
+  },
+  {
+    "topic": "networking",
+    "chapter": "network-troubleshooting",
+    "title": "網路故障整合練習",
+    "content_version": 1,
+    "body": 1919,
+    "paragraphs": 14,
+    "sections": 7,
+    "exercises": 7,
+    "answer_chars": 288,
+    "section_kinds": {
+      "untyped": 7
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      6,
+      10
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "first-capture",
+    "title": "第一次抓包：從開檔到找到請求",
+    "content_version": 1,
+    "body": 2020,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 6,
+    "answer_chars": 302,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 6
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      6,
+      9
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "packet-panes",
+    "title": "封包列表、細節與原始位元組",
+    "content_version": 1,
+    "body": 1569,
+    "paragraphs": 9,
+    "sections": 5,
+    "exercises": 5,
+    "answer_chars": 228,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 5
+    },
+    "sources": 2,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 40
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "filters",
+    "title": "擷取與顯示篩選器",
+    "content_version": 1,
+    "body": 1681,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 6,
+    "answer_chars": 282,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 6
+    },
+    "sources": 3,
+    "resources": 2,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 40
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "streams-statistics",
+    "title": "Follow Stream 與統計視窗",
+    "content_version": 1,
+    "body": 1620,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 6,
+    "answer_chars": 261,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 6
+    },
+    "sources": 3,
+    "resources": 2,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      7
+    ],
+    "legacy_minutes": 40
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "tcp-troubleshooting",
+    "title": "TCP 重試、ACK 與無回應",
+    "content_version": 1,
+    "body": 1585,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 6,
+    "answer_chars": 207,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 6
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "sip-rtp",
+    "title": "觀察 SIP 與 SDP 通話流程",
+    "content_version": 1,
+    "body": 1757,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 6,
+    "answer_chars": 214,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 6
+    },
+    "sources": 4,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "rtp-analysis",
+    "title": "RTP 串流、序號與 Jitter",
+    "content_version": 1,
+    "body": 1664,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 6,
+    "answer_chars": 273,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 6
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "wireshark",
+    "chapter": "evidence-and-logs",
+    "title": "封包與程式紀錄整合練習",
+    "content_version": 1,
+    "body": 1785,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 7,
+    "answer_chars": 341,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 3,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      9
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "ozeki",
+    "chapter": "read-a-call",
+    "title": "先看懂一通電話的物件與事件",
+    "content_version": 1,
+    "body": 1609,
+    "paragraphs": 9,
+    "sections": 5,
+    "exercises": 7,
+    "answer_chars": 365,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      7
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ozeki",
+    "chapter": "documentation-and-version",
+    "title": "辨認 SDK 版本與官方文件",
+    "content_version": 1,
+    "body": 1740,
+    "paragraphs": 8,
+    "sections": 5,
+    "exercises": 7,
+    "answer_chars": 302,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "ozeki",
+    "chapter": "registration",
+    "title": "註冊：設定、請求與回報",
+    "content_version": 1,
+    "body": 1812,
+    "paragraphs": 9,
+    "sections": 5,
+    "exercises": 7,
+    "answer_chars": 249,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ozeki",
+    "chapter": "calls-and-events",
+    "title": "撥接電話與通話事件",
+    "content_version": 1,
+    "body": 1681,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 7,
+    "answer_chars": 269,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ozeki",
+    "chapter": "media",
+    "title": "麥克風、喇叭與媒體連接",
+    "content_version": 1,
+    "body": 1647,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 7,
+    "answer_chars": 280,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ozeki",
+    "chapter": "lifecycle-and-events",
+    "title": "事件、資源清理與第二通問題",
+    "content_version": 1,
+    "body": 1531,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 7,
+    "answer_chars": 243,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "ozeki",
+    "chapter": "evidence-troubleshooting",
+    "title": "Ozeki 除錯整合練習",
+    "content_version": 1,
+    "body": 2129,
+    "paragraphs": 13,
+    "sections": 7,
+    "exercises": 8,
+    "answer_chars": 310,
+    "section_kinds": {
+      "untyped": 7
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      6,
+      11
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "serial",
+    "chapter": "serial-layers",
+    "title": "RS-232、串列設定與命令是三件事",
+    "content_version": 1,
+    "body": 1478,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 7,
+    "answer_chars": 224,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "serial",
+    "chapter": "electrical-and-wiring",
+    "title": "電氣規格、接線與控制線",
+    "content_version": 1,
+    "body": 1335,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 7,
+    "answer_chars": 269,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "serial",
+    "chapter": "uart-settings",
+    "title": "UART 參數與字元傳送",
+    "content_version": 1,
+    "body": 1219,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 7,
+    "answer_chars": 254,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "serial",
+    "chapter": "frame-and-timing",
+    "title": "資料格式、檢查碼與逾時",
+    "content_version": 1,
+    "body": 1663,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 7,
+    "answer_chars": 255,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      9
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "serial",
+    "chapter": "tools-and-loopback",
+    "title": "串列工具與軟體回環",
+    "content_version": 1,
+    "body": 1754,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 7,
+    "answer_chars": 206,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      5,
+      8
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "serial",
+    "chapter": "other-interfaces",
+    "title": "RS-422、RS-485 與其他介面",
+    "content_version": 1,
+    "body": 1374,
+    "paragraphs": 10,
+    "sections": 5,
+    "exercises": 7,
+    "answer_chars": 229,
+    "section_kinds": {
+      "untyped": 5
+    },
+    "exercise_levels": {
+      "untyped": 7
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "serial",
+    "chapter": "serial-troubleshooting",
+    "title": "串列通訊整合除錯",
+    "content_version": 1,
+    "body": 1839,
+    "paragraphs": 14,
+    "sections": 7,
+    "exercises": 8,
+    "answer_chars": 283,
+    "section_kinds": {
+      "untyped": 7
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      6,
+      10
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "radio",
+    "chapter": "tx-rx-path",
+    "title": "發射與接收：聲音走過哪些環節",
+    "content_version": 1,
+    "body": 1145,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 201,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "radio",
+    "chapter": "parameters",
+    "title": "頻率、通道、頻寬與波長",
+    "content_version": 1,
+    "body": 1097,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 226,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "radio",
+    "chapter": "modulation-and-coding",
+    "title": "調變、解調與數位符號",
+    "content_version": 1,
+    "body": 1108,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 143,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "radio",
+    "chapter": "rf-chain-and-antenna",
+    "title": "功率、dB、天線與 VSWR",
+    "content_version": 1,
+    "body": 1029,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 174,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "radio",
+    "chapter": "rssi-snr",
+    "title": "RSSI、SNR 與接收品質",
+    "content_version": 1,
+    "body": 1131,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 176,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "radio",
+    "chapter": "duplex-and-repeater",
+    "title": "收發方向、中繼台與基地台",
+    "content_version": 1,
+    "body": 1001,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 176,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      6
+    ],
+    "legacy_minutes": 45
+  },
+  {
+    "topic": "radio",
+    "chapter": "measurements-and-logs",
+    "title": "射頻觀測與可比較的紀錄",
+    "content_version": 1,
+    "body": 1049,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 198,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "radio",
+    "chapter": "radio-troubleshooting",
+    "title": "無線電通訊整合除錯",
+    "content_version": 1,
+    "body": 1274,
+    "paragraphs": 16,
+    "sections": 8,
+    "exercises": 9,
+    "answer_chars": 234,
+    "section_kinds": {
+      "untyped": 8
+    },
+    "exercise_levels": {
+      "untyped": 9
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 60
+  },
+  {
+    "topic": "ptt",
+    "chapter": "press-to-tx",
+    "title": "按下 PTT 之後，如何確認真的發射",
+    "content_version": 1,
+    "body": 1177,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 202,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ptt",
+    "chapter": "state-machine",
+    "title": "Ready、Busy、TX、RX 狀態",
+    "content_version": 1,
+    "body": 1187,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 175,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "ptt",
+    "chapter": "interface-box",
+    "title": "介面盒、COR／COS 與燈號",
+    "content_version": 1,
+    "body": 1111,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 181,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "ptt",
+    "chapter": "busy-and-grant",
+    "title": "通道忙碌與發話權",
+    "content_version": 1,
+    "body": 1097,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 161,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "ptt",
+    "chapter": "audio-timing",
+    "title": "PTT 與音訊的前後時序",
+    "content_version": 1,
+    "body": 1034,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 175,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ptt",
+    "chapter": "release-and-recovery",
+    "title": "放開、逾時與重連後狀態",
+    "content_version": 1,
+    "body": 1139,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 174,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ptt",
+    "chapter": "observability-and-logs",
+    "title": "把 PTT 紀錄寫成證據",
+    "content_version": 1,
+    "body": 1187,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 162,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "ptt",
+    "chapter": "ptt-troubleshooting",
+    "title": "PTT 整合除錯練習",
+    "content_version": 1,
+    "body": 1298,
+    "paragraphs": 16,
+    "sections": 8,
+    "exercises": 9,
+    "answer_chars": 189,
+    "section_kinds": {
+      "untyped": 8
+    },
+    "exercise_levels": {
+      "untyped": 9
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      7
+    ],
+    "legacy_minutes": 60
+  },
+  {
+    "topic": "sockets",
+    "chapter": "socket-flow",
+    "title": "Client 與 Server 的收送流程",
+    "content_version": 1,
+    "body": 1292,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 197,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "sockets",
+    "chapter": "tcp-udp-apis",
+    "title": "TCP 與 UDP 的 Socket 呼叫",
+    "content_version": 1,
+    "body": 1098,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 154,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 4,
+    "resources": 2,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "sockets",
+    "chapter": "message-boundaries",
+    "title": "訊息邊界與緩衝",
+    "content_version": 1,
+    "body": 1013,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 138,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      6
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "sockets",
+    "chapter": "binary-protocols",
+    "title": "二進位協定與位元組順序",
+    "content_version": 1,
+    "body": 964,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 95,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "sockets",
+    "chapter": "timeouts-and-readiness",
+    "title": "阻塞、逾時與可讀寫通知",
+    "content_version": 1,
+    "body": 1063,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 170,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "sockets",
+    "chapter": "disconnect-and-reconnect",
+    "title": "斷線、重試與重連",
+    "content_version": 1,
+    "body": 838,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 142,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "sockets",
+    "chapter": "logs-and-debugging",
+    "title": "用 Socket 紀錄定位問題",
+    "content_version": 1,
+    "body": 1119,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 155,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "sockets",
+    "chapter": "socket-troubleshooting",
+    "title": "Socket 整合除錯練習",
+    "content_version": 1,
+    "body": 1179,
+    "paragraphs": 18,
+    "sections": 9,
+    "exercises": 9,
+    "answer_chars": 230,
+    "section_kinds": {
+      "untyped": 9
+    },
+    "exercise_levels": {
+      "untyped": 9
+    },
+    "sources": 5,
+    "resources": 2,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 60
+  },
+  {
+    "topic": "voip",
+    "chapter": "call-vs-audio",
+    "title": "通話建立與聲音傳送",
+    "content_version": 1,
+    "body": 1000,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 145,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 50
+  },
+  {
+    "topic": "voip",
+    "chapter": "sip-roles-registration",
+    "title": "SIP 角色與註冊",
+    "content_version": 1,
+    "body": 954,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 164,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 2,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "voip",
+    "chapter": "sip-call-flow",
+    "title": "一通 SIP 電話的流程",
+    "content_version": 1,
+    "body": 1012,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 93,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 2,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "voip",
+    "chapter": "sdp-offer-answer",
+    "title": "SDP 與媒體協商",
+    "content_version": 1,
+    "body": 1133,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 129,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "voip",
+    "chapter": "rtp-rtcp",
+    "title": "RTP／RTCP 與封包判讀",
+    "content_version": 1,
+    "body": 987,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 122,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "voip",
+    "chapter": "audio-path",
+    "title": "從麥克風到喇叭",
+    "content_version": 1,
+    "body": 926,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 163,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "voip",
+    "chapter": "codecs-packetization",
+    "title": "Codec 與封包化",
+    "content_version": 1,
+    "body": 1132,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 94,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 5,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "voip",
+    "chapter": "jitter-and-quality",
+    "title": "抖動緩衝與音質",
+    "content_version": 1,
+    "body": 798,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 146,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "voip",
+    "chapter": "voip-troubleshooting",
+    "title": "VoIP 整合除錯練習",
+    "content_version": 1,
+    "body": 1161,
+    "paragraphs": 20,
+    "sections": 10,
+    "exercises": 9,
+    "answer_chars": 196,
+    "section_kinds": {
+      "untyped": 10
+    },
+    "exercise_levels": {
+      "untyped": 9
+    },
+    "sources": 6,
+    "resources": 2,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 65
+  },
+  {
+    "topic": "integration",
+    "chapter": "trace-an-action",
+    "title": "追查一次操作的程式路徑",
+    "content_version": 1,
+    "body": 1277,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 185,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      4,
+      6
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "integration",
+    "chapter": "layers-and-ownership",
+    "title": "包裝層、物件關係與生命週期",
+    "content_version": 1,
+    "body": 993,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 136,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "integration",
+    "chapter": "read-an-icd",
+    "title": "怎麼讀 API Manual 與 ICD",
+    "content_version": 1,
+    "body": 1127,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 166,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 60
+  },
+  {
+    "topic": "integration",
+    "chapter": "commands-and-events",
+    "title": "命令、回覆與事件",
+    "content_version": 1,
+    "body": 1144,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 121,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 4,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "integration",
+    "chapter": "sessions-and-state",
+    "title": "連線、驗證與狀態",
+    "content_version": 1,
+    "body": 879,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 131,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "integration",
+    "chapter": "audio-and-device-boundaries",
+    "title": "音訊與設備控制的分界",
+    "content_version": 1,
+    "body": 938,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 120,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "integration",
+    "chapter": "errors-and-recovery",
+    "title": "錯誤、逾時與重連後恢復",
+    "content_version": 1,
+    "body": 816,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 148,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "integration",
+    "chapter": "correlate-evidence",
+    "title": "跨層紀錄與證據對齊",
+    "content_version": 1,
+    "body": 994,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 117,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "integration",
+    "chapter": "integration-troubleshooting",
+    "title": "整合程式除錯練習",
+    "content_version": 1,
+    "body": 1213,
+    "paragraphs": 20,
+    "sections": 10,
+    "exercises": 9,
+    "answer_chars": 201,
+    "section_kinds": {
+      "untyped": 10
+    },
+    "exercise_levels": {
+      "untyped": 9
+    },
+    "sources": 5,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 65
+  },
+  {
+    "topic": "reliability",
+    "chapter": "timeouts",
+    "title": "逾時與整體期限",
+    "content_version": 1,
+    "body": 966,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 229,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "reliability",
+    "chapter": "retries-and-idempotency",
+    "title": "重試、退避與避免重複執行",
+    "content_version": 1,
+    "body": 995,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 191,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "reliability",
+    "chapter": "liveness-and-recovery",
+    "title": "心跳、重連與恢復",
+    "content_version": 1,
+    "body": 956,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 194,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 4,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "reliability",
+    "chapter": "queues-and-backpressure",
+    "title": "佇列、緩衝與背壓",
+    "content_version": 1,
+    "body": 936,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 186,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "reliability",
+    "chapter": "event-ordering",
+    "title": "重複、亂序與舊事件",
+    "content_version": 1,
+    "body": 868,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 206,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "reliability",
+    "chapter": "concurrency",
+    "title": "執行緒與共享狀態",
+    "content_version": 1,
+    "body": 955,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 163,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 2,
+    "resources": 1,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 60
+  },
+  {
+    "topic": "reliability",
+    "chapter": "async-event-loops",
+    "title": "非同步與事件迴圈",
+    "content_version": 1,
+    "body": 800,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 159,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "reliability",
+    "chapter": "observability-and-load",
+    "title": "負載、紀錄與恢復驗證",
+    "content_version": 1,
+    "body": 797,
+    "paragraphs": 12,
+    "sections": 6,
+    "exercises": 8,
+    "answer_chars": 172,
+    "section_kinds": {
+      "untyped": 6
+    },
+    "exercise_levels": {
+      "untyped": 8
+    },
+    "sources": 3,
+    "resources": 0,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      4
+    ],
+    "legacy_minutes": 55
+  },
+  {
+    "topic": "reliability",
+    "chapter": "reliability-troubleshooting",
+    "title": "可靠性與並行除錯練習",
+    "content_version": 1,
+    "body": 1014,
+    "paragraphs": 18,
+    "sections": 9,
+    "exercises": 9,
+    "answer_chars": 256,
+    "section_kinds": {
+      "untyped": 9
+    },
+    "exercise_levels": {
+      "untyped": 9
+    },
+    "sources": 5,
+    "resources": 2,
+    "study_time": null,
+    "reading_estimate": [
+      3,
+      5
+    ],
+    "legacy_minutes": 65
+  }
+]

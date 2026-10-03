@@ -1,164 +1,265 @@
 {
-  "intro": "RTP 封包能讓你觀察音訊資料的連續性與時間線；RTCP 提供接收與統計回報。但封包欄位不是耳朵，只有在正確抓包點與足夠資料下才有解釋力。",
-  "plan": [
-    {
-      "label": "建立基礎概念",
-      "minutes": 12
-    },
-    {
-      "label": "讀教學例子",
-      "minutes": 14
-    },
-    {
-      "label": "對照證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "實時聲音需要的不只是把bytes送到，還要知道哪份資料屬於哪個來源、哪段時間以及何時可以播放。RTP提供這些標識，RTCP把接收視角與時鐘關係送回參與者。本章從原始標頭到序號、時戳、回報區間與RTT計算，建立能讀實際封包和統計的基礎。",
+  "prerequisites": [
+    "理解 SDP 指定媒體端點與格式；會看一組 IP／Port 的傳送方向。",
+    "知道音訊是依時間排列的樣本；本章會定義 sequence、timestamp、SSRC 與 clock。"
   ],
   "goals": [
-    "能讀 RTP 序號、時間戳、SSRC、Payload Type。",
-    "能區分 RTP 與 RTCP 的用途。",
-    "能正確描述合成 PCAP 缺少序號 302 的限制。"
+    "能解釋RTP字段、媒體時鐘與來源生命週期。",
+    "能區分捕捉缺口、媒體時間缺口及RTCP接收者報告。",
+    "能計算封包時間、報告分母與RTT，並說明不能推導的品質結論。"
   ],
   "sections": [
     {
-      "heading": "RTP 每筆有哪些線索",
+      "kind": "concept",
+      "heading": "RTP的責任：媒體帶時間，運輸仍可能不完整",
       "paragraphs": [
-        "RTP Sequence Number 讓同一來源的封包有順序線索；Timestamp 標示媒體時間；SSRC 標示同步來源；Payload Type 依 profile／SDP 解釋負載格式。",
-        "序號不是電話號碼，時間戳不是電腦日期。換一個方向或 SSRC，不應把兩條序列硬接在一起。"
+        "RTP通常承載在UDP上，每筆包含媒體payload及說明順序、時鐘和來源的標頭。UDP保留datagram邊界，卻不保證到達、順序或不重複；RTP給接收方恢復播放次序與判讀缺口所需信息。它不是另一個TCP，沒有自動確保所有舊媒體最終送到。實時任務有期限，遲到的舊資料可能不值得阻擋新聲音。",
+        "RTP可承載音頻、視頻或其他實時資料，不是看到rtp就一定真人語音。媒體格式由profile與協商描述。工具可以識別標頭，卻仍可能沒足夠條件解碼payload。接收應用要分組、緩衝、按時間播放與處理缺口；這些是網絡封包上方的責任。",
+        "RTCP與RTP配套提供參與者、統計及同步控制信息，通常不是同樣音頻負載。兩者可在不同Port或協商複用，不能永遠把RTP Port+1當絕對規則。本文以普通獨立協議概念起步，實際Port和安全profile以本會話SDP及產品契約爲準。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "固定標頭到擴展：定位payload必須按結構",
+      "paragraphs": [
+        "RTP固定部分最少12bytes：第一byte含版本、padding、extension和CSRC數量，第二含Marker與Payload Type，隨後16bit seq、32bit timestamp、32bit SSRC。若有CSRC清單、header extension或padding，payload邊界會變；不能永久從offset12讀編碼內容。版本2是格式條件，不能僅因Port在40000就把任意bytes當RTP。",
+        "Seq通常每發一個RTP包增1，用於觀察包次序；timestamp隨媒體時間推進，不一定每包增同一值；SSRC區分同步來源。Marker由profile解釋，可能指talkspurt等邊界，並非所有情況下都表示按下PTT。Payload Type指當前會話的格式映射，不是聲音內容已解碼證明。",
+        "CSRC在混音場景可列 contributing sources，SSRC是這條輸出同步源，兩者不必等同某個人。媒體中繼可能換SSRC或保留部分字段，實際身份映射需服務器日誌與協議說明。基礎關係清楚後，看到一個人多條來源或一個來源多人混音便不再困惑。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "雙向、SSRC、繞回與重新開始如何界定序列",
+      "paragraphs": [
+        "兩個方向用不同來源與時鐘，seq100和seq300不能接成一條。相同IP/Port也可能不同SSRC；同SSRC在新的會話重啓後也需結合時間與狀態判斷。序號16bit到65535回0，timestamp32bit也會循環，長窗口計算應做模數與擴展序號處理。",
+        "抓包開始在中途時，你不知道最初多少包，也可能沒SDP；此時只能講窗口內觀察範圍。重排導致較小seq後來出現，不是每次回退都代表重啓。重複seq若相同來源同媒體時刻可視爲重複候選，仍需檢查payload與生命週期。工具統計依歷史狀態，短文件可能缺必要上下文。",
+        "丟失的概念也要分清：某序號當前檔未收錄、發送端未產生、路徑未到、接收應用遲到丟棄，四者不同。只用一端PCAP可以標缺口，雙端對照加擷取完整性可縮小路徑，播放log可判斷期限。不要把每種缺口統一叫網絡丟包。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：媒體時間、序號與payload交叉驗證",
+      "paragraphs": [
+        "給PCMU/8000單聲道來源，seq500、501、502，timestamp32000、32160、32320，每包160bytes。Seq逐包增1，timestamp差160/8000＝.020秒，160個8bit PCMU樣本也爲20ms，三種規則互相吻合。即使timestamp絕對32000，不能說採樣發生電腦第4秒，因爲起點可不是牆鍾零。",
+        "若下筆seq503 timestamp32640 payload320bytes，差320代表距上一包起點40ms，而payload320代表該包可裝40ms；但前一20ms資料與這次起點之間還需解釋是否有時間跳躍或不同packetization。不能只見seq連續就斷言每段媒體連續，需要考慮前一包媒體長度與下一起點。",
+        "若換Opus，RTP時鐘48000，20ms增960，但payload未必960bytes，壓縮格式不能拿timestamp差當byte長。這說明時鐘、編碼和包結構各負責不同維度；公式由格式條件確定，而非全系統背160。"
       ],
       "table": {
-        "caption": "讀 RTP 標頭時先問",
+        "caption": "PCMU/8000例子的三個單位",
         "headers": [
-          "欄位",
-          "能幫助什麼",
-          "不能直接證明"
+          "量",
+          "數值",
+          "規則"
         ],
         "rows": [
           [
-            "Sequence Number",
-            "觀察連續性",
-            "缺口在哪一台設備發生"
+            "包序",
+            "500→501",
+            "每包通常加1"
           ],
           [
-            "Timestamp",
-            "對照媒體時間",
-            "主機時鐘日期"
+            "媒體時刻",
+            "32000→32160",
+            "160/8000=20ms"
           ],
           [
-            "SSRC",
-            "分開同步來源",
-            "使用者真實身分"
-          ],
-          [
-            "Payload Type",
-            "按協商辨識編碼",
-            "解碼一定成功"
+            "負載",
+            "160bytes",
+            "每樣本1byte，共160樣本"
           ]
         ]
       }
     },
     {
-      "heading": "20 ms 的示範算式",
+      "kind": "mechanism",
+      "heading": "RTCP Sender Report與Receiver Report各表達什麼",
       "paragraphs": [
-        "在 8000 Hz 的 RTP 音訊時鐘下，20 ms 相當於 160 個時間戳單位。如果每包恰好含連續 20 ms 媒體，下一包 timestamp 常增加 160。",
-        "這是教學條件，不是任何兩包都必差 160；靜音抑制、封包化時間、丟包或重新開始會改變觀測。"
+        "Sender Report可給出發送者的NTP時間與相應RTP timestamp，建立媒體時鐘和絕對時間的關聯，同時報告發送計數。Receiver Report描述某個接收者對某來源的接收統計，包括fraction lost、cumulative lost、extended highest sequence、interarrival jitter及上次SR相關時間。RR是接收者視角，不是第三方抓包的全局真相。",
+        "來源描述SDES可含CNAME等用於識別與同步關聯，BYE表示來源離開；這裏的BYE是RTCP packet類型，不是SIP BYE請求。名字相同卻在不同層，不可以混用狀態處理。解讀多個來源時，將reporter和被報告SSRC分開，知道是誰說誰的品質。",
+        "回報按自己的累計歷史與區間生成，抓包工具只見一個短窗時未必得到相同統計。重複、probation、會話重啓和實現細節會影響計數。沒有RTCP在當前檔不證明RTP無效；本套件實際無RTCP，所以以下RR/SR數值是明確給定的紙上模型，不謊稱能在PCAP點到這些包。",
+        "SR中的NTP/RTP對應幫助把媒體時間映射到一個絕對參考，也可協助多媒體同步；但接收者和發送者的牆鍾是否對齊仍是另一個條件。讀到對應關係不自動知道麥克風到喇叭單程延遲，因爲還有錄音、編碼、緩衝與輸出階段。需要明確樣本起點、同步誤差和播放時刻纔可相減。",
+        "時鐘映射可隨持續運作校正，不能把一筆SR對應無限外推而忽略硬體drift。若音頻與視頻由不同clock計數，分別建立映射後才比較同一時刻。源重新開始或換SSRC時重建關聯，避免舊基準製造虛假跳變。"
       ]
     },
     {
-      "heading": "合成檔的雙向序列",
+      "kind": "worked-example",
+      "heading": "例題二：報告的區間分母與fraction量化",
       "paragraphs": [
-        "A→B 有 seq 100～104；B→A 有 300、301、303、304，各有不同 SSRC。此檔沒有 B→A 的 302。",
-        "只能說在這份擷取資料中沒收錄 302；可能沒送、途中未到、抓包漏掉或觀測窗不完整，不能單憑缺口定位網路故障。"
+        "假設某接收者上次統計expected1000、received990，現在expected1200、received1180，模型把received按可比較的有效計數給定。累計缺失現在1200－1180＝20；本區間expected增加200、received增加190，所以本區間缺10。區間比例10/200＝5%，與累計20/1200≈1.67%不是同一個量。",
+        "RTCP fraction lost用8bit分數單位1/256表達區間比例，5%×256＝12.8，取整12對應12/256≈4.6875%。因此報告整數12不表示12包也不表示12%；要按該字段單位和量化解釋。實際RFC接收計數可受重複等影響，不應直接把手工unique統計當所有產品RR實現。",
+        "若下一期間expected200而收到200，區間fraction可爲0，但累計先前20仍存在；不能說原故障從沒發生。報告解讀需同時看區間、累計、來源與重啓。這類機制也適合維護報表：把每個數的分母與窗口寫出來，外行才知道改善指本期還是全部歷史。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "Jitter與RTT：媒體變化和往返時間不要混淆",
+      "paragraphs": [
+        "RTP到達抖動估計先把到達R與媒體S統一成RTP時鐘單位，D=(Rj－Ri)－(Sj－Si)，J以1/16平滑絕對變化。它描述相對傳輸時間的變化，不是單程延遲或主觀品質。8000Hz下J80單位是10ms，48000Hz下同80單位約1.67ms，必須結合該來源clock。",
+        "RTCP回報LSR是上次收到的Sender Report的NTP中間32bits，DLSR是接收SR後到送RR前的等待，單位1/65536秒。發送者收到RR時可用自己當前相同格式時間A，算RTT=A－LSR－DLSR，考慮迴繞與有效條件。這排除對方等待時間，估計往返，不直接拆出單程。",
+        "完整數例A100000、LSR92000、DLSR3000，差5000單位，5000/65536秒≈76.29ms。若LSR不存在或爲0等不可用情況，不能硬算；若時鐘或對應報告錯誤產生負值，也需查關聯。報告有數不等於每個數都可無條件用於測量。"
+      ]
+    },
+    {
+      "kind": "concept",
+      "heading": "媒體質量還受緩衝、編碼與播放鏈影響",
+      "paragraphs": [
+        "相同packet loss下，不同codec與丟包隱藏可能有不同聽感；同樣jitter下，不同緩衝期限可產生不同late drop。網絡完全及時且完整仍可因解碼CPU、裝置 underrun或音量無聲。RTCP統計幫助接收方回報候選，不能單字段宣佈真人聽起來幾分。",
+        "實時系統可考慮適應位率、packetization或緩衝，但每項有代價。減負載可減少壓力但可能影響聲音品質，延長等待可降低晚到但增加互動遲滯。PTT或雙向電話常對反應敏感，調參應按業務目標同時測多項結果，而非只把loss或jitter數字壓到0。",
+        "本套件固定靜音和短窗口無法做有效主觀品質測試。它仍能教標頭、序列與時鐘，這是知識範圍而不是內容省略理由；真實驗證需要授權音頻、雙端計數、編碼與播放日誌、足夠樣本和一致窗口。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：獨立覈算序列與一份RTCP模型",
+      "paragraphs": [
+        "在mixed選lab-a，分SSRC讀取seq與timestamp，用出向20包作正常基準，再看入向總20唯一19、缺305與重複312。保持原到達順序，記錄308晚於309；換reference檢查305出現。這驗證序列機制而不是聲卡效果。",
+        "用本章expected/received模型建報告表，算累計20、區間10/200、fraction12；將received當前改1190，保持上次990，推新區間損失0而累計10。另將clock8000改48000，對同J80單位換算，說明變因是單位不是網絡更快。RTT模型按給定數字列中間步驟。",
+        "驗收需要明確誰回報哪個來源、哪個窗口、哪個分母，以及哪些包實際在PCAP、哪些只是文字模型。TShark選做rtp字段導出；當前製作環境未有Wireshark/TShark，原bytes獨立驗證，不能宣稱GUI RTCP報告已測試。計算項目的jitter與deadline可復跑作爲另一個固定輸入。"
       ],
       "code": {
-        "title": "Lab-Call-A：兩個方向不能混算",
-        "text": "A→B: SSRC 0x11111111, seq 100 101 102 103 104\nB→A: SSRC 0x22222222, seq 300 301 303 304\nB→A seq 302：此合成檔未收錄"
+        "title": "給定單位的RTT模型，不是讀取真實RTCP",
+        "text": "double a = 100000, lsr = 92000, dlsr = 3000;\ndouble rttSeconds = (a - lsr - dlsr) / 65536.0;\n// 約0.076293945秒；實際需要有效LSR、報告對應與迴繞處理。"
       }
     },
     {
-      "heading": "RTCP 做回報，不載同樣的音訊",
+      "kind": "diagnostic-case",
+      "heading": "報告高loss但當前抓包完整：不同窗口或真實差異",
       "paragraphs": [
-        "RTCP 伴隨 RTP 提供控制與接收品質資訊，如 Sender Report、Receiver Report。接收報告可帶封包遺失及 interarrival jitter 等統計，解讀時還要看測量區間與接收者位置。",
-        "沒有看到 RTCP 不代表 RTP 一定無效；此合成 PCAP 沒有 RTCP 封包，所以不能練習讀實際 RTCP 報告。"
-      ]
-    },
-    {
-      "heading": "Jitter 數值與主觀感受不同",
-      "paragraphs": [
-        "RTP／RTCP 的 interarrival jitter 是依封包到達與時間戳估算的變動，並非「人耳感到的抖動分數」，也不能單獨等同端到端延遲。",
-        "樣本很少時統計不穩定。若要判斷實際通話，還要看接收端緩衝、晚到丟棄、解碼與主觀或設備觀測。"
-      ]
-    },
-    {
-      "heading": "抓包位置決定結論範圍",
-      "paragraphs": [
-        "發送端抓到 302、接收端沒抓到，較支持兩觀測點之間有缺口，但仍要排除抓包漏記與時鐘差。只在一端抓到的封包，不會自動證明另一端應用已收到。",
-        "合成 PCAP 適合練欄位；實際診斷需在允許的環境選正確介面與觀測點，並保護通話資料。"
+        "症狀RR累計損失高，當前端點抓包seq連續。候選一是舊窗口累積，候選二是RR來自另一接收點或來源，候選三是抓包窗口太短，候選四是接收程序遲滯或計數規則不同。先覈對reporter、SSRC、報告時刻與序號範圍，不直接認定RR錯。",
+        "追加證據：RR累計20，但新區間fraction0，當前檔正覆蓋新窗口，說明歷史故障仍在累計數。有限動作是修正報表的區間比較，不改網絡。另一證據版本若RR確指同新窗口、抓包完整而播放late_drop高，繼續查媒體期限；網絡到達統計與播放可用量不同。",
+        "迴歸用足夠長一致窗口比較發送、接收、RR與播放統計，記錄去重與來源重啓規則。能夠解釋四張表爲什麼不同，纔是中級維護能力；把一項高數改稱低數或隱藏Expert warning沒有解決機制。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【欄位】RTP 時間戳是系統日期嗎？",
-      "answer": "不是；它標示媒體取樣時間。"
+      "level": "foundation",
+      "question": "RTCP BYE與SIP BYE爲何不能共用一個狀態處理？",
+      "answer": [
+        "前者屬於RTP來源離開控制，後者是SIP會話終止請求，層級和關聯規則不同。",
+        "按實際來源、dialog與SDK事件映射更新狀態，不由名字直接等同。",
+        "驗證來源切換與會話結束分別正確清理，避免一個流離開結束全部電話。"
+      ]
     },
     {
-      "question": "【算式】8000 Hz、20 ms 對應多少 timestamp 單位？",
-      "answer": "160。"
+      "level": "foundation",
+      "question": "Jitter80能直接叫80ms嗎？",
+      "answer": [
+        "不行，先確定字段是否以RTP clock單位或工具已換毫秒顯示。",
+        "若原RTCP80單位、clock8000，是80/8000秒10ms；不同clock結果不同。",
+        "記錄單位與來源，勿把它叫單程延遲或人耳分數。"
+      ]
     },
     {
-      "question": "【分流】A→B seq 104 和 B→A seq 300 可接成一條嗎？",
-      "answer": "不能；方向及 SSRC 不同。"
+      "level": "application",
+      "question": "新資料：clock16000，連續30ms媒體，timestamp應增多少？payload必480bytes嗎？",
+      "answer": [
+        "16000×.03＝480個時鐘單位。",
+        "payload長度取決於編碼、聲道與封包格式，不能從timestamp直接推480bytes。",
+        "按有效map與編碼規則覈對；PCM16bit單聲道可能960bytes，但壓縮格式另算。"
+      ]
     },
     {
-      "question": "【缺口】這份 PCAP 沒 302，可斷言網路丟包嗎？",
-      "answer": "不能；只能說此檔沒有收錄。"
+      "level": "application",
+      "question": "新資料：expected上次200、現在500，received上次198、現在491。算累計與本區間損失。",
+      "answer": [
+        "累計500－491＝9。區間expected300，received293，損失7。",
+        "區間7/300≈2.33%，累計9/500＝1.8%，分母不同。",
+        "需要字段量化與計數規則，不能只給一個9說是9%丟失。"
+      ]
     },
     {
-      "question": "【用途】RTCP 與 RTP 主要差別？",
-      "answer": "RTP 載即時媒體；RTCP 提供相關控制與統計回報。"
+      "level": "application",
+      "question": "新資料：RR fraction整數64。該字段比例和含義是什麼？",
+      "answer": [
+        "64/256＝.25即25%區間分數，不是64包。",
+        "確認報告對象與統計期間，累計loss是另一字段。",
+        "若當前窗不同，不直接跟手工loss比例比較；先對齊來源與範圍。"
+      ]
     },
     {
-      "question": "【限制】合成檔有 RTCP 報告可讀嗎？",
-      "answer": "沒有；此檔只含 SIP 和 RTP。"
+      "level": "application",
+      "question": "新資料：A150000、LSR140000、DLSR4000，算RTTms。能推單程必一半嗎？",
+      "answer": [
+        "差6000單位，6000/65536×1000≈91.55ms。",
+        "它是去對方等待後的往返估計，路徑未必對稱，不能必定單程45.78。",
+        "確保有效對應與單位，缺LSR或關聯錯不硬算。"
+      ]
     },
     {
-      "question": "【PT】Payload Type 需結合什麼解讀？",
-      "answer": "RTP profile 及本次 SDP 協商。"
+      "level": "diagnosis",
+      "question": "同IP的兩個SSRC都seq1起，工具說大缺口。該先補什麼？",
+      "answer": [
+        "確認是否分別分源及是否新會話重啓，不能合成連續seq。",
+        "查SDP、來源生命週期、開始窗口與原始header，重新分組。",
+        "正確分組後再算缺口並雙點驗證，不直接修網絡。"
+      ]
     },
     {
-      "question": "【品質】RTCP jitter 高能單獨證明使用者聽到斷續嗎？",
-      "answer": "不能；需接收緩衝、晚到、解碼與播放證據。"
+      "level": "diagnosis",
+      "question": "RTCP jitter不高但音頻斷續，接收解碼queue持續增長。有限修正與驗收？",
+      "answer": [
+        "較支持本地處理供不應求，網絡統計不覆蓋所有音訊鏈。",
+        "查解碼工作、線程與消費能力，保持同輸入優化具體瓶頸。",
+        "迴歸queue穩定、播放deadline與功能，同時保持媒體網絡基準，不能只調jitter等待。"
+      ]
     }
   ],
   "recap": [
-    "RTP 標頭給連續性與媒體時間線索。",
-    "RTCP 是接收與控制回報。",
-    "缺序號只先描述觀測缺口，不直接宣判根因。"
+    "能解釋RTP字段、媒體時鐘與來源生命週期。",
+    "能區分捕捉缺口、媒體時間缺口及RTCP接收者報告。",
+    "能計算封包時間、報告分母與RTT，並說明不能推導的品質結論。"
   ],
   "sources": [
     {
-      "label": "IETF RFC 3550：RTP 與 RTCP",
-      "url": "https://www.rfc-editor.org/rfc/rfc3550"
+      "label": "IETF RFC 3550：RTP 標頭、來源與到達抖動",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550.html#section-6.4.1"
     },
     {
-      "label": "IETF RFC 3551：RTP 音訊 Payload Type",
-      "url": "https://www.rfc-editor.org/rfc/rfc3551"
+      "label": "IETF RFC3551：音頻RTP profile與格式",
+      "url": "https://www.rfc-editor.org/rfc/rfc3551.html"
     },
     {
-      "label": "Wireshark 官方指南：VoIP Calls",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+      "label": "Wireshark 官方：RTP Streams、Analysis 與播放限制",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelRTP.html"
+    },
+    {
+      "label": "Wireshark 官方：RTP 欄位名稱及適用版本",
+      "url": "https://www.wireshark.org/docs/dfref/r/rtp.html"
     }
   ],
   "resources": [
     {
-      "label": "下載合成 SIP／RTP 練習檔",
-      "path": "./assets/labs/wireshark-sip-rtp.pcap",
-      "description": "16 筆完全合成封包；含 7 筆 SIP 與 9 筆 RTP，沒有錄製人聲或公司流量。"
+      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
+      "label": "第二版混合流量 PCAP",
+      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
+      "label": "第二版對照觀測 PCAP",
+      "description": "172 個合成 frame；與混合檔的遺漏位置不同，可練習觀測不完整的推理。"
+    },
+    {
+      "path": "./assets/labs/voip-maintenance-lab.zip",
+      "label": "VoIP獨立計算與WAV示範（.NET10）",
+      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
     }
-  ]
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      19
+    ],
+    "practice": [
+      40,
+      65
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+  }
 }

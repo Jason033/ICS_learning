@@ -1,152 +1,246 @@
 {
-  "intro": "Socket 程式常「卡住」在等待：可能等連線、等新客戶、等資料或等緩衝可寫。本章把等待的位置和時間分開，避免把所有逾時都叫網路不通。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀範例",
-      "minutes": 14
-    },
-    {
-      "label": "判讀紀錄",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "等待方式決定執行緒如何被使用；逾時決定何時放棄等待；就緒通知只說某個操作可以前進。三者都不等於遠端業務完成，理解差異才能追到程式究竟卡在哪裡。",
+  "prerequisites": [
+    "前章的半框儲存和EOF；本章區分尚未完成與已結束。",
+    "基本await語法；正文補充執行緒、Task、取消及UI等待的不同責任。"
   ],
   "goals": [
-    "能區分阻塞、非阻塞與設定逾時。",
-    "能解釋可讀寫通知只表示值得嘗試 I/O。",
-    "能在 log 中辨認 connect、accept、recv 的等待位置。"
+    "區分同步阻塞、非阻塞與非同步等待的資源和返回語意。",
+    "辨認就緒、EOF、完整框架與完整業務回覆。",
+    "設計單次操作與整筆請求的期限，避免半框和取消競爭。"
   ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      45
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+  },
   "sections": [
     {
-      "heading": "阻塞模式：呼叫可能等",
+      "heading": "等待不是只有一種實作",
+      "kind": "concept",
       "paragraphs": [
-        "一般阻塞 Socket 的 accept 等新連線；recv 等資料或關閉事件；send 也可能等發送緩衝。等待行為還受作業系統錯誤與關閉影響。",
-        "若 UI 主執行緒直接做無期限的網路等待，畫面可能失去回應；實務需有明確的執行模型與停止方式。"
+        "同步阻塞Receive在沒有資料時保留呼叫執行緒等待，直到讀到資料、結束或錯誤。這個執行緒暫時不能執行其他工作；若它是UI執行緒，畫面更新和操作事件就跟著停。阻塞不是錯誤，専用接收執行緒也可以合理，但需要清楚的數量、退出與資源策略。",
+        "非阻塞Socket在目前無法完成時不長等，可能拋WouldBlock；這不是連線壞了。若立刻while重試，CPU會空轉，還可能餓死真正能處理資料的工作。通常要先等就緒通知再嘗試，並處理通知與實際呼叫之間狀態已改變的可能。非阻塞是單次呼叫的行為，不自動等於有良好排程。",
+        "ReceiveAsync在作業未完成時返回可等待的作業，await讓呼叫流程稍後續接而不長期佔住該執行緒。它不會讓一個Task永遠對應一條新執行緒，也不免除資料解析和生命週期責任；已完成的作業甚至可能繼續同步執行。公司舊程式還可能有BeginReceive/EndReceive回呼，需循著回呼、buffer與狀態物件追完整的迴圈。"
       ]
     },
     {
-      "heading": "逾時模式：哪一次操作超過設定",
+      "heading": "就緒通知告訴你可以嘗試，不是業務成功",
+      "kind": "mechanism",
       "paragraphs": [
-        "Python settimeout(2.0) 使相關 Socket 操作在約定期限內未完成時拋出 socket.timeout；各 API 的時間含意需對照語言文件，不能直接把它當整筆業務請求的總時限。",
-        "伺服器 accept 回來的 Socket，逾時模式可能與監聽 Socket 不同；教學腳本會在 conn 上重新設定，避免以為設定會自動一致。"
+        "Poll/Select這類介面觀測Socket目前是否有操作可前進。SelectRead對listener可以表示有連線待接，對連線Socket可以表示有資料、關閉或錯誤；所以可讀不保證一定讀到正數bytes，更不保證一個完整應用框架。可寫通常表示送出流程可進展或連線建立相關狀態，不表示全部資料已交付對方。",
+        "假如只到一byte標頭，ReadReady可以true，但兩byte標頭仍不完整。假如對方已正常停止送出，ReadReady同樣可能true，下一次非空Receive回0。實際操作返回值或例外才把狀態分清；讀碼時不要看到Poll真就立刻setBusinessReady。Socket.Available表示當下已排隊可讀bytes，也不是訊息長度或對方存活保證。",
+        "就緒與讀取之間也可能有別的讀者消費資料。最容易維護的結構是一個Socket一個接收所有者，讓通知、讀取與解析狀態由同一流程管理。若多個讀者共享，就要額外協調，但沒有必要為了讓每個請求函式看起來方便而製造這種競爭。"
+      ]
+    },
+    {
+      "heading": "框架期限和請求期限如何共享預算",
+      "kind": "concept",
+      "paragraphs": [
+        "長連線可能沒有任何請求卻接收主動事件，因此接收迴圈不能簡單每過一次請求期限就斷開。請求等待者管理相關回復的業務期限，連線接收者持續解析並分派；若一個等待者超時，其遲到回覆要按協定分類，不自動傷害整條共享連線。反過來，框架從開始到完整也應有自己的限制，避免壞來源永久佔住解析狀態。",
+        "兩種責任可以透過單接收迴圈與待請求表分開：讀者形成完整訊息，按requestId尋找尚待完成的等待者；請求結束移除對應項，不直接啟動另一個Read。若實際協定沒有ID且只允許一筆請求，程式必須維持那個序列化約束，不能硬套同時多請求的設計。正文的模型一次一請求只是最小例子，不代表公司協定支援並行查詢。",
+        "預算還應包含傳送佇列等待。如果命令在佇列中等到期限已過，後來才傳送，會產生「客戶端已宣告失敗，裝置卻在更晚時執行」。傳送前檢查有效性與協定允許的丟棄策略，並記錄未傳送還是已傳送未知；不要把排隊、傳輸和業務期限都塞在ReceiveTimeout裡。"
+      ]
+    },
+    {
+      "heading": "取消與遲到需要一次性完成規則",
+      "kind": "concept",
+      "paragraphs": [
+        "一個請求的完成可能來自合法回覆、使用者取消、截止時間或連線錯誤。它們是競爭的終止候選，最終狀態必須只選一次。TaskCompletionSource的TrySetResult/TrySetException/TrySetCanceled可以協助一次性轉換，但待請求表移除、事件註冊清理與業務狀態也需一致，不能只保護Task卻留下重複訂閱。",
+        "假設r10在t100期限到，t101合法回覆到達。如果失敗先贏，回覆是遲到；如果回覆先完成，稍後的計時器不得再次清成失敗。兩種順序都可能合理，需按協定與本地完成規則記錄。真正危險的是兩條路徑各做副作用，例如一條顯示成功、另一條自動重送，導致同意圖重複。",
+        "測試可用可控訊號模擬兩個終止候選，不依靠毫秒Sleep賭博排程。分別讓回覆先、取消先和同時準備，再檢查最終Task、字典、註冊與資源數量。支援取消的API保證本次作業如何回應，應用仍要保證多條完成路徑怎樣收尾，這兩層不能混為一個承諾。"
+      ]
+    },
+    {
+      "heading": "就緒迴圈為何需要公平與進展檢查",
+      "kind": "mechanism",
+      "paragraphs": [
+        "某個Socket持續可讀，如果處理迴圈一直把它讀到完全空才換下一個，高速來源可能長時間佔住排程，其他連線即使有資料也得不到處理。相反地，每次只讀一byte且忙迴圈掃全表也可能產生大量CPU和呼叫成本。設計要在每次進展與多個來源的公平之間取捨，例如限定每輪bytes或框數，再返回事件迴圈。",
+        "判斷進展應以實際返回的資料、完成的框架或終止事件計算；反覆Poll真但不消費資料、或catch WouldBlock後立即再試，都可能沒有業務進展而佔用CPU。這類故障會表現為延遲與高CPU，但網路資料並未遺失。記錄每輪讀取量、完整框數與迴圈次數，可以比只量總CPU更直接定位。",
+        "非同步程式也會有公平問題：如果await的作業已完成，它可能直接續跑，不能假定每個await都讓其他工作先執行。單一接收迴圈的大量解析與事件處理需要有合理工作邊界。維護時先量測並確定哪段連續工作，再考慮分派或有界佇列，避免用任意Sleep掩蓋排程而增加所有請求延遲。"
+      ]
+    },
+    {
+      "heading": "三個期限各自回答不同問題",
+      "kind": "mechanism",
+      "paragraphs": [
+        "連線期限是等待通道建立多久；框架期限是標頭或本文多久必須讀完整；請求期限是傳送、排隊、接收、解析和業務結果合計多久。它們可以有各自的子預算，但不能每次Receive都重新給完整請求時間，否則少量資料持續抵達會讓整筆請求永不結束。",
+        "教材以Stopwatch量同一筆請求的經過時間，總期限1000ms。開始一次步驟時remaining=1000-elapsed；若remaining<=0，不啟動新等待。不同電腦的牆上時間可能不一致，本地經過時間應用單調計時，跨端日誌另保留時鐘誤差。設定1000只是協定與需求的示例，不是網路的通用合格標準。",
+        "Socket.ReceiveTimeout影響同步Receive，不應假定會替現代ReceiveAsync設定期限。教材非同步操作透過CancellationToken多載取消等待；只在外層Task.WaitAsync逾時，可能仍留底層Receive進行。若接著啟動另一個Receive，兩者競爭資料與buffer，故障就由慢回覆變成邊界混亂。要追真正被取消的作業，並等待其收尾。"
+      ]
+    },
+    {
+      "heading": "例題一：重新計時為何把總期限延長",
+      "kind": "worked-example",
+      "paragraphs": [
+        "總期限600ms，t=0開始讀標頭；t=350讀到第一byte；t=500讀到第二byte；t=550讀到本文一部分。若每次讀取重新設600ms，第三次可能允許到t=1150，早已超過整筆期限。即使每片都沒有單次逾時，整體可能永久由慢速零星資料拖延。",
+        "用固定起點，t=350剩250ms，t=500剩100ms，t=550剩50ms，t=600仍未滿本文則期限到。這說明你放棄這次結果等待，不說明遠端沒有產生回覆，更不說明先前有副作用命令未執行。清理策略要另依協定決定，尤其現在處於半框狀態。",
+        "若允許框架間閒置很久但一框開始後必須快速完成，可設兩種時鐘：等待新框第一byte的閒置期限、開始後的完整框期限。兩者要明確命名且和請求期限共同取較早者；不能藏在一個ReadTimeout名稱裡，讓維護者以為它涵蓋全部。"
+      ]
+    },
+    {
+      "heading": "例題二：可讀的兩種結果",
+      "kind": "worked-example",
+      "paragraphs": [
+        "A與B都是Poll SelectRead=true且Available=0。A對非空buffer Receive回0，表示送出方向結束；B呼叫Receive拋SocketException，ErrorCode指向重置。僅看Poll與Available無法區分這兩種；實際操作得到的EOF或錯誤是更強證據。若先前還有待讀bytes，正常關閉也要先讀完才見EOF。",
+        "C為ReadReady=true、Available=1，框架至少需要兩byte標頭。Receive讀到1後，解析器只能儲存它，不能宣告完整訊息。可讀說明該次有進展，不說明下一次一定立即完成。如果該1byte是舊世代接收者讀到，又讓新世代解析，則更多與就緒無關的生命週期問題會出現。",
+        "因此伺服器就緒、Socket可讀、框架完成、應用結果完成要各有狀態和紀錄。常見模糊旗標isReady無法同時表達這些事；應在程式閱讀筆記裡寫下它由哪個事件設定和清除，再判斷UI是否使用了過強的推定。"
+      ]
+    },
+    {
+      "heading": "取消的責任如何穿過非同步流程",
+      "kind": "code-reading",
+      "paragraphs": [
+        "CancellationToken是合作式通知，傳給支援取消的API才能讓那個操作收到請求。若上層的token沒有往下傳，使用者按取消只是UI變化，底層仍在讀。若下層catch OperationCanceledException後繼續迴圈，又等於取消被吞掉。必須在擁有連線的流程決定停止、等待退出與Dispose。",
+        "使用者主動取消、期限到、程式關閉可以連結token，但紀錄應區分哪個原因先觸發，否則正常關閉會被當網路錯誤。取消和資料同時到達也可能由排程決定先觀測哪個結果，所以只允許一次最終轉移；不應一邊完成請求、一邊又把相同請求記為失敗並重送。"
       ],
       "code": {
-        "title": "概念片段：對新連線分別設定讀寫等待",
-        "text": "listener.settimeout(2.0)\nconn, peer = listener.accept()\nconn.settimeout(2.0)\nchunk = conn.recv(1024)"
+        "title": "一個底層接收作業持有自己的取消來源；示意片段",
+        "text": "using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));\nusing var linked = CancellationTokenSource.CreateLinkedTokenSource(stopToken, timeout.Token);\ntry\n{\n    int n = await socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None, linked.Token);\n    // n仍需交給框架解析；不是業務完成。\n}\ncatch (OperationCanceledException) when (linked.IsCancellationRequested)\n{\n    // 由連線所有者處理退出/半框，不再啟動競爭讀取。\n    throw;\n}"
       }
     },
     {
-      "heading": "非阻塞不是自動快速完成",
+      "heading": "同步等待和UI卡住要看依賴",
+      "kind": "maintenance",
       "paragraphs": [
-        "非阻塞呼叫若當下不能完成，會立即回報「稍後再試」一類狀態；程式要保留未送／未讀資料，並等待下一次機會。",
-        "若用忙迴圈一直重試，可能浪費 CPU；通常配合 select、poll、epoll 或平台事件機制。"
+        "UI執行緒呼叫同步Receive會直接阻止畫面處理；UI用.Result等一個需要返回同一UI context的Task，又可能形成相互等待。兩者都顯示未更新，原因卻不同。將Socket改成Async後立刻.Result，不會自動解決；應沿依賴鏈找到誰在等誰以及續接要在哪裡執行。",
+        "網路非同步完成後，解析、巨大日誌或事件處理仍可能耗時。await不是全程免費的標籤，不能讓後續CPU工作免除負擔。診斷要量測等待開始、I/O完成、解析完成、事件排隊與UI應用時間，才能知道增加Socket期限是否根本不相關。"
       ]
     },
     {
-      "heading": "select／poll／epoll 是等待通知的工具",
+      "heading": "實作：觀察取消類別與範圍",
+      "kind": "lab",
       "paragraphs": [
-        "select 可同時觀察多個 Socket 的可讀、可寫；poll 和 Linux epoll 則是不同的多路 I/O API。Windows、Linux 提供的細節不同，特別是 Python select 在 Windows 只支援 Socket。",
-        "通知「可讀」也可能表示 EOF；通知「可寫」不表示所有資料都能一次送完。仍須執行 recv／send、檢查返回值並維持狀態。"
-      ],
-      "table": {
-        "caption": "三種通知 API 的入門定位",
-        "headers": [
-          "名稱",
-          "入門理解",
-          "使用前再查"
-        ],
-        "rows": [
-          [
-            "select",
-            "等待一組 Socket 可讀／可寫",
-            "平台支援與數量限制"
-          ],
-          [
-            "poll",
-            "另一種多路等待介面",
-            "作業系統支援"
-          ],
-          [
-            "epoll",
-            "Linux 專用的事件介面",
-            "觸發模式與重新註冊規則"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "一筆請求可能有多個時鐘",
-      "paragraphs": [
-        "connect timeout 管建立連線；read timeout 管某次讀取；業務 deadline 管整個 STATUS? 請求至收到有效回覆。只設某次 recv 逾時，迴圈多次成功讀到少量資料仍可能拖長總時間。",
-        "實作完整期限時常以單調時鐘計算剩餘時間；本教材先要求 log 記錄「哪個階段逾時、已收幾 bytes、總經過時間」。"
+        "執行.NET10模型中的UDP已取消token檢查，預期OperationCanceledException被明確識別為PASS。這是確定的預取消測試，不代表測完所有取消與到達競爭。閱讀Serve/ReadExact可以確認同一ct往Accept、Send、Receive都傳，十秒是模型避免無限等待的總保護，不是每筆公司的業務期限。",
+        "把ct傳遞故意移除其中一個呼叫，先以程式閱讀指出哪段失去取消保護；若實跑另加入自己的短取消，必須用外部整體期限避免測試卡死。復原後完整執行。驗收是辨識底層作業仍否進行以及退出責任，而非把所有時間都縮短後看到「更快失敗」。正文的600ms例題可用手算驗證，不需真實Sleep重演。"
       ]
     },
     {
-      "heading": "用紀錄分辨等待位置",
+      "heading": "診斷：逾時後下一筆內容奇怪",
+      "kind": "diagnostic-case",
       "paragraphs": [
-        "例：CONNECT_OK 後、SEND_OK 後、HEADER_READ=1/2 後出現 READ_TIMEOUT，表示連線及部分讀取發生過；不能退回說 TCP 完全沒建立。",
-        "下一步檢查對端是否送齊標頭、是否有協定不一致，以及期限是否合理；缺遠端紀錄時保留多種可能。"
+        "甲與乙都在逾時後出現下一筆解析錯誤。甲外層WaitAsync逾時但原Receive仍待讀，隨後啟動第二個Receive；乙已真正取消但清空半框後在同一連線繼續。甲應查兩個作業ID與各自得到bytes，乙應查取消前保留的offset以及隨後從哪個byte開始解析。",
+        "補證甲兩個作業分別拿標頭與本文，乙下一次把本文開頭當新length。有限修正是甲取消並等待原作業收尾、維持單接收所有者；乙依協定儲存可續的解析狀態或結束會話，不隨意從零猜。回歸包含期限前完整、期限中半框、取消後遲到、正常EOF與關閉，確認沒有多讀者或錯誤成功。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【定位】卡在 accept 代表在等什麼？",
-      "answer": "等新的客戶端連線或錯誤／逾時。"
+      "question": "非同步與非阻塞是否都表示「立即有完整資料」？",
+      "level": "foundation",
+      "answer": [
+        "兩者都不保證資料完整。非同步表示作業可稍後完成，await讓流程續接；非阻塞是呼叫現在不能做就不長等。",
+        "完整框架仍由協定和累積狀態決定。",
+        "讀碼需看API多載及完成路徑，而非只看Async字尾。"
+      ]
     },
     {
-      "question": "【定位】CONNECT_OK 之後 READ_TIMEOUT，能說 connect 失敗嗎？",
-      "answer": "不能；建立連線已成功，後續讀取逾時。"
+      "question": "SelectRead=true為何不應直接設定業務Ready？",
+      "level": "foundation",
+      "answer": [
+        "它可能表示資料可讀、listener待接或關閉/錯誤。",
+        "應實際操作取得n、EOF或例外，再進入框架和內容驗證。",
+        "業務Ready需要該協定的合法狀態證據。"
+      ]
     },
     {
-      "question": "【模式】非阻塞 recv 暫時沒有資料就代表斷線嗎？",
-      "answer": "不代表；應按 API 的 would-block 狀態稍後再試。"
+      "question": "總期限900ms，已用620ms，新的讀取最多能等多少？",
+      "level": "application",
+      "answer": [
+        "remaining=900-620=280ms。",
+        "不能重新允許900ms，否則總預算被延長。",
+        "若子步驟另有100ms上限，這次取min(280,100)=100ms。"
+      ]
     },
     {
-      "question": "【通知】select 告訴 Socket 可讀，能保證有完整一則訊息嗎？",
-      "answer": "不能；可能只有部分資料或 EOF。"
+      "question": "標頭兩bytes，只讀到一byte便Poll可讀，是否矛盾？",
+      "level": "application",
+      "answer": [
+        "不矛盾，一byte就能讓接收前進。",
+        "可讀只保證當下操作條件，不保證應用標頭完整。",
+        "保留一byte繼續等，在框架期限內補齊。"
+      ]
     },
     {
-      "question": "【寫入】可寫通知能保證 send 一次送完嗎？",
-      "answer": "不能；仍要檢查實際返回的 byte 數。"
+      "question": "設定ReceiveTimeout=500後await ReceiveAsync仍等很久，該先查什麼？",
+      "level": "application",
+      "answer": [
+        "ReceiveTimeout針對同步Receive，不能假定替非同步作業設期限。",
+        "查實際多載是否傳token，以及上層deadline是否往下傳。",
+        "加入真正支援的取消，回歸無資料與有資料兩種，不只讀取設定值。"
+      ]
     },
     {
-      "question": "【平台】Python select 在 Windows 可監看任意檔案嗎？",
-      "answer": "不能；官方文件指出 Windows 只支援 Socket。"
+      "question": "A逾時退出，但原作業沒停；B立刻讀同一Socket。為何不能只清buffer？",
+      "level": "diagnosis",
+      "answer": [
+        "原作業仍能取得bytes，清buffer不會取消它或消除競爭。",
+        "兩讀者分走串流後任何buffer都無法補出缺片。",
+        "取消並等待原作業，確立單讀者，再決定半框恢復策略。"
+      ]
     },
     {
-      "question": "【期限】每次 recv 都設 2 秒，可保證整筆請求 2 秒完成嗎？",
-      "answer": "不保證；要另外設定整筆請求的 deadline。"
+      "question": "UI未更新，I/O t=40完成、parse t=42完成、UI排隊t=43、應用t=800，調長Socket期限可修嗎？",
+      "level": "diagnosis",
+      "answer": [
+        "已完成I/O與parse，延遲主要在UI排程或處理。",
+        "排隊至應用等757ms，Socket期限不改該等待。",
+        "查UI執行緒阻塞與依賴，修正後比較UI排隊時間並回歸正常業務。"
+      ]
     },
     {
-      "question": "【紀錄】HEADER_READ=1/2 後逾時，最精確的觀測是？",
-      "answer": "已取得標頭第一個 byte，但期限內未收滿；原因待查。"
+      "question": "t=200超時與完整回覆幾乎同時發生，兩個分支都改請求狀態，應驗證哪個不變條件？",
+      "level": "diagnosis",
+      "answer": [
+        "每個request只能有一次最終轉移，並清理它的等待與註冊。",
+        "競爭結果可以因排程不同，但不能同時完成又失敗、重送。",
+        "使用受保護的狀態轉移或TrySet類機制，回歸兩種先後及同時到達。"
+      ]
     }
   ],
   "recap": [
-    "記錄逾時發生在哪一次等待。",
-    "I/O 通知不替代實際讀寫與框架解析。",
-    "整筆請求期限需獨立考慮。"
+    "區分同步阻塞、非阻塞與非同步等待的資源和返回語意。",
+    "辨認就緒、EOF、完整框架與完整業務回覆。",
+    "設計單次操作與整筆請求的期限，避免半框和取消競爭。"
   ],
   "sources": [
     {
-      "label": "Python 官方：socket 模組與各呼叫的返回值",
-      "url": "https://docs.python.org/3/library/socket.html"
+      "label": "Microsoft：Poll各模式的就緒條件",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.poll?view=net-10.0"
     },
     {
-      "label": "Python 官方：select 模組與可讀寫通知",
-      "url": "https://docs.python.org/3/library/select.html"
+      "label": "Microsoft：ReceiveTimeout的同步範圍",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receivetimeout?view=net-10.0"
     },
     {
-      "label": "Python 官方：Socket Programming HOWTO（收送迴圈與訊息框架）",
-      "url": "https://docs.python.org/3/howto/sockets.html"
+      "label": "Microsoft：支援CancellationToken的接收",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：連結取消來源",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.cancellationtokensource.createlinkedtokensource?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：TrySetResult的一次性完成",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.tasks.taskcompletionsource-1.trysetresult?view=net-10.0"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# Socket 維護教材模型",
+      "path": "./assets/labs/sockets-maintenance-lab.zip",
+      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
     }
   ]
 }

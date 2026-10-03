@@ -1,160 +1,321 @@
 {
-  "intro": "同時有畫面、SDK 回呼、網路接收與背景工作時，兩段程式可能讀寫同一份狀態。本篇從最小的「兩人改同一數字」示範競爭狀態，再看 Lock、Semaphore、Condition 與死結。",
+  "intro": "多個工作交錯時，問題不是名詞「Thread」多難，而是資料由誰擁有、何時被看到，以及哪一段操作不能被插入。本章從程式與執行緒建立模型，逐步推導共享狀態、原子操作、Lock、Semaphore、Condition 與死結，最後能沿 C# 程式找出責任。",
   "goals": [
-    "重建讀取→修改→寫回的競爭時間線。",
-    "知道鎖、號誌、條件通知各解決什麼。",
-    "辨認死結及跨執行緒更新畫面的風險。"
+    "區分並行處理、平行處理、Thread 與 Task，並追出共享物件。",
+    "手工重建讀改寫的遺失更新與跨欄位不一致。",
+    "根據不變條件選擇Lock、Interlocked、Semaphore或單一consumer。",
+    "解釋Monitor等待迴圈和死結等待關係。"
   ],
   "sections": [
     {
-      "heading": "Thread 與 Process 是工作執行單位",
+      "heading": "程式、執行緒、工作與排程",
+      "kind": "concept",
       "paragraphs": [
-        "同一 Process 內的 Thread 通常共享記憶體，容易共用狀態也容易互相干擾；不同 Process 有較強的位址空間分隔，交換資料要經過明確通道。作業系統與語言細節會不同。",
-        "本章的問題不是「多執行緒一定快」，而是兩件事交錯時共享狀態是否保持正確。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/reliability-race.svg",
-        "alt": "兩個工作都讀到零，各加一後都寫回一，遺失一次更新"
-      }
-    },
-    {
-      "heading": "一步一步看遺失更新",
-      "paragraphs": [
-        "共享 count=0。A 讀到 0；B 讀到 0；A 算 1 並寫回；B 也算 1 並寫回。兩次操作後結果是 1，預期卻是 2。",
-        "`count += 1` 在概念上含讀、加、寫，不能因為它是一行就推定整段不可分割。實際語言和執行環境需查其同步保證。"
+        "程式檔案是磁碟上的指令與資料；Process（行程）是這個程式被啟動後，作業系統管理的一次執行實例。同一個程式啟動兩次可以有兩個行程，各有自己的虛擬位址空間，亦即它能用來指向記憶體的位置與對應內容。它們不會只因變數同名就直接共享同一份資料。Thread（執行緒）則是行程內實際逐條執行指令的流程；一個行程可以有多條執行緒。",
+        "每條執行緒有自己的呼叫堆疊：A方法呼叫B時，保留A稍後要繼續的位置，以及B這次呼叫的區域資料，B返回後再接回A。多條執行緒各自執行方法，卻可透過參考取得同一個受管理物件；這些物件由.NET的記憶體管理機制追蹤。堆疊（stack）在這裡用來理解呼叫與返回，堆積（heap）用來理解物件儲存與共享；真實最佳化可改變存放細節，不應只靠這張概念圖推斷每個值的實際位置。",
+        "並行處理（concurrency）是多件工作在同一期間推進，可能在一顆 CPU 上輪流；平行處理（parallelism）是同一瞬間在不同核心執行。即使只有一核心，A 讀完被切到 B，B 寫回後 A 再繼續，也能產生競爭。",
+        "Task表示一個工作的完成，不必一Task就一Thread。I/O等待可在沒有專用執行緒阻塞時進行，CPU工作可交給執行緒池。讀C#時要看實際呼叫與排程，不能從變數名字task推斷有幾條執行執行緒。"
       ]
     },
     {
-      "heading": "Lock 保護一段不該交錯的操作",
+      "heading": "區域變數安全，不代表它指到的物件私有",
+      "kind": "mechanism",
       "paragraphs": [
-        "把讀、改、寫放入同一把 mutex／Lock 保護的臨界區，A 完成才輪到 B。鎖要保護所有讀寫該不變條件的路徑，不是只包其中一行。",
-        "鎖住後避免在內部做長時間 I/O 或等待外部回呼，否則其他工作被堵住；先確認共享資料所有權，能用訊息傳遞就不一定要共用可變狀態。"
+        "區域變數是某次方法執行內使用的名稱。它可以存數值，也可以存物件參考；參考的意思是「用這個值找到那個物件」。把class物件的參考從a指定給b，通常是兩個名稱指向同一個物件，沒有複製整個物件。A和B各有一個名為local的變數，卻都指向同一個CallContext，則local.Status修改的是共享物件。要判定是否共享，應追哪裡建立物件、哪裡傳入同一個參考，而不只看變數寫在哪個方法。",
+        "lambda是可傳入別處、稍後呼叫的一小段函式，例如() => Log(_current.Status)。若這段函式使用外層的變數，C#會讓它在稍後仍可取得被捕捉的變數，這稱為閉包；不是一律把當時的值凍結成照片。若_current已換成新通話，舊callback讀_current可能拿到新物件。可以先把當時物件保存在明確的local，再讓callback使用local，固定它的對象；但若該物件本身會被其他人修改，這仍不是深層快照，也沒有自動保證執行緒安全。",
+        "先畫參考圖：哪些變數指向同一個物件，誰能改它，誰負責釋放。執行緒安全不是把欄位改成private就解決；private限制程式碼訪問範圍，不限制同一個類方法被多個執行緒同時呼叫。"
       ]
     },
     {
-      "heading": "Semaphore 與 Condition 用途不同",
+      "heading": "不變條件先於同步工具",
+      "kind": "mechanism",
       "paragraphs": [
-        "Semaphore 可限制同時使用某資源的工作數，例如最多兩個 I/O 操作；它不會自動保護任意共享變數。Condition 是讓工作在某個條件未成立時等待、成立後被通知，醒來還要重新檢查條件。",
-        "Producer／Consumer 常用有界 queue 交接工作：來源入隊，處理端出隊，容量與停止方式要明確。Python 的 `queue.Queue` 可作本機示範，但公司的語言或 SDK 可能不同。"
+        "不變條件是程式任何合法時刻都應滿足的關係。例如Version與Value來自同一狀態事件；佇列計數不能為負；當前通話被終止時只能清掉同一個物件。同步工具的目標是維護這些關係。",
+        "若只問哪個變數該加lock，很容易保護一行卻讓整組資料不一致。應先找讀取、驗證、修改和釋出的完整序列，再判斷哪些步驟不應交錯。",
+        "少共享也是同步策略：一個消費者擁有可變狀態，其他執行緒只傳不可變事件。這樣仍需queue容量與事件排序，但避免每個callback都直接改共享模型。工具越多不代表設計越正確，所有權清晰通常更容易維護。"
+      ]
+    },
+    {
+      "heading": "例題一：一行加一為什麼會遺失",
+      "kind": "worked-example",
+      "paragraphs": [
+        "count=0，A讀取0，B讀取0，A計算1寫回，B也計算1寫回。完成兩次加一後count=1。問題在整個讀→計算→寫入可以交錯，而不是整數加法本身錯誤。",
+        "把最後count=old+1包lock仍不足：A、B已經在鎖外都讀到0，進入鎖時只是依序寫兩個1。正確保護範圍應含讀取到寫回，或者使用具備所需原子保證的Interlocked.Increment。",
+        "實際排程不一定每次出現，所以「測試十次都對」不能證明無競態。本章用Barrier讓兩者先讀，再同時允許寫，讓錯誤必定可重現；這是一種受控實驗，不代表正常排程永遠如此。"
       ],
       "table": {
-        "caption": "工具與問題對照",
+        "caption": "遺失更新的交錯",
         "headers": [
-          "工具",
-          "常見目的",
-          "常見誤用"
+          "步驟",
+          "A",
+          "B",
+          "共享count"
         ],
         "rows": [
           [
-            "Lock",
-            "保護共享狀態的不變條件",
-            "只保護寫入不保護讀改寫"
+            "1",
+            "讀0",
+            "尚未讀",
+            "0"
           ],
           [
-            "Semaphore",
-            "限制同時使用數",
-            "以為它自動消除資料競爭"
+            "2",
+            "等待",
+            "讀0",
+            "0"
           ],
           [
-            "Condition",
-            "等待某條件改變",
-            "醒來不重查條件"
+            "3",
+            "寫1",
+            "等待",
+            "1"
           ],
           [
-            "Queue",
-            "在工作間交接資料",
-            "沒有容量與結束政策"
+            "4",
+            "完成",
+            "寫1",
+            "1"
           ]
         ]
       }
     },
     {
-      "heading": "死結是彼此等對方",
+      "heading": "原子、可見與複合操作是三種需求",
+      "kind": "mechanism",
       "paragraphs": [
-        "A 拿著鎖 1 等鎖 2；B 拿著鎖 2 等鎖 1，就可能兩邊都不前進。可用固定取鎖順序、縮短持鎖範圍與明確逾時／監控降低風險。",
-        "若只看到畫面卡住，先看執行緒堆疊、各鎖持有者和等待關係，不要把「CPU 低」等同於沒有問題。"
+        "原子表示其他觀察者不會看到操作做到一半，例如Interlocked對一個計數加一。可見性關心執行緒A的寫入何時以受保證方式被B看見。複合一致性則要求多個欄位或多個步驟作為一個關係更新。",
+        "volatile可對特定讀寫提供記憶體順序與可見性約束，但不讓count++或「若餘額夠就扣款」自動變原子。Interlocked可以安全改一個欄位，也不自動保護Version與Value兩欄位間的關係。",
+        "lock進入與退出提供互斥與相應同步，前提是所有需要保護的路徑使用同一把鎖。對讀者也要一致：writer持鎖更新兩欄位、reader卻不持鎖分別讀取，仍可能獲得混合狀態。"
       ]
     },
     {
-      "heading": "跑可重現的競爭示範",
+      "heading": "鎖不只是擋住別人，也建立資料交接",
+      "kind": "mechanism",
       "paragraphs": [
-        "`python3 reliability-race-lab.py` 用同步點固定 A 與 B 的讀取順序，所以每次都能看到未保護結果 1，再看 Lock 保護後結果 2。",
-        "這是刻意安排的教學交錯，不測效能；在產品裡要靠可重現的事件序列和共享狀態不變條件定位。"
+        "執行緒A在同鎖內修改共享狀態，退出後執行緒B取得該鎖再讀，形成受同步規則約束的交接。這個順序讓B讀取A完成的狀態，而不是靠剛好處理器立即看到某個寫入。",
+        "如果B不使用同鎖，即使A有鎖，也缺少完整約定。把變數宣告成普通欄位、volatile或使用特殊容器各有不同保證，不能隨意互換；多欄位快照仍需要整體一致性。",
+        "讀共享物件時可在鎖內複製成不可變快照，鎖外使用快照進行顯示或I/O。但快照是取得時的狀態，稍後再改遠端前可能需檢查版本仍適用。這將短同步與可能很長的外部等待分開。",
+        "這不是要求每個區域變數都加鎖，而是讓共享關係有一個所有人遵守的釋出與讀取規則。沒有明確writer／reader圖，就很難知道哪一條路徑繞過保證。"
+      ]
+    },
+    {
+      "heading": "物件釋放也是一項共享狀態變化",
+      "kind": "maintenance",
+      "paragraphs": [
+        "一個執行緒使用Adapter，另一執行緒同時Dispose它，問題不一定是數值競態，卻仍是生命週期競爭。物件還在記憶體不代表內部Socket或控制代碼仍有效；GC與資源關閉是不同機制。",
+        "可以由單一owner先拒絕新工作、標記Stopping、取消或等待既有工作，再釋放。若多個路徑都能清理，需要冪等終止規則，但重複Dispose不拋錯也不能證明沒有遺漏解除訂閱或晚到callback。",
+        "以currentCall為例：C1終止回呼只在ReferenceEquals(current,C1)成立時清槽，否則C2可能已接管。這是對狀態與物件身分一起檢查，不只鎖住一句賦值。",
+        "回歸時注入使用與釋放交錯、舊物件結束與新物件建立交錯、關閉過程中來事件。觀察等待者能否結束、舊事件有無汙染及資源是否只由正確owner清理。"
+      ]
+    },
+    {
+      "heading": "Lock 的物件身分與持有範圍",
+      "kind": "code-reading",
+      "paragraphs": [
+        "C#lock以特定鎖物件協調進入；兩個不同的new object鎖彼此不認識。若每次方法裡臨時new一個guard，各執行緒都有自己的鑰匙，根本沒有互斥。",
+        "鎖應由負責該狀態的長期物件持有，範圍儘量短而完整。不要鎖公開可被外部使用的物件、字串或this而讓未知程式碼進入同一等待關係。發生例外時應保證釋放，C#lock語法承擔此責任。",
+        "避免持鎖時做外部I/O、呼叫未知事件或同步等待UI。外部程式碼可能回呼並要求同一狀態，或很久不返回，把短臨界區變成長阻塞。複製必要資料後釋放鎖再外送，返回時重新驗證世代，是一種常見設計，但需具體契約。",
+        "這段完整Lab型別有三個欄位：_gate是同一物件長期持有的鎖，_version與_value是必須配對的狀態。private限制外部不能直接修改欄位；public讓呼叫者透過Apply與Snapshot操作。Snapshot返回兩個值組成的tuple，表示它們是同一次受鎖保護的讀取。record宣告輸入的版本與內容；這裡來源已由外層驗證，不能省略真實程式中的會話或設備關聯。"
+      ],
+      "code": {
+        "title": "同一物件的一把私有鎖，保護完整關係",
+        "text": "// Lab型別：已驗證來源的完整快照，不是廠商API。\nsealed class LabVersionState {\n    private readonly object _gate = new();\n    private long _version = -1;\n    private string _value = \"Unknown\";\n    public void Apply(LabVersionEvent e) {\n        lock (_gate) {\n            if (e.Version <= _version) return;\n            _version = e.Version;\n            _value = e.Value;\n        }\n    }\n    public (long Version, string Value) Snapshot() {\n        lock (_gate) return (_version, _value);\n    }\n}\nrecord LabVersionEvent(long Version, string Value);"
+      }
+    },
+    {
+      "heading": "Semaphore 是許可數，不是資料模型",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Semaphore可以發出有限張許可，例如最多兩個並行I/O。Wait或WaitAsync取得一張，完成後Release歸還。它限制同時進入數，但不會自動保護所有共享欄位，也不證明操作按順序完成。",
+        "SemaphoreSlim適合程式內輕量協調，並有非同步WaitAsync。應把Release放finally，並只在真的取得許可後釋放；取消發生在等待前可能沒取得，仍釋放會破壞計數。",
+        "許可上限的選擇是資源與語意取捨。若裝置只允許一條命令進行，上限設8不是效能改善；若I/O互相獨立，上限1又可能不必要地序列。先查協議與能力，再定義並行度。"
+      ],
+      "code": {
+        "title": "等待與歸還必須配對",
+        "text": "await _slots.WaitAsync(token);\ntry { await SendIndependentWorkAsync(token); }\nfinally { _slots.Release(); }\n// 若 WaitAsync 丟取消例外，尚未進入 try，不能亂 Release。"
+      }
+    },
+    {
+      "heading": "Condition 的核心是等待一個條件",
+      "kind": "mechanism",
+      "paragraphs": [
+        "條件變數／Monitor的想法不是「記住一個通知」，而是讓執行緒在條件尚未成立時釋放鎖、等待變化。C#Monitor.Wait會釋放相應鎖並阻塞，醒來後重新取得鎖，才能檢查共享條件。",
+        "Pulse或PulseAll通知等待者有變化，但不替它保證條件仍成立。其他消費者可能先取走工作，或通知只意味狀態需要再查，所以使用while而非if判斷。等待本身不應把鎖握著讓生產者無法寫入。",
+        "例如queue為空且尚未結束就Wait；producer在同一鎖內入隊並PulseAll；consumer醒來再查empty與completed。結束標記也要通知，不然沒有資料時consumer會永遠睡。"
+      ],
+      "code": {
+        "title": "簡化的條件等待模型，不作完整生產環境queue",
+        "text": "lock (_gate) {\n    while (_queue.Count == 0 && !_completed)\n        Monitor.Wait(_gate);\n    if (_queue.Count == 0 && _completed) return;\n    item = _queue.Dequeue();\n}\n// producer 在同一 _gate 內 Enqueue，然後 Monitor.PulseAll(_gate)。"
+      }
+    },
+    {
+      "heading": "例題二：兩個消費者與一次通知",
+      "kind": "worked-example",
+      "paragraphs": [
+        "consumer A、B都因為queue為空而等待；producer加入一個item並通知兩者。A先取得鎖、取走唯一item，釋放鎖；B之後取得鎖。如果B只用if在等待前查過一次，它可能繼續Dequeue空queue。",
+        "正確的while讓B重新檢查，發現為空又Wait。若completed=true且queue為空，B應退出而非再等。這是條件的邏輯，不是通知「丟失」就必需加更多sleep。",
+        "通知也不是持久計數：在無人等待時Pulse不會儲存一個可供未來消費的訊號。要表達「還有兩件工作」應儲存在queue或計數狀態；未來工作檢查狀態，才不依賴剛好碰上通知的時間。"
+      ]
+    },
+    {
+      "heading": "死結、忙等與活鎖的差別",
+      "kind": "maintenance",
+      "paragraphs": [
+        "死結是迴圈等待：A持X等Y，B持Y等X，兩邊都不能完成。固定所有路徑取鎖順序、減少巢狀持鎖與避免持鎖回呼，可減少迴圈；只給每把鎖timeout還需清理部分已取得的資源。",
+        "忙等是一直檢查條件而佔CPU，例如while(!ready)空轉；活鎖是雙方持續動作卻都讓步，工作仍不推進。它們與死結症狀可能不同，但核心都要看進度而非程式是否存在。",
+        "不要在正式系統裡啟動真實死結當實驗。可從執行緒堆疊與等待圖推導迴圈，或在隔離測試加有限等待。低CPU不能排除死結，高CPU也不必然是計算負載，可能是重試或忙等。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：計數錯與回呼重複如何區分",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀是記錄兩次完成但counter只加1。原因一是共享讀改寫丟失，原因二是兩條log其實同一EventId重複而業務只計一次。先比較EventId和計數更新的規則。",
+        "第二輪顯示兩個不同EventId，A、B各記錄old=0，之後都寫1；支援讀改寫競態。修正為同鎖完整加一或Interlocked，並驗證計數定義確實允許每事件加一次。",
+        "回歸需固定交錯、測試重複EventId不多加、跨session不汙染，還要檢查是否有其他路徑直接寫counter繞過同步。只改最明顯一處lock而漏其他writer，問題仍會偶發。"
+      ]
+    },
+    {
+      "heading": "追讀可重現競爭與維護責任",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- race，讀Broken的區域變數old與共享count，畫Barrier之前與之後。預期未保護為1，同鎖保護為2，檢查依據是兩次獨立加一而不是一次輸出。",
+        "試把lock縮到最後寫回，並保留Barrier在鎖外，預測為什麼仍會得到1。不要把Barrier放在同一lock內部等待兩執行緒，會讓第一執行緒持鎖等第二執行緒而無法進入，形成錯誤實驗。",
+        "最後為公司一個共享狀態列出所有writer、reader、回呼執行緒、鎖物件與停止順序。能說明不變條件與保護範圍，比背四個同步工具名字更接近維護能力。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【競爭】A、B 都讀 0 並各加一，可能最後是？",
-      "answer": "可能是 1，因為兩者都把依舊值算出的 1 寫回。"
+      "question": "【基礎】只有一顆CPU仍可能發生競爭嗎？",
+      "level": "foundation",
+      "answer": [
+        "可以，兩個執行緒可以在讀改寫之間輪流執行，競爭不要求真正同瞬間。",
+        "要按交錯和共享資料分析，不能用核心數量排除。"
+      ]
     },
     {
-      "question": "【鎖】只把最後寫回包 Lock，讀和計算不包，保證正確？",
-      "answer": "不保證；整個讀→改→寫需依同一保護規則。"
+      "question": "【參考】A、B各有local=同一個CallContext，local是區域變數就不共享嗎？",
+      "level": "application",
+      "answer": [
+        "區域變數的儲存位置不同但都指同一個物件，修改Status仍共享。",
+        "畫變數到物件的參考圖，再找所有可呼叫路徑與同步規則。"
+      ]
     },
     {
-      "question": "【號誌】Semaphore(2) 表示什麼？",
-      "answer": "最多兩個持有者同時進入受控資源區，依具體用法；不自動保護任意變數。"
+      "question": "【新交錯】count=4，A讀4、B讀4、A寫5、B寫5，兩個加一結果？只鎖寫會怎樣？",
+      "level": "application",
+      "answer": [
+        "結果5，預期6；只鎖寫仍可能依次寫兩個5。",
+        "鎖需覆蓋讀取到寫回，或者對單計數用合適原子操作；受控交錯應是回歸依據。"
+      ]
     },
     {
-      "question": "【條件】Condition 被通知醒來後能假設條件必然仍成立？",
-      "answer": "不能；在持有對應鎖時重新檢查條件，通常用迴圈。"
+      "question": "【多欄位】Version=8、Value=Ready要一起更新到9/Busy，只把Version Interlocked.Exchange足夠嗎？",
+      "level": "diagnosis",
+      "answer": [
+        "不夠，Value與Version可能來自不同事件，原子一個欄位不保護兩者關係。",
+        "用同一鎖保護讀寫快照，或單一consumer／不可變快照發布，並驗證讀取沒有混合狀態。"
+      ]
     },
     {
-      "question": "【死結】A 拿 1 等 2、B 拿 2 等 1 是什麼？",
-      "answer": "形成循環等待，可能死結。"
+      "question": "【Condition】兩個等待者被叫醒，唯一資料已被A取走，B為什麼需要while？",
+      "level": "application",
+      "answer": [
+        "醒來不代表條件仍成立，A可能已改變共享狀態。",
+        "B在重新持鎖後再查為空則繼續等，completed且空則退出；測試一件資料兩消費者與正常關機。"
+      ]
     },
     {
-      "question": "【CPU】程序 CPU 低且畫面不動，可排除執行緒卡住？",
-      "answer": "不能；可能是鎖、I/O 或條件等待。"
+      "question": "【Semaphore】WaitAsync被取消，還在finally Release會有什麼風險？",
+      "level": "application",
+      "answer": [
+        "若沒有取得許可就釋放，計數會錯誤或拋異常，允許超過上限。",
+        "將try/finally放在取得後，或明確記錄是否已取得；測試取消發生前後兩種時序。"
+      ]
     },
     {
-      "question": "【共用】不同 Process 預設共用同一 Python 變數？",
-      "answer": "不會；需明確的程序間通道或共享機制。"
+      "question": "【死結】A持X呼叫UI同步Invoke，UI處理需要X。怎樣形成迴圈？",
+      "level": "diagnosis",
+      "answer": [
+        "A等UI呼叫完成，UI等A釋放X，因此雙方互等。",
+        "避免持鎖跨同步派送；複製資料釋放鎖後派送，再在應用更新時驗證版本，回歸重入與晚到。"
+      ]
     },
     {
-      "question": "【示範】腳本每次顯示 1 是 Python 真實排程一定如此嗎？",
-      "answer": "不是；腳本用同步點刻意固定交錯來教學。"
+      "question": "【維護】每次方法裡new object再lock，為什麼可能完全沒保護共享狀態？",
+      "level": "diagnosis",
+      "answer": [
+        "每次取得不同物件的鎖，執行緒彼此不會阻擋。",
+        "鎖物件須與被保護狀態有一致生命週期，所有相關路徑使用同一鎖；檢查臨時物件與重複例項。"
+      ]
     }
   ],
   "recap": [
-    "競爭要看操作的交錯，不看程式表面行數。",
-    "Lock、Semaphore、Condition 各有用途。",
-    "死結可從等待關係定位。"
+    "區分並行、並行、Thread與Task，並追出共享物件。",
+    "手工重建讀改寫的遺失更新與跨欄位不一致。",
+    "根據不變條件選擇Lock、Interlocked、Semaphore或單一consumer。",
+    "解釋Monitor等待迴圈和死結等待關係。"
   ],
   "sources": [
     {
-      "label": "Python 官方文件：threading",
-      "url": "https://docs.python.org/3/library/threading.html"
+      "label": "Microsoft：C# lock 的臨界區",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/statements/lock"
     },
     {
-      "label": "Python 官方文件：queue",
-      "url": "https://docs.python.org/3/library/queue.html"
+      "label": "Microsoft：Monitor 的 Wait／Pulse 與鎖所有權",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.monitor?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：SemaphoreSlim 與 WaitAsync",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.semaphoreslim?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：Channels、有界容量與背壓",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/extensions/channels"
+    },
+    {
+      "label": "Microsoft：用 dotnet-stack 觀察受控執行緒",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-stack"
+    },
+    {
+      "label": "Microsoft Learn：Interlocked 原子操作與 lost update",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.interlocked?view=net-10.0"
+    },
+    {
+      "label": "Microsoft Learn：reference types 與參考的指定",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/reference-types"
+    },
+    {
+      "label": "Microsoft Learn：lambda 與外層變數的捕捉",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/lambda-expressions"
     }
   ],
   "resources": [
     {
-      "label": "下載純本機教學腳本",
-      "path": "./assets/labs/reliability-race-lab.py",
-      "description": "固定同步點展示遺失更新，以及用 Lock 保護後的結果。"
+      "label": "下載 C# 可靠性觀念與維護追讀專案",
+      "path": "./assets/labs/reliability-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 SDK、標準函式庫；不連裝置，各章使用不同模式。"
     }
   ],
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "讀例子與圖",
-      "minutes": 15
-    },
-    {
-      "label": "判讀時間線",
-      "minutes": 13
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 20
-    }
-  ]
+  "contentVersion": 2,
+  "prerequisites": [
+    "先知道變數存在哪裡、是否由兩個執行路徑共同持有；本章從這個問題解釋共享狀態。",
+    "Thread、Task、鎖與原子操作從定義開始說明；不需要先懂多執行緒程式。"
+  ],
+  "studyTime": {
+    "reading": [
+      15,
+      26
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      20,
+      35
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+  }
 }

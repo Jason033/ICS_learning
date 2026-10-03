@@ -1,0 +1,31 @@
+feed=1 outputs=0 retained=1
+feed=2 outputs=1 retained=0
+feed=3 outputs=0 retained=3
+feed=5 outputs=1 retained=0
+PASS fragmented and coalesced UTF-8 frames
+PASS 2 characters = 6 UTF-8 bytes + 2 header
+PASS 1025-byte length rejected before body allocation: InvalidDataException
+PASS EOF inside header: EndOfStreamException
+PASS EOF inside body: EndOfStreamException
+PASS invalid UTF-8 rejected: DecoderFallbackException
+LISTEN local=127.0.0.1:34123 role=listener
+ACCEPT local=127.0.0.1:34123 remote=127.0.0.1:51208 role=connected
+CONNECT local=127.0.0.1:51208 remote=127.0.0.1:34123 generation=1
+SEND accepted=16 cumulative=16/16
+READ count=2 cumulative=2/2
+READ count=14 cumulative=14/14
+PASS server parsed request
+READ count=0 cumulative=0/2
+PASS client half-close observed after request
+PARSE request=r41 status=accepted
+SEND accepted=15 cumulative=15/15
+COMPLETE request=r41 result=READY
+READ count=2 cumulative=2/2
+READ count=13 cumulative=13/13
+PASS application response after client half-close
+READ count=0 cumulative=0/2
+PASS EOF exactly between frames
+PASS zero-length UDP datagram retains sender endpoint
+PASS next UDP datagram independently delivered
+PASS pre-cancelled pending UDP receive
+PASS all deterministic parser and loopback transport checks

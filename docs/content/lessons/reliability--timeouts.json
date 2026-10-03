@@ -1,159 +1,277 @@
 {
-  "intro": "本主題用虛構的 Lab-A 狀態查詢與「啟動一次」操作，學會在斷訊時區分已知、未知與可安全採取的動作。第一篇先讀三條時間線，不假設任何公司的實際逾時值。",
+  "intro": "系統不會因為我們停止等候，就自動停止遠端工作。這一章從最基本的呼叫與回報關係開始，建立時間、狀態、結果與責任的模型，再追 C# 中的等待、逾時和取消；讀完應能說明為什麼一個 timeout 可能同時對應不同的遠端結果。",
   "goals": [
-    "分清單次等待逾時與整筆操作的總期限。",
-    "說出逾時後遠端結果為何可能未知。",
-    "在重連後確認新的會話和權威狀態。"
+    "把呼叫、接受、完成、回覆與本地等待逐項分開。",
+    "用同一整筆期限推導多次嘗試能使用的時間。",
+    "讀出 WaitAsync 與 CancellationToken 對哪一個工作生效。",
+    "根據兩端紀錄選擇安全的結果查證與恢復方式。"
   ],
   "sections": [
     {
-      "heading": "逾時到底代表什麼",
+      "heading": "一個呼叫包含多個不同的動作",
+      "kind": "concept",
       "paragraphs": [
-        "逾時是本地計時器在期限內沒有收到符合條件的證據；它不是遠端「沒有執行」的證明。先問等待的是連線建立、請求回覆、完成事件，還是使用者畫面更新。",
-        "例如 0 ms 發出「啟動一次」、50 ms 等待到期、70 ms 設備才完成；50 ms 時只能記「本地尚未確認」。不同層各有自己的時鐘與期限。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/reliability-deadlines.svg",
-        "alt": "請求、單次等待、總期限與晚到完成事件的虛構時間線"
-      }
+        "先想一個不用電腦的例子：你請同事搬箱子，對方說「收到」，開始搬，搬完後傳訊告知。你看見「收到」，並不表示箱子已在目的地。電腦中的送出、接受、完成、回覆，也有相同差別；但訊息可能排隊、丟失或延遲，因此差別更重要。",
+        "程式呼叫方法時，本地方法可能只把工作排入佇列就返回；也可能等待網路回應；也可能等到裝置完成。這三種 API 表面都可寫成 result = Send(...)，語意卻不同。讀公司程式時，第一件事是追方法內部做了什麼，以及回傳值在檔案中代表哪一層。",
+        "我們把一次操作拆成「本地準備→交給傳輸→遠端收到→遠端接受→遠端完成→本地收到完成回報→畫面更新」。每個箭頭都可能有時間與故障。不要把完成與收到回報合成同一事件：遠端完成之後，回報仍可能沒有到本地。"
+      ]
     },
     {
-      "heading": "單次逾時與整筆期限",
+      "heading": "逾時是一個觀察條件，不是遠端事實",
+      "kind": "mechanism",
       "paragraphs": [
-        "假設每次等待 100 ms，允許重試兩次，且每次前等待 50 ms；若不設總期限，使用者可能等到 400 ms 以上，還沒算連線與程式處理。",
-        "整筆期限從操作開始計算，重試與退避都佔用其中時間；每次嘗試的剩餘時間不得超過總期限。範例數字只為算式，不是建議設定。"
+        "Timeout 的精確意思是：從某個起點算到某個期限，指定條件仍未成立。它需要三個明確項目：從何時開始計時、等待什麼條件、到期後誰負責處理。若這三個沒有定義，「等五秒」並不是完整規格。",
+        "例如從開始連線起五秒未建立通道，與從收到 accepted 起五秒未收到裝置完成事件，是兩種完全不同的逾時。第一個可能根本還沒送命令；第二個可能已執行命令，只是回報延遲。錯誤處理若一律重新送命令，就可能造成副作用重複。",
+        "因此應至少分開本地等待狀態與遠端業務結果。本地狀態可為 Waiting、TimedOut、Cancelled；業務結果可為 ConfirmedSuccess、ConfirmedFailure、Unknown。TimedOut 和 Unknown 可以同時成立；它不是矛盾，而是在不同層描述同一操作。"
+      ]
+    },
+    {
+      "heading": "例題一：三個遠端世界，同一行 timeout",
+      "kind": "worked-example",
+      "paragraphs": [
+        "假設 request=R17，0 ms 本地記錄交給傳輸；本地等待完成事件的期限是 100 ms。世界 A：遠端 20 ms 收到、80 ms 完成、120 ms 回覆到達。世界 B：遠端 20 ms 收到，但處理卡住，直到 300 ms 才完成。世界 C：資料沒有送達，遠端完全沒有 R17。",
+        "在 100 ms，三個世界的本地 log 都只有「R17 timeout」。A 的業務已完成，B 正在進行，C 尚未開始；所以本地這一行無法區分三者。把 A、B、C 都報成「裝置未執行」會錯，把它們都報成「成功」也會錯。",
+        "若之後取得權威紀錄 R17 completed at 80 ms，就排除 B、C；若查到 R17 running，則排除 A、C；若查詢沒有 R17，仍要確認紀錄儲存期、查詢端點與一致性，才知道「沒有紀錄」的份量。這不是永遠停在未知，而是用能區分世界的觀察把結果確認下來。"
       ],
       "table": {
-        "caption": "三種時間各回答不同問題",
+        "caption": "100 ms 時可推論的範圍",
         "headers": [
-          "時間",
-          "回答的問題",
-          "到期時能說什麼"
+          "觀察",
+          "能確認",
+          "仍需補充"
         ],
         "rows": [
           [
-            "連線逾時",
-            "通道是否及時建立",
-            "這次未建立可用通道"
+            "本地 timeout",
+            "本地未及時收到完成回報",
+            "遠端接收與完成狀態"
           ],
           [
-            "回覆逾時",
-            "指定回覆是否及時出現",
-            "結果可能未知"
+            "遠端同 ID completed",
+            "這個請求已完成",
+            "是否有更新的操作改變狀態"
           ],
           [
-            "整筆期限",
-            "使用者能等到何時",
-            "停止等待並保留未確認狀態"
+            "遠端同 ID running",
+            "這個請求尚在進行",
+            "是否可取消及何時完成"
           ]
         ]
+      },
+      "image": {
+        "src": "./assets/diagrams/reliability-timeout-worlds.svg",
+        "alt": "同一筆R17在100毫秒本地逾時：世界A已完成但回報晚到、世界B仍處理、世界C未收到。",
+        "caption": "教學邏輯時間：同一本地觀察對應三種不同遠端結果；此圖不代表公司時鐘或傳輸延遲。"
       }
     },
     {
-      "heading": "選時間要看真實觀測",
+      "heading": "計時的起點決定到底在限制什麼",
+      "kind": "mechanism",
       "paragraphs": [
-        "把正常與尖峰時段的延遲、設備處理時間、排隊等待和網路變動分開記錄。用最低延遲當逾時門檻會誤判正常慢請求；設得無限長又會讓故障卡住。",
-        "可用單調時鐘計算經過時間，避免系統時鐘調整影響本地期限；跨機器時間戳仍需檢查對時與精度。具體門檻要從已授權的產品要求和實測決定。"
+        "在實際程式中，開始計時可能放在 UI 點選時、入隊時、取得連線時或寫出資料時。若請求在 queue 等四秒，送出後只等一秒，使用者已等五秒；若 timeout 從送出才算，log 可能只顯示一秒。這會讓維護者誤判延遲位置。",
+        "完整操作通常需要 overall deadline：從使用者意圖或業務操作建立時，限定整筆可等待多久。內部每次嘗試又可有 per-attempt timeout。整筆期限限制體驗與資源佔用；單次逾時幫助識別不應一直卡住的嘗試。兩者應相互約束。",
+        "計算本機經過時間應用單調時鐘，例如 Stopwatch。日曆時間適合人查事件日期，但校時、時區與時鐘跳動可能改變它。跨主機比較仍需校時誤差，不要把本地單調時鐘數值直接與另一臺主機相減。"
       ]
     },
     {
-      "heading": "三條虛構時間線",
+      "heading": "時間、往返與處理時間的關係",
+      "kind": "mechanism",
       "paragraphs": [
-        "A：0 ms 送出，20 ms 收到完成，屬已確認成功。B：0 ms 送出，50 ms 逾時，70 ms 才完成；50 ms 時未知。C：0 ms 送出，50 ms 逾時，遠端從未收到；結果也是本地未確認，但原因不同。",
-        "單看本地 timeout，B 與 C 無法區分。補遠端接收紀錄、請求 ID 或權威狀態查詢，才能把未知縮小。"
+        "往返時間RTT是本地送出到收到相應回覆之間的經過時間；它可能包含去程、遠端排隊與處理、回程、本地派送。若量的是網路ping，回覆處理很簡單；若量的是業務API，RTT就不等於純網路延遲。",
+        "例如0ms入隊，60ms送出，80ms遠端收到，120ms完成，140ms本地收到，160ms畫面更新。使用者共等160；傳送到回覆是80；遠端處理40；前段排隊60，後段UI20。如果把160全叫網路慢，就會去改錯地方。",
+        "同一主機記錄能直接算自己區段；遠端80和120只可在同主機計時可靠時相減。若兩臺機器未對時，本地60減遠端80沒有直接意義，可能把時鐘差當傳播時間。",
+        "計時還有精度與排程誤差。設定100ms並不意味回呼恰好100ms執行：timer到期後可能仍需排隊。維護時區分設定期限與實際逾時處理時間，避免只按一個時間戳推論裝置行為。"
       ]
     },
     {
-      "heading": "重連不是完成證據",
+      "heading": "把等待和結果畫成狀態轉移",
+      "kind": "mechanism",
       "paragraphs": [
-        "TCP 重新連線只證明新通道可用，不自動恢復驗證、訂閱、進行中的請求或設備狀態。先記新舊連線／會話 ID，再查各層恢復條件。",
-        "若舊請求的事件晚到，不能因為現在連線正常就把它當新請求的回覆。從下一篇開始會處理安全重試與去重。"
+        "簡化本地狀態可以是Created→Waiting→Confirmed；Waiting也可能轉TimedOut或WaitCancelled。這個狀態機描述等待者，不是裝置所有狀態。每一次轉移應有觸發來源，例如傳送完成、匹配的結果事件、期限到期或使用者取消。",
+        "若TimedOut之後收到相同ID的完成，不能直接當不存在。產品可以允許更新「歷史操作結果」，同時查目前狀態；若有較新的操作已改變裝置，舊完成不應覆蓋最新畫面。保留結果與更新目前狀態是不同責任。",
+        "狀態機也避免兩個終止事件互相覆蓋：timer與成功回呼可能同時到達，處理端應有同一操作的同步規則或單一狀態所有者，先決定合法轉移再更新。不要讓任何回呼都能把一個共享bool隨意改成true或false。",
+        "最後要定義未知結果的後續生命週期：由誰查、查多久、何時需要人工確認、什麼證據可結案。這樣unknown是可管理的狀態，而不是被catch隱藏的錯誤。"
       ]
     },
     {
-      "heading": "自己跑時間線",
+      "heading": "例題二：把三次重試放進同一預算",
+      "kind": "worked-example",
       "paragraphs": [
-        "下載教學腳本執行 `python3 reliability-timeline-lab.py`，先比較 `timeout-late` 與 `timeout-no-delivery`：本地 50 ms 的表象相同，遠端結果不同。Windows 可改用 `py`。",
-        "腳本使用固定虛擬毫秒，不會真的等待 50 ms，也不連網。先自己寫出每條時間線在 50 ms 的已知、未知、下一個查證點，再看輸出。"
+        "整筆 deadline=250 ms，每次最多等待100 ms，兩次嘗試間退避30 ms。第一次從0開始到100逾時，退避到130；第二次從130到230逾時，若再完整等30就超出整筆期限。到250時必須停止後續等待，不能再從260給第三次100 ms。",
+        "每次可等待的時間應為 min(單次上限, 整筆剩餘)。單次上限是100，若現在是220，剩餘只有30，這次最多30。退避也須耗用同一預算；如果下次已沒有足夠時間或意義，就不再發出新嘗試。",
+        "把 timeout 每次重新設100，卻沒有整筆 deadline，三次可能至少耗360 ms（含兩次30），更不要說重新連線與排隊。變數名稱應說明是 AttemptTimeout 還是 OperationDeadline，不能用一個 timeout 欄位掩蓋不同責任。",
+        "這個小函式只回傳可等待的毫秒數，回傳0不代表裝置失敗。括號內三個參數依序提供總期限、目前時間與單次上限；remaining是兩個時間相減，Math.Min取較小者。static int表示函式回傳整數；呼叫者還要決定是否發出嘗試及如何記錄遠端結果。時間預算與業務狀態沒有被同一個數字混在一起。"
+      ],
+      "code": {
+        "title": "讀這個預算演算，單位全部是 ms",
+        "text": "Console.WriteLine(AllowedWait(250, 220, 100)); // 30 ms\nstatic int AllowedWait(int deadline, int now, int perAttempt) {\n    int remaining = deadline - now;\n    if (remaining <= 0) return 0; // 沒有可等待的預算\n    return Math.Min(perAttempt, remaining);\n}\n// 固定非負教學時間；呼叫者依0決定停止等待，業務結果另記Unknown。"
+      }
+    },
+    {
+      "heading": "C# 等待逾時與底層取消是兩件事",
+      "kind": "code-reading",
+      "paragraphs": [
+        "Task 可代表尚未完成的一項工作。對 operation 呼叫 WaitAsync(timeout)，得到的是一個受等待條件控制的新 Task；等待者可能因逾時收到 TimeoutException，但原本 operation 不因此保證終止。維護時必須保留對原工作結果的觀測，避免它晚點 fault 卻無人處理。",
+        "CancellationToken 是合作取消訊號：呼叫端提出取消，執行工作的一方要檢查並尊重它。只有把 token 傳到真正的 I/O 或處理迴圈且對方支援，才有機會停止那一段。即使本機工作停止，已送出給裝置的命令也可能仍在執行。",
+        "若 API 提供 Cancel(requestId)，還要看取消回覆是接受取消，還是已撤銷完成；若工作已不可逆或剛好完成，取消可能失敗。介面顯示應精確到「已停止等候」「取消請求已送」「撤銷已確認」這些不同結果。"
+      ],
+      "code": {
+        "title": "C# 等待包裝片段，SendAsync 是教學介面名稱",
+        "text": "Task<LabResult> operation = adapter.SendAsync(request, deviceToken);\ntry {\n    LabResult result = await operation.WaitAsync(waitTimeout, callerToken);\n    Confirm(result);\n}\ncatch (TimeoutException) { MarkOutcomeUnknown(request.Id); }\n// 沒有理由僅因 WaitAsync 到期就說 operation 或遠端工作已取消。"
+      }
+    },
+    {
+      "heading": "如何選擇期限，而不是抄一個數字",
+      "kind": "maintenance",
+      "paragraphs": [
+        "期限太短會把正常尾端延遲當故障，增加重試與負載；期限太長會佔用連線、工作與 UI 等待，讓真正故障很晚才浮現。因此時間選擇是一個取捨，需要正常分佈、尖峰、裝置規格及業務可接受等待。",
+        "先分解排隊、送達、遠端處理、回報、UI 更新，再找哪些時間會變動。只看平均30 ms不代表100 ms以上都異常；例如99%在30 ms內，1%因正常裝置工作要500 ms，100 ms門檻仍會把這1%誤判。",
+        "設定還要對齊上游總期限。如果上游兩秒已停止等待，下游重試十秒很可能是在做沒人再使用的工作；但安全相關結束操作又可能必須繼續。具體策略由業務語意決定，不是統一「上游取消就都取消」。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：畫面晚更新，不一定是遠端慢",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "病例：R22 的送出時間10 ms、遠端接受18 ms、遠端完成40 ms，本地完成回呼42 ms，UI 更新卻在600 ms。候選原因包括遠端慢、網路回報慢、本地 UI 派送排隊。這組資料已把前兩者的大部分範圍排除，最大落差是回呼到畫面。",
+        "再取得第二輪證據：UI 執行緒在30–590 ms同步匯出檔案，完成事件於42 ms排入其派送器。此時有限修正是把耗時處理移出 UI 同步處理路徑或拆成短工作，而不是把遠端timeout從100改成1000。",
+        "驗證時保持同一版本與輸入，確認遠端完成和回呼仍正常、UI延遲降低、取消與晚到結果的處理沒有變錯。若只看「這次沒逾時」就結案，可能只是提高門檻掩蓋故障。"
+      ]
+    },
+    {
+      "heading": "讀公司程式時，沿四個位置找責任",
+      "kind": "maintenance",
+      "paragraphs": [
+        "找出建立操作 ID 的位置、開始計時的位置、判斷回覆有效的位置，以及逾時後清理的位置。檢視 catch 是否把所有錯誤都當timeout、finally 是否無條件清掉較新的操作、timer callback 是否還會在釋放後更新狀態。",
+        "特別看事件關聯：若新的操作覆寫 _pending，舊 timer 可能把新的 _pending 清掉。修正需在變更狀態前比較同一請求或世代，避免只依一個 bool waiting。這個問題的根本是責任識別，不是把等待時間調大。",
+        "交接紀錄應能說明哪個期限控制哪一層、遠端結果在哪裡確認，以及晚到事件如何處理；下一位維護者才能判斷是否可安全重送。"
+      ]
+    },
+    {
+      "heading": "用 C# 模型驗證時間的觀念",
+      "kind": "lab",
+      "paragraphs": [
+        "下載本章專案，以 .NET 10 SDK 在解壓資料夾執行 dotnet run -- deadline。先讀 Program.cs 的 Deadline，預測每次start與allowed；預期第一筆0/100，第二筆130/100，到250停止，沒有第三個完整100 ms。",
+        "把deadline改成280，先推算第三次應從260開始、只剩20，再執行比較。把每次allowed改成perAttempt不檢查remaining，指出為何破壞總期限。修正後用250、280與小於單次上限的50各測一次。",
+        "這是固定邏輯時鐘模型，目的是看懂預算如何傳遞，不測裝置效能。另在公司可分享程式中以同樣問題追找期限變數，不必為了練習先接入實際裝置。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【時間線】0 ms 送出、50 ms timeout、70 ms 完成；50 ms 能判定未執行嗎？",
-      "answer": "不能；50 ms 只知道期限內未收到完成證據。70 ms 的完成是否屬同一請求仍要核對 ID。"
+      "question": "【基礎】一個方法返回true、遠端回accepted、稍後出現Completed事件，這三個階段各可能代表什麼？",
+      "level": "foundation",
+      "answer": [
+        "方法true可能只表示本地驗證或入隊成功，必須讀實作與契約。accepted表示接受處理，不必然已完成；Completed是更進一步的業務證據。",
+        "把這三欄分記，並用同一request ID關聯。只有檔案定義為完成的訊號，才可拿來確認遠端結果。"
+      ]
     },
     {
-      "question": "【分類】連線建立、API accepted、設備完成，能共用一個「成功」欄嗎？",
-      "answer": "不宜；三者是不同觀測層，應分欄記錄。"
+      "question": "【推導】deadline=340、perAttempt=120、退避40。三次嘗試各何時開始，最後一次能等多久？",
+      "level": "application",
+      "answer": [
+        "第一次0–120；退避到160；第二次160–280；退避到320。",
+        "第三次剩340−320=20 ms，所以只能320–340。若仍等120就是忽略整體期限。應測小剩餘時間與退避跨期限兩個邊界。"
+      ]
     },
     {
-      "question": "【算式】100 ms 嘗試三次、兩段各 50 ms 等待，至少要多久才跑完？",
-      "answer": "至少 400 ms，尚未算其他處理時間；若整筆期限小於此值，後續嘗試必須被截斷。"
+      "question": "【程式】await work.WaitAsync(100ms)丟TimeoutException，work在180ms才完成。可以把狀態標為遠端取消成功嗎？",
+      "level": "application",
+      "answer": [
+        "不能。WaitAsync控制等待者，原work未因這個逾時保證停止。",
+        "需檢視傳給底層工作的取消訊號及遠端撤銷確認；現階段應標等待逾時、結果未知，並安排觀測原工作／查權威狀態。"
+      ]
     },
     {
-      "question": "【證據】B 晚完成與 C 沒送達在本地都有 timeout，下一個最有用的證據？",
-      "answer": "同一請求 ID 的遠端接收／完成紀錄或權威狀態查詢。"
+      "question": "【新案例】送出5ms、裝置完成35ms、本地回呼40ms、畫面900ms。哪些候選原因已縮小，下一個檢查？",
+      "level": "diagnosis",
+      "answer": [
+        "完成到回呼只5ms，資料支援裝置及回報路徑當次及時；最大延遲是40→900的860ms。",
+        "查UI入隊與開始處理時間及執行緒堆疊，區分UI工作太長與派送邏輯未執行；不能先把遠端timeout調大。"
+      ]
     },
     {
-      "question": "【時鐘】本機經過時間用會因校時而跳動的牆上時鐘理想嗎？",
-      "answer": "不理想；本地期限應以單調時鐘計算。"
+      "question": "【反例】一臺主機校時倒退兩秒，用DateTime.Now相減算期限有何風險？",
+      "level": "application",
+      "answer": [
+        "經過時間可能變小甚至為負，造成超時判斷延後。",
+        "本地預算用Stopwatch等單調計時；保留日曆時間供人查事件，但跨機器比較另記對時誤差。"
+      ]
     },
     {
-      "question": "【重連】Connect OK 是否等於訂閱及未完成工作也恢復？",
-      "answer": "不等於；需逐項確認會話、訂閱、待定請求及權威狀態。"
+      "question": "【取捨】99%請求30ms內完成、正常1%需500ms，設100ms有什麼代價？",
+      "level": "application",
+      "answer": [
+        "至少這些正常慢請求會被判逾時；若自動重試會增加負載或副作用。",
+        "應看業務可接受等待、尾端延遲及資源限制，分操作種類定義期限；平均值不是選門檻的充分依據。"
+      ]
     },
     {
-      "question": "【估值】教學 50 ms 可直接拿去設定公司設備嗎？",
-      "answer": "不可；門檻需依產品契約及實際延遲、尖峰與故障測試決定。"
+      "question": "【維護】timer捕捉R1，但回呼只寫_pending=null；R2已覆寫_pending。R1到期會怎樣？",
+      "level": "diagnosis",
+      "answer": [
+        "它可能清掉R2，使新操作失去等待或關聯狀態。",
+        "timer處理前比較請求ID或generation，再只清理自己持有的上下文。用R1晚到而R2在進行的時序做回歸，不以增大timeout修這個問題。"
+      ]
     },
     {
-      "question": "【表述】只有本地 timeout 時最嚴謹的工單描述？",
-      "answer": "在指定期限內未收到所需回覆；遠端是否處理仍未知，待以請求 ID 和權威狀態核對。"
+      "question": "【交付】遠端結果目前未知，準備一段維護結論，必須寫哪些資料？",
+      "level": "diagnosis",
+      "answer": [
+        "寫明操作與ID、計時起點、等待條件和期限、本地最後證據及遠端結果未知的原因。",
+        "再列權威查詢／遠端同ID紀錄、是否允許取消和重試；查證後更新結果，不能把unknown當永遠不處理的結論。"
+      ]
     }
   ],
   "recap": [
-    "逾時是證據不足的本地判斷。",
-    "單次嘗試與整筆期限要分開。",
-    "重連後需重新確認狀態。"
+    "把呼叫、接受、完成、回覆與本地等待逐項分開。",
+    "用同一整筆期限推導多次嘗試能使用的時間。",
+    "讀出 WaitAsync 與 CancellationToken 對哪一個工作生效。",
+    "根據兩端紀錄選擇安全的結果查證與恢復方式。"
   ],
   "sources": [
     {
-      "label": "AWS Builders’ Library：Timeouts, retries, and backoff with jitter",
+      "label": "Microsoft：Task.WaitAsync 的等待、逾時與取消",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.tasks.task.waitasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：取消的協作模型",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/threading/cancellation-in-managed-threads"
+    },
+    {
+      "label": "Microsoft：Stopwatch 的經過時間",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch?view=net-10.0"
+    },
+    {
+      "label": "AWS：Timeouts, retries, and backoff with jitter",
       "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"
-    },
-    {
-      "label": "Python 官方文件：time.monotonic",
-      "url": "https://docs.python.org/3/library/time.html#time.monotonic"
-    },
-    {
-      "label": "AWS Builders’ Library：Making retries safe with idempotent APIs",
-      "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
     }
   ],
   "resources": [
     {
-      "label": "下載純本機教學腳本",
-      "path": "./assets/labs/reliability-timeline-lab.py",
-      "description": "固定虛擬時間示範晚到、未送達、重複、亂序與積壓；不連網。"
+      "label": "下載 C# 可靠性觀念與維護追讀專案",
+      "path": "./assets/labs/reliability-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 SDK、標準函式庫；不連裝置，各章使用不同模式。"
     }
   ],
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "讀例子與圖",
-      "minutes": 15
-    },
-    {
-      "label": "判讀時間線",
-      "minutes": 13
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
-  ]
+  "contentVersion": 2,
+  "prerequisites": [
+    "先理解函式呼叫、回傳與後續事件可能發生在不同時間；第一節從這裡解釋。",
+    "只需會讀變數和if條件；Stopwatch、Task.WaitAsync與取消權責在本章說明。"
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      20,
+      35
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+  }
 }

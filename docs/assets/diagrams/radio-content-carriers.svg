@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 760" role="img" aria-labelledby="title desc">
+ <title id="title">內容沿轉換鏈前進，控制另管時機</title>
+ <desc id="desc">聲音由麥克風變成音訊電壓，類比可直接調變，數位需取樣量化編碼；RF經天線傳播，接收再解調、必要時解碼並播放。PTT就緒只控制傳送時機，不能直接證明後段內容。</desc>
+ <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#26766b"/></marker></defs>
+ <rect width="640" height="760" rx="24" fill="#f6f8f4"/>
+ <g font-family="sans-serif" fill="#14342e">
+  <text x="30" y="42" font-size="24" font-weight="700">同一份內容，經過不同物理表示</text>
+  <text x="30" y="70" font-size="16">箭頭代表轉換；每個邊界可各自正常或失敗。</text>
+  <rect x="28" y="92" width="584" height="91" rx="12" fill="#dcefe7"/>
+  <text x="46" y="122" font-size="21" font-weight="700">聲壓 → 麥克風 → 音訊電壓</text>
+  <text x="46" y="151" font-size="17">音量：幅度大小　音高：頻率組成</text>
+  <text x="46" y="174" font-size="15">非零能量也可能是噪聲，需核對已知內容。</text>
+  <path d="M320 184V205" fill="none" stroke="#26766b" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="28" y="214" width="584" height="110" rx="12" fill="#e6e9f7"/>
+  <text x="46" y="245" font-size="21" font-weight="700">基頻處理：先決定保留的內容</text>
+  <text x="46" y="276" font-size="17">類比：濾波 → 調變器</text>
+  <text x="46" y="301" font-size="17">數位：濾波 → 取樣/量化 → 編碼 → 符號</text>
+  <path d="M320 325V347" fill="none" stroke="#26766b" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="28" y="356" width="584" height="92" rx="12" fill="#fff0d9"/>
+  <text x="46" y="386" font-size="21" font-weight="700">調變/升頻 → PA → 濾波/饋線 → 天線</text>
+  <text x="46" y="416" font-size="17">把內容映到RF；放大功率不會修好錯音源。</text>
+  <text x="46" y="439" font-size="15">PTT/ready在這條鏈上控制時機，不直接證明內容。</text>
+  <path d="M320 449V482" fill="none" stroke="#26766b" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="340" y="473" font-size="16">電磁傳播：損耗、干擾、多路徑</text>
+  <rect x="28" y="492" width="584" height="92" rx="12" fill="#fff0d9"/>
+  <text x="46" y="523" font-size="21" font-weight="700">接收天線 → 選頻/放大/搬頻 → 解調</text>
+  <text x="46" y="553" font-size="17">數位另需同步、判符號、更正/解碼。</text>
+  <text x="46" y="576" font-size="15">混頻改頻率位置；解調才依規則恢復內容。</text>
+  <path d="M320 585V607" fill="none" stroke="#26766b" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="28" y="616" width="584" height="83" rx="12" fill="#dcefe7"/>
+  <text x="46" y="647" font-size="21" font-weight="700">門控/音訊路由 → 輸出放大 → 喇叭聲壓</text>
+  <text x="46" y="677" font-size="17">解調有內容，仍可能在門控或播放後段失敗。</text>
+  <text x="320" y="736" font-size="15" text-anchor="middle">自製功能模型；不是指定公司硬體或電路。</text>
+ </g>
+</svg>

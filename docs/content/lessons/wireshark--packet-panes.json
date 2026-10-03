@@ -1,199 +1,298 @@
 {
-  "intro": "打開 PCAP 後，常見的困惑是列表資訊太多，不知道該先看哪一欄。這篇沿用 13 筆教學封包，逐層看「時間、方向、Ethernet、IP、TCP／UDP、原始資料」，並練習辨認哪些欄位是封包真的帶的，哪些是 Wireshark 的解析或顯示設定。",
-  "plan": [
-    {
-      "label": "讀列表與時間",
-      "minutes": 8
-    },
-    {
-      "label": "展開 IP、TCP／UDP 欄位",
-      "minutes": 12
-    },
-    {
-      "label": "辨認原始資料與顯示結果",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 10
-    }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/wireshark-first-capture.pcap",
-      "label": "下載：第一次抓包練習檔（PCAP）",
-      "description": "本章沿用 13 筆 DNS 與 TCP／HTTP 教學封包。"
-    }
+  "contentVersion": 2,
+  "intro": "看得懂列表上的TCP，不表示能解釋這筆封包。中級維護工作需要知道每個欄位來自哪幾個bytes、長度怎麼計算、工具額外推論了什麼，以及同樣畫面可能受哪些解析設定影響。本章用完整數字把三個視窗接起來，讓你能檢查一份資料是否真的支持結論。",
+  "prerequisites": [
+    "知道 IP 是主機位址、Port 是應用端點；本章遇到傳輸與擷取新概念會從機制解釋。",
+    "可以使用自己電腦上的 Wireshark 開檔；未安裝時可先讀本章完整資料與推導，再進行操作。"
   ],
   "goals": [
-    "能用列表的 No.、Time、Source、Destination、Protocol、Length、Info 找出關鍵封包。",
-    "能在細節區找到 Ethernet、IPv4、UDP/TCP 與應用欄位。",
-    "能分清擷取時間、相對時間、TCP 序號顯示與原始封包資料。",
-    "能用欄位提出下一步，而不是只看封包顏色或一行摘要。"
+    "能按標頭長度定位payload，區分框架長度與各層長度。",
+    "能手算TCP序號、確認號與相對序號。",
+    "能分辨原始欄位、工具推算、重組、截斷與offload造成的現象。"
   ],
   "sections": [
     {
-      "heading": "先看列表：一行是一筆擷取到的封包",
+      "kind": "concept",
+      "heading": "每一層標頭提供不同的尋址與切割規則",
       "paragraphs": [
-        "列表 No. 是這個檔案裡的封包序號，不是 TCP 序號。Time 是顯示的時間，可能設定為從第一筆起算、前一筆間隔或實際日期時間；先確認格式。Source、Destination 與 Protocol 幫你定位方向與協定。Length 是這筆擷取資料的長度，不等於應用程式的有效資料長度。",
-        "Info 是解析器整理的摘要，很方便，但不是完整證據。看到「TCP」或「HTTP」應點進細節，確認 Port、旗標與應用資料。"
-      ],
-      "table": {
-        "caption": "封包列表常見欄位",
-        "headers": [
-          "欄位",
-          "先問什麼",
-          "常見誤讀"
-        ],
-        "rows": [
-          [
-            "No.",
-            "第幾筆擷取？",
-            "當作 TCP sequence number"
-          ],
-          [
-            "Time",
-            "何時觀察到？顯示格式是什麼？",
-            "直接當成對端處理時間"
-          ],
-          [
-            "Source／Destination",
-            "此筆往哪個方向？",
-            "只靠 IP 就認定程式角色"
-          ],
-          [
-            "Length",
-            "擷取的封包有多長？",
-            "當成 HTTP 內容長度"
-          ],
-          [
-            "Info",
-            "解析器摘要了什麼？",
-            "跳過細節直接下結論"
-          ]
-        ]
-      }
+        "Ethernet的來源與目的MAC描述同一鏈路上的交付對象；IPv4的來源與目的IP描述IP層主機；TCP或UDP的Port描述主機中的應用端點。經過路由器時，外層MAC通常會重新包裝，內層IP一般仍表示原本兩端；若經NAT，IP與Port還可能被轉換。因此「目的MAC不是伺服器網卡」與「目的IP是伺服器」可以同時成立，不能把兩層地址當同一種身分。",
+        "解析器從外向內讀：EtherType指出IP版本，IP的Protocol指出TCP或UDP，TCP的Data Offset指出TCP標頭結束位置。欄位不是固定貼在某一個frame offset上。IP可能有選項、TCP可能有選項、Ethernet可能帶VLAN，這些都會移動payload起點。逐層讀標頭長度比背「第54 byte後都是資料」更可靠。",
+        "封包列表先用來源、目的與Protocol讓你選事件；細節樹才顯示每一層的欄位。某些列表欄位會用名稱解析變成主機名或服務名，例如把Port 53顯示成domain。對維護而言，名稱可以協助理解，原數字才方便交叉比對。別從服務名稱推定程序一定是該協定，仍要看內容與正式設定。"
+      ]
     },
     {
-      "heading": "細節區由外到內展開，不要一次看所有位元",
+      "kind": "mechanism",
+      "heading": "長度不是一個數字：frame、IP、TCP、應用",
       "paragraphs": [
-        "選第 3 筆，在中間細節依序展開 Frame、Ethernet II、Internet Protocol Version 4、Transmission Control Protocol。Frame 會列出擷取長度與時間；Ethernet 是這段鏈路上的 MAC；IPv4 顯示來源與目的位址；TCP 顯示 Port、旗標與序號。",
-        "第 1 筆 DNS 則沿 Ethernet → IPv4 → UDP → Domain Name System 展開。不同封包不一定都有 TCP：DNS 在此教學檔使用 UDP。"
-      ],
-      "flow": [
-        "Frame：擷取資訊",
-        "Ethernet：本地鏈路",
-        "IPv4：網路位址",
-        "TCP／UDP：Port 與傳輸",
-        "DNS／HTTP：應用內容"
-      ],
-      "note": "這只是本檔使用的協定路徑。真實抓包可能有 VLAN、IPv6、隧道、加密或其他封裝。"
+        "frame.len描述該筆原始frame長度；frame.cap_len描述真的保存了多少。IPv4 Total Length包含IP標頭與IP內所有內容，不包含Ethernet外殼。tcp.len是TCP的資料長度，通常不含TCP標頭；對沒有IP分片且完整保存的簡單封包，可用IP總長減IP標頭減TCP標頭交叉核對。應用訊息可能橫跨多個tcp.len，或多個應用訊息塞在同一tcp.len中。",
+        "本教材普通frame不含VLAN、IP選項與TCP選項，所以Ethernet14、IP20、TCP20。這是資料的條件而不是普遍規則。網卡常不把Ethernet FCS交給擷取工具，frame內也未必包括線上前導碼與封包間隔。以frame.len算流量時應說明計數層級；把它叫作完整線速用量會漏算其他開銷。",
+        "對UDP，Length包含8-byte UDP標頭與內容；所以若udp.length=180，payload是172。對TCP，標頭長度以32-bit words表示，Data Offset=5代表20bytes，=8代表32bytes。這些單位換算不會由看列表顏色學到；能手算纔有能力發現解析設定與文件定義互相不一致。"
+      ]
     },
     {
-      "heading": "跟著第 3 筆找出一次 TCP 建立",
+      "kind": "worked-example",
+      "heading": "例題一：從十六進位定位請求與長度前綴",
       "paragraphs": [
-        "第 3 筆從 192.0.2.10:54000 到 198.51.100.20:8080，TCP SYN 旗標為 1；第 4 筆方向相反，是 SYN/ACK；第 5 筆再由 A 回 ACK。這三筆支持 TCP 建立過程。",
-        "若要確認某個欄位，可在細節區點選它；下方原始位元組會標出對應區段。對初學者來說，先能說出「欄位來自哪層」比背十六進位值重要。"
+        "正常q17請求在mixed中frame長67。Ethernet14後的IP總長53，IP標頭20後有TCP33，TCP標頭20後有13bytes。式子依次為67－14＝53、53－20＝33、33－20＝13。每一步都用對應欄位驗證：frame.len、ip.len、ip.hdr_len、tcp.hdr_len、tcp.len，不把原始frame長當作應用資料長。",
+        "payload起點是14＋20＋20＝54，前兩bytes為00 0b。大端序意思是高位byte先放：0×256＋11＝11。往後讀11bytes，得到REQ q17 GET；3＋1＋3＋1＋3＝11。資料前綴本身不算進本文長度，所以整個框架13bytes。若公司格式規定長度包括標頭，這個算式就必須改；教材的規則不能代替公司ICD。",
+        "在細節點tcp.payload，底部相應範圍會被反白。改選ip.len時，反白位置移到IP標頭中的長度欄位，這讓你知道13並不是原封包明寫的一個TCP payload length欄位，而是工具依標頭計算出的結果。若只看到00 0b而最後bytes缺失，宣告11和實際留存的11要分開檢查。"
       ],
       "code": {
-        "title": "第 3～5 筆的教學摘要",
-        "text": "3  A:54000 → B:8080  SYN\n4  B:8080 → A:54000  SYN, ACK\n5  A:54000 → B:8080  ACK"
+        "title": "q17應用資料，offset從payload起點計算",
+        "text": "00 0b 52 45 51 20 71 31 37 20 47 45 54\n0..1: 本文長度11\n2..12: REQ q17 GET（11 ASCII bytes）\nframe offset 54..66: 共13 bytes"
       },
-      "note": "Wireshark 可能預設顯示相對 TCP 序號；顯示 0／1 不代表原始標頭真的寫 0／1。"
+      "image": {
+        "src": "./assets/diagrams/wireshark-byte-layers.svg",
+        "alt": "67-byte frame 與13-byte應用框架的完整邊界。",
+        "caption": "67-byte frame 與13-byte應用框架的完整邊界。"
+      }
     },
     {
-      "heading": "原始位元組與解析結果如何互相驗證",
+      "kind": "mechanism",
+      "heading": "序號在數bytes，ACK在說下一個期待的位置",
       "paragraphs": [
-        "下方位元組區是擷取檔中的實際資料；Wireshark 依協定格式切出欄位。若只擷取封包前面一部分（snap length 太短），後段欄位可能不完整；若有加密，仍可看到部分外層欄位，但不一定能讀應用內容。",
-        "本教學檔沒有截斷，GET /status 與 HTTP 200 OK 是明文。真實流量若走 TLS，不能期待用 Follow TCP Stream 直接讀到同樣的明文。"
+        "TCP把每方向的資料看成一條有編號的位元組流。Sequence Number指出這段第一個byte的位置；ACK Number通常表示該方向已連續接收完ACK以前的bytes，下一個期待是ACK。它不是「第幾封包」，也不是一個業務回覆碼。TCP會讓接收端把按序bytes交給程式，程式是否已呼叫recv、解析或執行，必須由應用證據確認。",
+        "握手中的SYN與正常關閉中的FIN各佔一個序號位置，純ACK沒有payload也沒有SYN／FIN時不推進自身序號。例如起始seq1000的SYN之後，第一個資料byte編號1001。13bytes佔1001到1013，下一個期待1014。這種區間算法比「ACK加一」更重要：資料長度可能是13、1000或0，不能一律加一。",
+        "Wireshark常預設顯示Relative Sequence Numbers，把首個SYN當0以方便閱讀。原始1000會顯示0，第一個資料1001顯示1；接收13bytes後相對ACK14，原始ACK1014。兩者是同一件事的不同基準。比對公司log或另一工具時，先確認使用tcp.seq、tcp.seq_raw、tcp.ack、tcp.ack_raw哪一種。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：用雙向序號檢查正常關閉",
+      "paragraphs": [
+        "q17客戶端原始SYN seq1000，伺服器SYN/ACK seq9000 ack1001，客戶端ACK seq1001 ack9001。請求送13bytes後，伺服器ACK1014；伺服器回15bytes，起點9001，佔9001～9015，客戶端ACK9016。每方向各有自己的基準，不能把1000與9000串成同一條數列。",
+        "客戶端接著FIN seq1014 ack9016，因FIN佔一個序號，伺服器反向FIN/ACK應ack1015；伺服器FIN seq9016佔一個序號，最後客戶端ACK9017。教材正常流程共十筆。這種核對可揭示一個常見生成或實作錯誤：payload宣稱13bytes卻ACK只加12。即使字串看起來正常，序號算式仍會指出資料不自洽。",
+        "看到最後ACK只能支持這段關閉交換有觀測，不表示沒有任何應用處理錯誤；而沒有最後ACK也可能是時間窗提早停止。維護時先驗證連線層自洽，再讀應用層對應。雙向關閉資料還能區分「對端不再送」與「所有資源已釋放」，後者通常還需程式狀態與系統資訊。"
       ],
       "table": {
-        "caption": "不同資料來源的證據界線",
+        "caption": "正常連線原始序號中間值",
         "headers": [
-          "看見",
-          "比較能說",
-          "還不能說"
+          "事件",
+          "Seq",
+          "Ack",
+          "消耗序號"
         ],
         "rows": [
           [
-            "IP 來源／目的",
-            "封包標頭寫的位址",
-            "一定是使用者本人或真實設備身份"
+            "Client SYN",
+            "1000",
+            "0",
+            "1"
           ],
           [
-            "TCP SYN／ACK",
-            "傳輸層嘗試或回應",
-            "應用命令已完成"
+            "Client request",
+            "1001",
+            "9001",
+            "13"
           ],
           [
-            "HTTP 200 OK",
-            "此 HTTP 服務產生成功狀態碼",
-            "後端實體動作必然完成"
+            "Server response",
+            "9001",
+            "1014",
+            "15"
           ],
           [
-            "原始位元組",
-            "檔案確有這些位元組",
-            "沒有加密或截斷時才看得到所有內容"
+            "Client FIN",
+            "1014",
+            "9016",
+            "1"
+          ],
+          [
+            "Server FIN/ACK",
+            "9016",
+            "1015",
+            "1"
+          ],
+          [
+            "Client final ACK",
+            "1015",
+            "9017",
+            "0"
           ]
         ]
       }
     },
     {
-      "heading": "練習時固定一個閱讀順序",
+      "kind": "concept",
+      "heading": "工具產生欄位與真正傳送欄位的差別",
       "paragraphs": [
-        "先記檔案名稱、觀測點與時間格式，再用 Source／Destination／Protocol 找候選封包；展開 IP 和傳輸欄位，最後才讀應用內容或原始位元組。這樣即使遇到很多欄位，也不會迷路。"
+        "IP位址、Port、原始seq、flags都來自封包bytes。tcp.stream、相對seq、時間差與tcp.analysis.*是工具根據多筆資料產生的欄位。它們非常有用，因為可幫你建立對話與找異常；但可能隨擷取起點、處理順序、設定與工具版本改變。tcp.stream=0不是線路上的session ID，也不應寫進公司協定文件。",
+        "細節中的方括號常表示產生資訊，例如回覆參照與分析註記。當你看到「Previous segment not captured」，先回到Seq與Ack檢查到底缺哪個byte區間。工具是在目前檔案觀測到序號跳躍，不是宣佈哪一臺交換器丟包。這是由資料推論與原始欄位的差別，而不是要求你完全不用自動分析。",
+        "Expert Info把多種解析提醒集中起來，適合作為搜尋入口。診斷仍要看對應stream、原始bytes與窗口。有些提醒是正常互動，有些來自擷取缺口，有些是程式或網路故障；「紅色幾筆」不是可重現測量。引用提醒時保留frame號及原始欄位，別只截一張有紅字的畫面。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "解碼、重組與加密如何影響看見的內容",
+      "paragraphs": [
+        "解析器需要格式線索；標準Port、前面的協商或啟發式都可能提供線索。Decode As是明確指定解讀方式，例如把教學UDP媒體解成RTP。它只改工具如何讀bytes，不改封包內容，也不保證真的是該協定。先確認版本位元、標頭長度、SDP與來源關係，再採用解析結果。",
+        "應用訊息橫跨TCP segments時，工具可能等收齊後在最後一筆顯示重組內容，底部出現Reassembled資料tab。該tab不是這一frame原本單獨攜帶的全部bytes。若你要回答「某時刻那一段到底送多少」，看原始frame與tcp.len；要回答「完整HTTP訊息是什麼」，看重組資料。兩種問題用的證據粒度不同。",
+        "加密則是另一種情況：工具可能辨認TLS紀錄與握手，卻沒有解密應用資料所需的會話金鑰。看不出STATUS指令不等於沒傳指令。對維護，你仍可先用端點、長度、方向和時間定位，再配合應用log；提供金鑰的能力與授權要由實際環境決定。本章不把Decode As誤當解密手段。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "校驗和與offload：正確bytes可能在網卡之後才形成",
+      "paragraphs": [
+        "校驗和是對指定資料計算的短摘要，接收方用相同規則核對傳輸是否損壞；IP、TCP、UDP的覆蓋範圍不同。TCP／UDP還把部分IP資訊組成pseudo header算進去，所以只重算payload不足以驗證。校驗和不是安全簽章，也不能保證所有損壞都被發現。",
+        "硬體卸載offload讓網卡稍後計算校驗和或切分大的送出資料。在本機送出路徑較早的擷取點，工具可能拿到尚未填完整的校驗和、或尚未切分的較大段；在線路另一端看到的形狀會不同。看到本機送出incorrect不能立即說對端收到壞包。需確認方向、驗證設定與另一端觀測。",
+        "本教材產生器直接建立完整的IP/TCP/UDP校驗和，不模擬硬體卸載。因此它能用來學欄位與算式，不能用來證實某張網卡的offload行為。實際比較時只改一個授權測試條件，並記錄設定；大量關閉網卡功能會影響性能與現場流量，不是看見提醒就自動照做的第一步。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：同一事件的三層證據與截斷對照",
+      "paragraphs": [
+        "開mixed，用tcp.port == 51000 && tcp.port == 9100找到正常資料。把frame.len、frame.cap_len、ip.len、ip.hdr_len、tcp.hdr_len、tcp.len、tcp.seq_raw、tcp.ack_raw設為欄位。選請求與回覆，先不看答案，自己算payload起點與byte區間，再點細節對照反白。",
+        "交付一張只有十筆的CSV與一段算式說明：握手如何讓資料從1001開始、請求為何ACK1014、回覆為何ACK9016、FIN為何又加一。然後開truncated，同一請求frame.cap_len64／frame.len67，找出缺哪三bytes。這是保存長度變因，不應修改協定長度欄位。",
+        "驗收要求完整檔的IP與傳輸長度自洽、字串與11-byte前綴吻合、雙向ACK計算正確，截斷檔指出原始資料無法復原。若工具顯示相對數字，補raw列而不是手動改PCAP。當前製作環境無GUI，自動驗證覆蓋原bytes與校驗和；菜單與解析標籤需在實際Wireshark安裝後覈對。"
       ],
-      "steps": [
-        "清除顯示篩選，確認本檔 13 筆。",
-        "選第 1 筆 DNS 查詢，寫下問誰、問什麼。",
-        "選第 3 筆 TCP SYN，寫下協定與四個端點欄位。",
-        "選第 8 筆 HTTP 回覆，寫下方向、狀態與不能推出的結論。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/wireshark-three-panes.svg",
-        "alt": "封包列表、協定細節、原始位元組三區塊與教學 DNS/TCP 例子。",
-        "caption": "示意圖使用自製教學資料；請以自己 Wireshark 實際顯示的欄位為準。"
-      },
-      "note": "若名稱解析功能把 IP 改顯示成主機名，可先關閉名稱解析或點欄位看原始 IP，避免兩人看同一檔卻以為端點不同。"
+      "code": {
+        "title": "匯出原始欄位供逐筆驗證",
+        "text": "tshark -r wireshark-maintenance-mixed.pcap -Y \"tcp.port == 51000\" -T fields -E header=y -E separator=, -e frame.number -e frame.len -e ip.len -e tcp.hdr_len -e tcp.len -e tcp.seq_raw -e tcp.ack_raw"
+      }
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "同樣顯示Malformed，原因可能在資料也可能在解碼",
+      "paragraphs": [
+        "假設某UDP在TCP Port名稱旁顯示Malformed。候選一是實際傳輸資料不符合協定；候選二是用錯Decode As把另一種格式硬當RTP；候選三是snaplen截斷後缺必要欄位。先看frame.cap_len是否小於frame.len，再看原始標頭，最後檢查解碼設定。這個順序先查資料是否完整，避免在不足資訊上討論格式。",
+        "補充證據：完整檔payload開頭54 45 4d 50，ASCII是TEMP，而使用者先前將62001指定成RTP。RTP版本應從第一byte高位讀，0x54高兩bit不是版本2；因此先移除錯誤Decode As，恢復Data或適合的文字解析。並不是把每個UDP都當RTP就能看音訊。",
+        "回歸核對：先前的TEMP封包應保留相同bytes與時間，只有解析器提示改變；真正40000/40002媒體仍可讀出版本2、序號與SSRC。若改設定後把正確RTP也隱藏或誤讀，說明範圍設得太廣。修復解析問題與修復傳輸問題有不同驗收，不要混成一個「網絡修好了」。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "第 3 筆的 No. 是 3，能推論 TCP sequence number 等於 3 嗎？",
-      "answer": "不能。No. 是檔案中的擷取序號；TCP 序號要在 TCP 細節區另看。"
+      "level": "foundation",
+      "question": "爲什麼目的MAC是路由器但目的IP是遠端服務器可以正常？",
+      "answer": [
+        "MAC服務本地鏈路交付，IP服務跨網絡的目的尋址；兩層負責範圍不同。",
+        "主機把遠端IP的數據裝進發給下一跳MAC的frame，路由器再換鏈路外殼轉送。",
+        "應覈對網關和路由，而不是僅因MAC不是服務器就認爲發錯人；經過NAT還要記錄轉換前後觀測。"
+      ]
     },
     {
-      "question": "第 1 筆 DNS 查詢應展開哪個傳輸層欄位？",
-      "answer": "此檔使用 UDP，因此展開 UDP，確認來源 Port 53000 與目的 Port 53，再展開 DNS 問題欄位。"
+      "level": "foundation",
+      "question": "tcp.stream與tcp.seq_raw，哪一個在線路標頭中實際傳送？爲何要區分？",
+      "answer": [
+        "seq_raw來自TCP標頭，是實際傳送的序號；stream是工具按連接關係分配的本地編號。",
+        "stream編號可能在裁切或換檔後改變，不能當協議Session ID。",
+        "交接可用stream作爲該文件快捷索引，跨檔關聯仍要端點、握手基準及請求ID。"
+      ]
     },
     {
-      "question": "第 3 筆與第 4 筆誰先送、方向如何？",
-      "answer": "第 3 筆 A:54000 → B:8080 送 SYN；第 4 筆 B:8080 → A:54000 回 SYN/ACK。"
+      "level": "application",
+      "question": "陌生資料：Ethernet18 bytes（含VLAN）、IPv4頭20、TCP Data Offset7、IP總長88。算TCP payload與frame長。",
+      "answer": [
+        "TCP標頭7×4＝28；payload88－20－28＝40。",
+        "frame長18＋88＝106，不加不存在的FCS或前導碼。payload起點18＋20＋28＝66。",
+        "用frame.len與tcp.len覈對106與40；若有截斷，用cap_len另看實際留存。"
+      ]
     },
     {
-      "question": "Length 欄顯示一個數字，能直接說 HTTP body 就是這麼多位元組嗎？",
-      "answer": "不能。封包長度包含鏈路、IP、TCP 等標頭；要找 HTTP body 長度需看應用欄位與實際資料。"
+      "level": "application",
+      "question": "陌生資料：SYN原seq8000，隨後數據原seq8001、len23，對端ACK8024。改成相對序號顯示哪些數？",
+      "answer": [
+        "SYN基準8000變0；數據8001－8000＝1。",
+        "23bytes佔原8001～8023，下一期待8024；相對ACK8024－8000＝24。",
+        "這些數自洽，但ACK只確認傳輸接收，不說明23bytes指令已執行。"
+      ]
     },
     {
-      "question": "真實封包以 TLS 加密後，還能期待直接看到 GET /status 明文嗎？",
-      "answer": "通常不能。外層 IP、Port 等可能仍可見，但應用內容受加密保護；需依有權限的端點紀錄或合法解密方式查證。"
+      "level": "application",
+      "question": "陌生資料：服務器seq12001送40bytes、隨後FIN seq12041。客戶端應確認多少？",
+      "answer": [
+        "40bytes範圍12001～12040，數據後下一期待12041。",
+        "FIN佔一序號，確認它之後ACK應爲12042。",
+        "如果只看到ACK12041，它確認了數據但尚未確認FIN；需後續窗口判讀，不能稱完全關閉。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：payload 00 06 41 42 43 44 45，共7bytes；文件cap_len等於frame.len。大端長度不含前綴，問題在哪裏？",
+      "answer": [
+        "前綴宣稱6-byte本文，總框架應2＋6＝8；實際只有5-byte本文，共7。",
+        "這不是snaplen截斷，因爲保存長度與原長相同；但可能是TCP消息仍有後續segment。",
+        "先Follow本stream找後續一byte；若整個業務窗口都無後續，查發送與framing，不能只因單筆不足就認定錯誤。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "本機送出包顯示checksum incorrect，對端同seq同payload卻顯示valid且ACK推進。如何判斷？",
+      "answer": [
+        "候選是本機捕捉發生在checksum offload完成前；對端正常校驗與ACK是重要反證。",
+        "覈對捕捉方向、offload設置與工具校驗偏好；比較同一byte區間，而不是僅憑時間相近。",
+        "有限結論是本機顯示異常可由觀測階段解釋；若對端也invalid且未ACK，才繼續查實際損壞或生成錯誤。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：同一frame原tcp.len80，底部Reassembled tab有200bytes。可以寫這筆在線路傳了200bytes嗎？",
+      "answer": [
+        "不能。原frame傳的payload以tcp.len80爲準，Reassembled可能彙總多筆。",
+        "查重組引用的frame與各段範圍，計算總200來自哪些bytes。",
+        "報告區分「此段80bytes」與「此應用訊息重組200bytes」，性能統計也選一致層級。"
+      ]
     }
   ],
   "recap": [
-    "先看列表定位，再展開細節，最後查原始位元組。",
-    "No.、Time、Length、Info 都要先確認各自意義。",
-    "TCP 相對序號是顯示方式，不等於封包原始值。",
-    "解析結果要和標頭欄位及觀測位置一起讀。",
-    "能指出證據的邊界，比只記住一個顏色重要。"
+    "能按標頭長度定位payload，區分框架長度與各層長度。",
+    "能手算TCP序號、確認號與相對序號。",
+    "能分辨原始欄位、工具推算、重組、截斷與offload造成的現象。"
   ],
   "sources": [
     {
-      "label": "Wireshark 官方指南：封包列表與細節",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChUsePacketListPaneSection.html"
+      "label": "Wireshark 官方：細節欄位及工具產生欄位",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChUsePacketDetailsPaneSection.html"
     },
     {
-      "label": "Wireshark 官方指南：封包檢視",
-      "url": "https://www.wireshark.org/docs/wsug_html/"
+      "label": "Wireshark 官方：原始位元組與重組資料",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChUsePacketBytesPaneSection.html"
+    },
+    {
+      "label": "Wireshark 官方：TCP 與應用資料重組",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvReassemblySection.html"
+    },
+    {
+      "label": "Wireshark 官方：校驗和與硬體卸載",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvChecksums.html"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 序號與接收確認",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4"
     }
-  ]
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
+      "label": "第二版混合流量 PCAP",
+      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-truncated.pcap",
+      "label": "只保留前 64 bytes 的變因檔",
+      "description": "與混合檔同一批 frame，長封包只留前 64 bytes，原長度保留。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-manifest.json",
+      "label": "可重現資料清單",
+      "description": "檔案雜湊、frame 的原始欄位與合成情境名稱；先獨立分析，再用清單核對。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      21
+    ],
+    "practice": [
+      35,
+      55
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+  }
 }

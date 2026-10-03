@@ -1,157 +1,241 @@
 {
-  "intro": "View、Controller、Adapter 是教學用的常見責任分工，不是公司程式已證實的三層。本章練習從物件建立、引用與釋放的證據讀出真正依賴關係，避免只看類別名稱就畫箭頭。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "分層不是把class改成View、Controller、Adapter就完成。這章先建立型別、物件、介面、依賴和所有權的基本關係，再說明為什麼高層規則應能與外部實作分離，如何在共享、重新配置與關閉時避免釋放錯誤資源。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      14,
+      23
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 layers 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能用白話解釋畫面、控制邏輯與介接邊界各可能負責什麼。",
-    "能查明一個物件誰建立、誰持有、誰釋放。",
-    "能辨認事件訂閱與資源清理的生命週期問題。"
+    "從構造、字段與實際型別畫物件依賴，不用class名稱猜。",
+    "說明interface和adapter如何隔開業務規則與廠商細節。",
+    "判斷owner與借用者，設計一致的建立、訂閱與關閉範圍。"
   ],
   "sections": [
     {
-      "heading": "用責任而不是類別名稱分層",
+      "heading": "分層先分責任，不是先分資料夾",
+      "kind": "concept",
       "paragraphs": [
-        "View 接受輸入並顯示；Controller 決定操作流程與狀態；Adapter 翻譯成外部 API 或設備協定。這只是分析用的參考框架。",
-        "實際程式可能把職責合在同一類，或由多個服務分擔。若找不到某層，不要為了圖好看硬補一個不存在的物件。"
-      ],
-      "table": {
-        "caption": "教學角色與要找的證據",
-        "headers": [
-          "角色",
-          "可能做的事",
-          "應核對"
-        ],
-        "rows": [
-          [
-            "View",
-            "按鍵、呈現狀態",
-            "事件綁定與資料來源"
-          ],
-          [
-            "Controller",
-            "驗證操作、維持狀態",
-            "方法分支與狀態轉換"
-          ],
-          [
-            "Adapter",
-            "呼叫 SDK 或編解碼",
-            "實際 API 呼叫與錯誤"
-          ],
-          [
-            "外部端",
-            "接收命令、回報事件",
-            "回覆與設備 log"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "物件圖和呼叫圖不是同一張",
-      "paragraphs": [
-        "「A 持有 B 欄位」是物件關係；「A 的方法某時呼叫 B」是呼叫關係；「B 事件觸發 A 的 handler」又是反方向關係。",
-        "要分別標出建立處、注入處、呼叫處及訂閱處。不能把 `RCSCall` 和 `iCallAPI` 名字排上下，就推得單向永久控制關係。"
+        "一個操作需要用戶輸入、業務判斷、外部協議和結果顯示。若每個按鈕直接拼命令、建socket、更新狀態、釋放資源，功能雖可跑，修一處參數可能需要找十個按鈕。分層是把變化原因相近的責任放在明確邊界，讓業務規則和外部細節可以分別理解與驗證，而不是為了畫架構圖增加class數量。",
+        "View負責人如何輸入與看到結果，控制層負責准入、請求身份與狀態，adapter負責把業務操作翻成SDK/協議形式。這是本章教學分工；公司可能有更多或更少層，方法名字也可能不同。關鍵問題是規則在哪、翻譯在哪、外部副作用在哪，而不是強行把每個class塞進三層名詞。",
+        "若adapter失敗時內部偷偷修改全局UI，邊界就被繞過：controller不知道狀態變化，測試無法觀察，關閉時UI可能已失效。反向通知應回到明確接收者，讓狀態處理和顯示投影分離。邊界清晰不是“完全沒有耦合”，而是每條依賴都有可解釋契約，故障能定位到有限範圍。"
       ]
     },
     {
-      "heading": "誰建立，誰負責清理",
+      "heading": "型別、實例與字段：從宣告追到真正關係",
+      "kind": "concept",
       "paragraphs": [
-        "若某物件建立 Socket、音訊裝置或 SDK handler，需找誰持有其生命週期。C# 中實作 IDisposable 的型別通常由所有者在適當時機 Dispose；共用資源不能隨便由一個呼叫者關掉。",
-        "事件訂閱也會影響生命週期；重複訂閱可能重複處理，同時要注意是否有取消訂閱。具體清理方式以該 SDK 版本文件與程式碼為準。"
+        "字段LabAdapterPort _adapter只說明controller能依賴哪些操作，不說明實際實例是哪一個。構造LabController(adapter)把參照交給物件保存；這次建立C1借A1，另一次C2可能借A1或A2。new會建立實例，指派參照不會複製實例；readonly字段阻止重新指派，並不讓所指物件不可變或自動線程安全。",
+        "假設一行new LabController(new LabScriptedAdapter())，adapter由調用端建立卻未保存owner。controller若契約是借用，就不會釋放它，結果創建點和釋放點不匹配。反過來，構造傳入root擁有的共享adapter，controller自作主張Dispose，會讓其他借用者壞掉。這說明“誰new就誰釋放”是有用起點，但工廠/容器也可能轉移所有權，必須看契約。",
+        "物件圖要標參照、建立與擁有三種關係。創建者可把資源交給另一個owner，持參照者不一定owner，使用者也未必能更改生命期。方法調用圖又不同：controller可調用adapter.Send，adapter以保存的委託通知controller；兩向資料流並不必然是兩向業務型別依賴。理解這些箭頭，才能讀大型C#專案而不被字段數量淹沒。"
       ]
     },
     {
-      "heading": "一次通話物件不等於整個客戶端",
+      "heading": "介面是操作契約，不是網路介面的同義詞",
+      "kind": "concept",
       "paragraphs": [
-        "像 Softphone、PhoneCall 這類名稱在某些 SDK 有明確意義，但公司包裝層的建立與共用方式必須查版本相符的原始碼。",
-        "要回答「一個軟體電話能有幾個通話物件」，先看該產品版本的建構、集合、事件與清理；不能把先前比喻直接變成實際設計。"
+        "C#interface描述相關方法、屬性或事件的可用範圍，class/struct提供實現。LabAdapterPort包括Send與Completed，controller不需要知道實現是否真實網路、mock或錄檔重播。但interface只保證型別形狀；Accepted含義、線程規則、取消、去重和owner仍需行為契約。兩個實現都能編譯，卻可能一個同步發回呼、另一個延後發回呼。",
+        "適配器的作用是轉換角色：把SetLevel業務參數映射到外部規範，解釋返回與錯誤，再把通知轉成應用可處理的事件。它不應任意改變高層業務，例如收到外部Busy就自動重試實體動作，除非契約與業務明確允許。否則controller以為失敗，adapter背後又執行成功，維護者無法重建狀態。",
+        "依賴倒置的核心不是多寫一個I開頭類型，而是高層規則依賴穩定抽象，外部實現滿足該抽象。構造注入讓實現選擇顯式發生在組裝處，便於替換與查證；不一定要引入容器或框架。一個普通Main建立adapter並傳入controller，就能教會這種關係。過多抽象反而會讓讀者跳五個文件仍找不到實際副作用，需保留可追路徑。"
       ]
     },
     {
-      "heading": "回呼執行緒也屬生命週期",
+      "heading": "組裝處決定運行實作與設定",
+      "kind": "concept",
       "paragraphs": [
-        "事件可能在 UI 執行緒或背景執行緒發出；畫面更新是否需要切回 UI 執行緒，要看平台與 SDK 的執行模型。",
-        "如果 UI 已關閉但 callback 晚到，處理器仍操作舊 View 可能出錯；要找取消訂閱、取消請求與舊事件防護。"
+        "程式入口或配置工廠通常決定使用哪種adapter、host、protocol版本和資源範圍，這裡常稱composition root。維護時從界面字段往上追構造調用，才能知道線上實際實現；僅在代碼搜索所有實現並看其中一個，可能讀到根本沒被選擇的測試實現。配置的讀取、預設值和覆蓋順序同樣屬於依賴。",
+        "例如main建立A1並傳給C1/C2，兩個controller借用A1。若將它改為每次new A，身份、訂閱與外部連接數量都改變。短期依賴適合每次操作，長期客戶端可適合共享，但必須符合實際SDK線程與生命期要求。所有權與線程安全是不同軸：一個全局owner可以擁有不允許並行訪問的物件，借用者需要協調。",
+        "記錄組裝結果可包含實現型別、實例ID、配置世代、版本、目標端點和owner。賬號與密碼不能作為公開記錄，但可用去識別字段和來源標識。重連或換賬號時，組裝／更新策略應說明舊物件何時關閉、通知如何隔離與新狀態如何建立，不能只給全局字段重新賦值而讓舊訂閱繼續工作。"
       ]
     },
     {
-      "heading": "用一張可驗證的物件卡",
+      "heading": "例題一：介面參照與具體物件是同一實例",
+      "kind": "worked-example",
       "paragraphs": [
-        "為每個待查物件記：定義檔、建立位置、持有者、公開方法、事件來源、釋放位置、版本與實際觀測。空白欄位留白，別用猜測補齊。",
-        "教學卡只作查核模板，不包含公司原始碼；保留未知能指引下一個搜尋。"
+        "輸入root是LabScriptedAdapter，alias以LabAdapterPort型別指向root。ReferenceEquals為true，說明類型視角改變沒有建立另一個adapter。隨後建立controller A/B，均借root並各自訂閱。A.Dispose解除自己的handler，不Dispose root，因此root.Disposed=false、HandlerCount從2到1，B仍可送請求並收到完成。",
+        "這個例子說明接口不複製物件，借用不賦予釋放權。它還說明解除訂閱要精准對應自己的handler；若A關閉時直接把root.Completed清空（真實event外部通常不能這樣賦值），會破壞B。每個controller的請求還需獨立身份，否則共享發佈者可把同文字R1串到兩個接收者；Lab為每個controller加owner前綴。",
+        "完整驗證應同時看關閉者、共享物件和剩餘使用者，不只看A已Closed。實際SDK如果共享有特殊限制，就由root或資源管理者制定協調規則；這段不證明任意adapter都可並行共享，僅驗證選定Lab契約的所有權與事件範圍。"
       ],
       "code": {
-        "title": "物件查核卡（虛構欄位）",
-        "text": "name: [待查]\ndefined_at: [檔案／版本]\ncreated_by: [待查]\nmethods_called: [程式碼位置]\nevents_subscribed: [處理器位置]\nreleased_by: [待查]"
+        "title": "完整借用與關閉例題；對應layers",
+        "text": "using var root = new LabScriptedAdapter();\nLabAdapterPort alias = root;\nusing var a = new LabController(root);\nusing var b = new LabController(root);\nConsole.WriteLine(ReferenceEquals(alias, root)); // True\na.Dispose();\nConsole.WriteLine(root.Disposed); // False\nConsole.WriteLine(root.HandlerCount); // 1\nstring id = b.Submit(\"QueryState\", 0);\nroot.Emit(new LabCompletion(id, b.Session, \"Completed\"));\nConsole.WriteLine(b.Results[id]); // Completed"
       }
+    },
+    {
+      "heading": "例題二：字段換成新物件，不會自動搬事件",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入A1與A2兩個adapter，controller在構造時保存A1並訂A1.Completed。外部變量current從A1改A2，不會改變controller內部字段，因為字段保存當時的參照。A2.Emit不會送給controller，controller.Submit仍調用A1。這是“我已經重連到新實例，為甚麼仍用舊實例”的基本機制。",
+        "修正不一定讓readonly字段可改。可以結束舊controller並解除A1訂閱，再建立新controller借A2，或設計明確ReplaceAdapter方法同步處理訂閱、pending與session。無論哪種方式，不能只改變某個全局變量就認為所有使用者都已切換。下列代碼使用新controller，結果與A1/A2歸屬明確。",
+        "驗收要先確認舊controller不再收到通知，A1若由root擁有再按用途關閉；新controller的操作、訂閱與事件使用同A2。若應用需保持當前任務跨切換，契約需明確是取消、查詢還是轉移，不能無聲丟棄。生命週期模型由基礎參照規則決定，理解它比給每個重連加Sleep更有效。"
+      ],
+      "code": {
+        "title": "完整參照切換推導",
+        "text": "using var first = new LabScriptedAdapter();\nusing var second = new LabScriptedAdapter();\nLabAdapterPort current = first;\nusing var old = new LabController(current);\ncurrent = second; // old仍保存first\nstring oldId = old.Submit(\"QueryState\", 0);\nConsole.WriteLine(first.Sent.Count); // 1\nConsole.WriteLine(second.Sent.Count); // 0\nold.Dispose();\nusing var fresh = new LabController(current);\nstring id = fresh.Submit(\"QueryState\", 0);\nsecond.Emit(new LabCompletion(id, fresh.Session, \"Completed\"));\nConsole.WriteLine(fresh.Results[id]); // Completed"
+      }
+    },
+    {
+      "heading": "共享資源與短期會話需要不同生命期",
+      "kind": "concept",
+      "paragraphs": [
+        "核心客戶端、線/賬號配置、一次請求、一次通話媒體有不同壽命。長期資源可以被多次操作借用，短期狀態應按請求/session保存，避免lastCommand覆蓋全部歷史。清理時按反向依賴收縮：停止新請求，處理既有操作與通知，再解除訂閱和釋放自己擁有資源，不能把一個會話結束當程式關機。",
+        ".NET依賴注入容器可管理singleton、scoped、transient的建立與釋放，但這些名稱不是性能或正確性保證。singleton長存、scoped限定範圍、transient每次解析；若singleton保存短期scoped資源，壽命可能被拉長或不合法。手工構造也會有同樣問題，只是沒有框架提示。課例無需容器，先理解owner與範圍再學工具。",
+        "線程/回呼也需納入資源使用。物件已Dispose後還有排隊事件，業務守衛要讓它不再訪問失效資源；-=不能撤銷已經執行或排隊的工作。裝置和網路操作可能阻塞，不能在持狀態鎖時無條件等外部完成。擁有者負責建立可終止流程，而不只是最後呼叫Dispose。"
+      ]
+    },
+    {
+      "heading": "邊界錯誤如何從契約顯露，而非向UI偷偷擴散",
+      "kind": "concept",
+      "paragraphs": [
+        "adapter應把可辨認的外部錯誤轉換成穩定結果，同時保留原始錯誤碼和上下文。高層可根據Rejected/Unknown/Completed決策；如果adapter吞例外後返回Accepted，業務層將永遠等待一個不存在的任務。相反地，把所有外部細節作為未分類例外拋到按鈕，也會使上層無法區分輸入不合法、連接失敗與遠端拒絕。",
+        "清楚邊界的驗收包含“哪個層判斷參數”“哪個層知道請求是否已外送”“哪個層負責恢復”“誰決定重試”。SetLevel百分比越界可在controller或adapter約定處拒絕；真正序列化/送出在adapter；重復實體動作由業務與協議共同決定，不能從interface簽章自作主張。每項責任寫明，維護者才能改對位置。",
+        "良好抽象不隱藏必要資訊。事件若只給bool success而丟session、request、拒絕理由，會讓診斷無解；接口設計應保存支持業務狀態的最小資料。你可以給外行顯示簡明文字，同時給紀錄結構化證據，兩者用途不同。前者解釋影響，後者可讓工程師復核。"
+      ]
+    },
+    {
+      "heading": "追碼實作：從建立點畫所有權圖",
+      "kind": "lab",
+      "paragraphs": [
+        "執行layers，在root建立、兩個controller構造及a.Dispose設中斷點。畫root→adapter的擁有箭頭、A/B→adapter的借用箭頭、adapter→A/B handler的通知引用。預測關閉A後的handler數和B是否可送，再看斷言。不要用所有箭頭都標“調用”掩蓋差異。",
+        "變因在臨時副本LabController.Dispose里額外_adapter.Dispose，預期borrower_does_not_dispose_shared_adapter失敗，B也無法繼續。復原後刪除事件解除，預期HandlerCount不歸1；這是另一個故障。兩項分別是越界釋放與引用殘留，驗收需同時避免。接著執行例題二，親自證明全局字段切換不會搬移內部參照。",
+        "最終產物是資源卡：建立者、owner、借用者、訂閱者、終止條件與回歸。把一張真實class名只寫成待查，未來用構造與字段填證據。Lab項目不載入公司SDK，不能驗證真實共享與線程限制，但已足以教會所有權、身份和分層關係。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：關閉一頁後另一頁突然不能操作",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "兩頁面A/B原本正常，關閉A後B按鈕有點擊卻失敗。候選甲A釋放了兩頁共享adapter；候選乙A解除事件時錯誤清掉B訂閱，B發送成功但沒有結果。先查adapter.Disposed/Send結果與HandlerCount，不把所有症狀歸“UI bug”。這一步能區分正向資源失效和反向通知失效。",
+        "資料甲為Disposed=true、B Send拋ObjectDisposed，支持owner越界；修A僅解除自己訂閱，將共享adapter釋放交root。資料乙為Disposed=false、Sent增加、Completed發出但B無handler入口，查訂閱解除配對，修只移除A對應委託。真實SDK未必提供HandlerCount，可由應用維護訂閱紀錄及入口計數獲得同類證據。",
+        "回歸關閉A、關閉B、最後root關閉、快速重新打開與舊回呼排隊。若B可繼續但舊A還更新UI，也未完成修正；若退出程式漏釋放root，也未完成完整生命週期。報告寫明共享策略與關閉範圍，別僅說“改成singleton解決”。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "【責任】View 一般可能負責什麼？",
-      "answer": "接收操作與顯示狀態；實際職責仍看程式。"
+      "question": "【基礎】readonly LabAdapterPort字段能保證物件不可變或線程安全嗎？",
+      "level": "foundation",
+      "answer": [
+        "readonly限制字段重新指派，不保證所指實例內部狀態不變。",
+        "接口只描述可用成員，也不自動定義同步規則。",
+        "查具體實現與線程契約，按應用狀態範圍協調訪問。"
+      ]
     },
     {
-      "question": "【圖】A 有 B 欄位能證明 A 每次操作都呼叫 B 嗎？",
-      "answer": "不能；持有關係與執行路徑不同。"
+      "question": "【基礎】持有參照、調用、擁有分別是甚麼關係？",
+      "level": "foundation",
+      "answer": [
+        "持參照讓代碼可找到實例，調用是執行某操作，擁有是負責最終清理。",
+        "借用者可持參照與調用卻不能任意Dispose共享資源。",
+        "畫分別標記箭頭，查建立點與釋放契約確認。"
+      ]
     },
     {
-      "question": "【建立】查物件關係最先要找哪三處？",
-      "answer": "定義、建立／注入、實際使用處。"
+      "question": "【基礎】為甚麼interface方法都相同仍可能行為不相容？",
+      "level": "foundation",
+      "answer": [
+        "簽章只限定形狀，Accepted語義、回呼時機、線程與取消仍可不同。",
+        "抽象需要行為契約與測試條件，不只是成員名稱。",
+        "適配器轉換時保留身份、錯誤與完成語義，避免高層誤判。"
+      ]
     },
     {
-      "question": "【清理】共用 SDK 物件能由任意一通電話 Dispose 嗎？",
-      "answer": "不能；先確認所有者與共用範圍。"
+      "question": "【應用】root創建A，C1/C2借A。C1關閉時該釋放甚麼？",
+      "level": "application",
+      "answer": [
+        "解除C1自己的事件與短期記錄，阻止舊工作更新C1。",
+        "A由root擁有且C2仍使用，不能由C1釋放。",
+        "驗證C2正常和root最終釋放，關閉範圍要配生命週期。"
+      ]
     },
     {
-      "question": "【事件】重複訂閱可能出現什麼症狀？",
-      "answer": "同一事件被處理多次，需查訂閱次數及取消訂閱。"
+      "question": "【應用】current=A1，構造C後current=A2，C.Send走哪裡？",
+      "level": "application",
+      "answer": [
+        "C字段在構造保存A1參照；外變量切換不改C字段。",
+        "因此仍走A1，除非有明確替換方法或重建C。",
+        "驗收新訂閱、舊解除與pending/session政策，不只賦值。"
+      ]
     },
     {
-      "question": "【執行緒】背景 callback 可以不看平台就直接改 UI 嗎？",
-      "answer": "不應假設；需核對 UI 執行緒規則。"
+      "question": "【應用】singleton服務保存一次短期session，下一通沿用舊Ended。為甚麼不是“復用更快”就正確？",
+      "level": "application",
+      "answer": [
+        "長期實例把短期狀態壽命拉長，第二通繼承不該共享的終態。",
+        "資源可復用但操作/session狀態應按範圍重建或明確重置。",
+        "回歸兩通、拒絕與關閉，確認長期owner和短期記錄獨立。"
+      ]
     },
     {
-      "question": "【名稱】同名 Softphone 可推公司物件數量嗎？",
-      "answer": "不能；查實際版本、建立與集合管理。"
+      "question": "【診斷】B發成功但沒事件與B Send拋ObjectDisposed，關閉A後均發生。區分修正。",
+      "level": "diagnosis",
+      "answer": [
+        "前案查B訂閱是否被錯誤移除及發佈者身分；後案查共享資源被A越界釋放。",
+        "分別修委託配對或owner，不以統一重連掩蓋。",
+        "回歸兩頁面關閉次序、重新開啓和root關閉，保留舊事件驗證。"
+      ]
     },
     {
-      "question": "【卡片】沒有釋放位置時應怎麼記？",
-      "answer": "標未知，繼續查生命週期，不填猜測。"
+      "question": "【診斷】adapter吞IOException後返回Accepted，上層一直Pending。如何修邊界？",
+      "level": "diagnosis",
+      "answer": [
+        "外送未完成被偽裝接受，業務層等待無結果任務。",
+        "按契約返回明確本地失敗或拋可辨認例外，保存是否外送與原始錯誤；不要任意重試實體動作。",
+        "測試入隊失敗、遠端拒絕、晚到成功與正確完成，驗證UI狀態與實際邊界一致。"
+      ]
     }
   ],
   "recap": [
-    "責任分工只是查碼框架。",
-    "建立、持有、呼叫、事件與釋放要分開記。",
-    "公司依賴圖需原始碼與執行證據。"
+    "分層是責任與變化邊界，接口需要行為語義。",
+    "從構造和運行實例追依賴，字段名不證明關係。",
+    "owner負責最終清理，借用者關閉不能釋放其他使用者仍需的資源。"
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 layers，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    }
   ],
   "sources": [
     {
-      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+      "label": "Microsoft：物件參照與身份",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/object-oriented/objects"
     },
     {
-      "label": "Microsoft Learn：IDisposable 與資源所有權",
+      "label": "Microsoft：interface行為範圍",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/types/interfaces"
+    },
+    {
+      "label": "Microsoft：依賴注入生命期與清理",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/extensions/dependency-injection/guidelines"
+    },
+    {
+      "label": "Microsoft：Dispose所有權",
       "url": "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose"
     },
     {
-      "label": "Microsoft Learn：Visual Studio 搜尋定義與參照",
-      "url": "https://learn.microsoft.com/en-us/visualstudio/ide/writing-code-in-the-code-and-text-editor?view=visualstudio"
+      "label": "Microsoft：委託訂閱解除",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/how-to-subscribe-to-and-unsubscribe-from-events"
     }
   ]
 }

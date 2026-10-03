@@ -1,146 +1,271 @@
 {
-  "intro": "一對一送給 B 與同時送給一群接收者，是兩種不同的網路問題。這一篇分清單播、廣播、群播與 IGMP，並用「發送端有送、接收端沒收到」的案例練習查群組、網段與觀測位置。",
-  "plan": [
-    {
-      "label": "比較三種送達方式",
-      "minutes": 9
-    },
-    {
-      "label": "理解群組與 IGMP",
-      "minutes": 9
-    },
-    {
-      "label": "追查群播沒收到",
-      "minutes": 9
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 8
-    }
+  "contentVersion": 2,
+  "intro": "群播把接收者集合與單一主機地址分開。從單播、廣播到IPv4群播，本章推導群組加入、介面選擇、交換器snooping與跨網段路由各自提供什麼能力，避免把「join成功」當成音訊必達。",
+  "prerequisites": [
+    "UDP是一筆一筆資料報；本章會重新區分交付與分發。",
+    "Ethernet/VLAN基礎需知道廣播域，第三節會連線機制。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      18
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+  },
   "goals": [
-    "分辨單播、IPv4 廣播與群播的接收範圍。",
-    "說出 IGMP 的角色及它不能證明的事。",
-    "判斷接收端是否加入群組、是否在正確介面。",
-    "對群播缺流量提出至少三個可能檢查點。"
+    "區分單播端點、廣播域與群組位址。",
+    "解釋Socket加入、IGMP報告、snooping與群播路由的分工。",
+    "實算IPv4群播的Ethernet對映與多群組共用MAC。",
+    "依介面及觀測資料定位缺流量和有限修正。"
   ],
   "sections": [
     {
-      "heading": "單播、廣播、群播先看接收者範圍",
+      "kind": "concept",
+      "heading": "為什麼需要一個代表接收集合的目的位址",
       "paragraphs": [
-        "單播通常指定一個目的端點；IPv4 廣播送往某個本地廣播範圍；群播則使用群組位址，讓有興趣的接收端加入。它們的差別不只在「一對一／一對多」，還涉及網路設備如何決定轉送範圍。",
-        "廣播通常不會被一般路由器直接轉送到任意遠端網路；群播是否能跨網段，取決於群播路由與設備設定。不能因為 A 送出一筆群播，就假定所有網段都收到。"
+        "單播把一份資料發給一個目的IP，若有20位接收者，傳送者可能需20份傳送。廣播在本地廣播域向所有相關主機傳播，未對「誰需要這份資料」做分組。群播則使用群組IP，接收者選擇加入群組；網路在支援的分叉點複製資料，減少傳送者與共用上行的重複流量。這是分發模型，與UDP可靠性是不同概念。",
+        "IPv4群播位址範圍224.0.0.0/4，前4bits為1110；不同子範圍有特定用途與範圍限制，不能任意拿一個地址當正式服務。239/8常用於管理範圍，但管理邊界仍需配置。群組沒有單一「群主」或可用ARP得到的一臺目的主機；傳輸Port與應用協定再區分內容。UDP5004搭群組G是本例選擇，並非所有群播必用5004。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "Join建立接收意圖，IGMP把意圖告訴網路",
+      "paragraphs": [
+        "接收應用先綁適當UDP端點，對某介面加入群組。加入是OS Socket層的membership；IPv4主機透過IGMP讓相鄰群播路由器知道介面上有成員。IGMPv3能描述來源過濾：例如接收某來源S送到G，而非任意來源都接受。它不是UDP ACK，不會逐筆確認payload或補丟包。",
+        "群組成員是按介面管理，多網卡電腦在介面12加入G，資料卻由介面18到達，不能假設join自動擴展全部網卡。同host多Socket共享membership的具體交付/複用規則與OS相關，必須讀版本及設定。退出群組與關閉Socket各有生命週期；裝置報告「joined」通常只說明本機請求接受，流量是否真實到達還要檢查。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "Snooping、Querier與路由各處理一段",
+      "paragraphs": [
+        "基本二層交換器若不知道成員，可能在VLAN泛洪群播。IGMP snooping觀察報告與查詢，建立群組→成員port及路由器port的關係，限制不必要複製。它不自行變成三層群播路由器。Querier定期查詢成員，主機回答後更新狀態；缺少查詢或報告可能導致老化後斷流，行為還受廠商配置影響。",
+        "跨網段需要群播路由及相應轉送樹；普通單播預設route不能自動建整套群播分發。TTL限制IP可以經過多少路由跳，TTL1一般只夠本地分發而不能越過路由轉送；增加TTL也不能憑空建立群播route或授權範圍。工程上要依序分開本機membership、VLAN內複製、跨路由樹與應用接收，不能看一個開關便斷言全部通。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "傳送與接收的選擇不對稱，IPv6也不是替換字串而已",
+      "paragraphs": [
+        "通常群播傳送者不必加入G才能發到G；加入是接收意圖，傳送則需選輸出介面、目的G/Port及TTL等。Client先join不會自動建立遠端傳送者；Sender設定某群組也不讓網路無條件把資料導向所有網卡。若傳送者自己也要收回送資料，loopback選項與本機成員會影響結果，不能把同host看得到視為遠端接收證明。",
+        "多來源送同G時，群組只是分發集合；APP仍需來源與會話識別，不能把所有seq混成一個單調序列。例如S1序號100與S2序號1都合理，合併計數會產生假亂序與假損失。使用(S,G)、Port、session和time window建立計數，才能分析真正媒體或控制資料。",
+        "IPv6群播使用不同位址範圍與scope表示，成員控制由MLD而非IPv4 IGMP；Ethernet對映亦不同。Link-local範圍不應跨路由，site/organization等使用需看正式配置。Socket AddressFamily、介面索引及Join overload必須與協議匹配，不能只把239.1.2.3改成IPv6字串便認為已支援。這一層差異說明「群播概念相通」與「API細節相同」是兩件事。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：用位元算群播MAC及碰撞",
+      "paragraphs": [
+        "IPv4群播對映到Ethernet以01:00:5e開始，再取群組IP低23bits，第四MAC byte的最高bit固定0。G=239.1.2.3，後24bits是01 02 03，低23bits仍為01 02 03，因此MAC=01:00:5e:01:02:03。G2=239.129.2.3，後24bits81 02 03，去掉最高bit後同樣01 02 03，所以兩組對映相同。",
+        "IPv4有28個群組可變bits，MAC只保留23個，因此32個不同IP可共用對映。收到相同MAC的frame不等於屬於同一IP群組，主機需要IP與membership過濾；抓包篩選只用eth.dst可能包含額外群組。這不是錯誤MAC配置，而是對映設計；維護應同時記IP destination、Port、來源與interface。"
+      ],
+      "code": {
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "G1 239.1.2.3   last24 = 00000001 00000010 00000011\nG2 239.129.2.3 last24 = 10000001 00000010 00000011\nmask low23 = 0x7fffff\nG1 & mask = G2 & mask = 0x010203\nMAC = 01:00:5e:01:02:03\nCapture filter by MAC alone cannot distinguish G1 and G2."
+      }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：50筆每秒如何在三個測點定位",
+      "paragraphs": [
+        "教學來源S每20ms送一筆UDP，共50筆/s；群組G=239.1.2.3:5004。傳送端本秒有seq1000–1049共50；交換器接收port見50；A網卡見50，但APP收0，membership只有interface12而資料進interface18。這輪數字把缺口縮到本機加入/Socket條件，不支援「來源沒有送」。",
+        "另一個回合APP收48，缺1007與1031。50→48相差2，觀測損失2/50=4%，但必須以唯一ID計數並確認capture無丟棄、時間窗涵蓋同批資料。如果交換器50、A網卡48，缺口在兩觀測點間或抓包遺漏；若網卡50、APP48，查Socket緩衝/處理。兩種情況都叫「少包」，修正依機制不同。"
       ],
       "table": {
-        "caption": "三種目的方式的教學比較",
+        "caption": "例題二：50筆每秒如何在三個測點定位",
         "headers": [
-          "方式",
-          "誰是目的",
-          "常見限制"
+          "測點",
+          "unique seq count",
+          "用途"
         ],
         "rows": [
           [
-            "單播",
-            "一個指定的目的 IP",
-            "路由與服務端點須可達"
+            "S傳送日誌",
+            "50",
+            "本地送出輸入"
           ],
           [
-            "IPv4 廣播",
-            "本地廣播範圍",
-            "通常限於本地網段／VLAN"
+            "交換器入口抓包",
+            "50",
+            "進入複製路徑"
           ],
           [
-            "群播",
-            "加入群組的接收者",
-            "接收加入、交換與路由配置都要配合"
+            "A interface18抓包",
+            "50",
+            "網卡觀測可見"
+          ],
+          [
+            "A APP，join iface12",
+            "0",
+            "本機交付配置缺口"
           ]
         ]
-      },
-      "note": "IPv6 沒有 IPv4 式廣播；不要把這張表直接套到 IPv6。"
+      }
     },
     {
-      "heading": "群播是「加入群組」，不是「給一台固定主機」",
+      "kind": "code-reading",
+      "heading": "C# IPv4加入必須指明正確的本地介面地址",
       "paragraphs": [
-        "IPv4 群播目的位址落在 224.0.0.0/4。發送端把封包送往群組位址；接收端要在正確介面加入該群組，才有機會收到。不同群組、來源、介面或 UDP Port 都可能造成「看似同一流，實際收不到」。",
-        "以教學用群組 233.252.0.1、UDP Port 5000 為例，接收程式必須核對群組位址、Port 與接收介面；這是文件範例位址，不保證你所在網路允許群播。"
+        "下方是標準.NET IPv4 JoinMulticastGroup(group,localAddress)用法的閱讀片段，localAddress選用本機相應介面地址。構造UdpClient繫結本機Port；加入群組不把Socket的目的自動變成S，也不代表發端已開始。這段未執行真實群播，教材模型以固定interface編號模擬差異。",
+        "若使用另個(int interfaceIndex,IPAddress) overload，要核對它針對IPv6的語意，不能因引數名字類似直接替代IPv4地址 overload。讀公司程式碼時找到例項AddressFamily、bind地址、join引數、ReceiveAsync與Dispose，才能解釋狀態。生產還需取消、來源校驗、序號與有界處理，這些不是membership API自動提供。"
       ],
       "code": {
-        "title": "模擬群播設定",
-        "text": "發送：來源 192.0.2.10:54000 → 群組 233.252.0.1:5000\n接收：在指定介面加入 233.252.0.1，監聽 UDP 5000"
-      },
-      "note": "233.252.0.0/24 保留作群播文件範例，請勿拿來當作部署位址。"
+        "title": "原創教學資料／C#，按本節假設判讀",
+        "text": "using System.Net;\nusing System.Net.Sockets;\n// Reading example. Replace only with an authorized local test interface.\nvar group = IPAddress.Parse(\"239.1.2.3\");\nvar localInterfaceAddress = IPAddress.Parse(\"192.0.2.10\");\nusing var receiver = new UdpClient(new IPEndPoint(IPAddress.Any, 5004));\nreceiver.JoinMulticastGroup(group, localInterfaceAddress); // IPv4 overload\n// UdpReceiveResult packet = await receiver.ReceiveAsync(cancellationToken);\n// Record packet.RemoteEndPoint, buffer length and application sequence.\nreceiver.DropMulticastGroup(group);\n// This is not an executable live lab: 192.0.2.10 is a documentation address."
+      }
     },
     {
-      "heading": "IGMP 告訴鄰近網路設備誰想接收 IPv4 群播",
+      "kind": "maintenance",
+      "heading": "複製與緩衝的工程後果",
       "paragraphs": [
-        "IGMP 用於 IPv4 主機向鄰近群播路由器報告群組成員關係。IGMPv3 還可表達對特定來源的興趣。它是接收意願的控制資訊，不是實際的語音或資料內容。",
-        "即使看到 IGMP 加入訊息，也不能宣稱應用程式已收到 UDP 資料報；還要查交換器、群播路由、資料是否到達接收介面，以及程式是否綁定正確 Port。"
-      ],
-      "flow": [
-        "接收端加入群組",
-        "網路設備得知接收意願",
-        "發送端送群播資料",
-        "網路按配置轉送",
-        "接收程式讀取資料"
-      ],
-      "note": "IPv6 使用 MLD 等機制，不使用 IPv4 IGMP。交換器的 IGMP snooping 行為也依設備與配置而異。"
+        "群播沒有TCP式流量控制；慢接收者可能在本機UDP緩衝累積後丟棄，來源卻仍送50筆/s。增大buffer可承受短暫burst，但會增加積壓延遲，無法長期補到達大於處理。若語音資料有播放期限，收到晚於期限也可能不能使用。應用獨立記錄網卡可見、Socket收、有效解析、到期丟棄，才能分清真實缺包與晚包。",
+        "加入/退出、querier老化、鏈路切換都是時間變因。測試不能只看啟動10秒正常，還應跨過指定報告/老化時段並切換教學環境介面。組址、來源、Port、VLAN、TTL與memberships構成完整配置卡；只有G一個值不夠重現。"
+      ]
     },
     {
-      "heading": "案例：發送端有流量，接收端沒有",
+      "kind": "lab",
+      "heading": "實作：MAC碰撞與介面錯配是兩種獨立變因",
       "paragraphs": [
-        "假設 A 顯示每秒送出 UDP 群播，C 的程式卻無資料。先核對 C 的介面、群組、Port、來源篩選與加入狀態；再比對 C 所在鏈路有沒有資料流。若鏈路也沒有，查交換器 VLAN、snooping 與跨網段群播路由。",
-        "若 C 的網卡抓得到資料，但程式沒有讀到，就往 Socket 綁定、接收緩衝與程式過濾查。抓包位置不同時，「發送端有送」不能直接等同「接收端可得」。"
+        "執行 multicast及multicast --fault。紙算G1/G2對映，對照C# &0x7fffff與右移取bytes。正常模型incoming iface12，APP50；fault只改進介面18，APP0。改group到239.129.2.3時MAC相同，卻不能據此認定原membership也加入G2；寫出IP過濾仍需區分。",
+        "模型固定member資料且不開網卡；它只能驗證對映計算及閱讀配對，不能測試實際snooping。選做Windows唯讀netsh interface ipv4 show joins可觀察本機組資訊，必須核對實際介面與該程式狀態。驗收交對映手算、配置卡、50/48與50/0兩種缺口表。復原group與interface後重跑。"
       ],
       "steps": [
-        "核對發送的群組位址、UDP Port、來源與出口介面。",
-        "核對接收端加入的群組、來源條件、介面與監聽 Port。",
-        "在接收端鏈路抓包，確認資料是否到達。",
-        "依結果往網路轉送或接收程式分支查。"
-      ],
-      "note": "在未知公司環境不要自行改群播路由或交換器設定；教材只教判讀。"
+        "算低23bits，解釋32:1對映的來源。",
+        "跑基準和fault，把缺口定位到本機成員介面條件。",
+        "改變group保持相同MAC，預測IP層應如何過濾。",
+        "復原並列出真實網路還需的成員port、querier及群播路由證據。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：起初正常，幾分鐘後斷流",
+      "paragraphs": [
+        "A起初50筆/s，五分鐘後0；候選H1來源停送、H2snooping成員老化、H3APP停止接收、H4介面切換。第二輪來源與交換器入口仍50，A網卡0，APP保持等待；交換器成員表A的port在故障時消失，而VLAN無持續query。H2具體符合，但要排除報告被過濾或port變更，不能只看缺querier一項。",
+        "管理者在隔離VLAN依裝置正式配置補上適當querier並驗證query/report與成員重新整理。觀察至少跨過原故障時長，同時保留來源、網卡、APP50的證據；做退出/重加入與一位慢接收者回歸。結論限定本次VLAN成員維護恢復，若跨網段仍失敗再查route，不把querier當全網群播修復萬能開關。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "A 對 233.252.0.1:5000 送 UDP，C 只監聽 5001。C 會自動收到這筆資料嗎？",
-      "answer": "不會因只加入群組就自動交給 5001；接收程式的 UDP Port 也要和送達端點相符。"
+      "level": "foundation",
+      "question": "群播與廣播為何不能當相同功能？",
+      "answer": [
+        "廣播針對本地廣播域的相關所有主機，群播針對已選擇的組與分發機制。",
+        "群播需要成員與轉送控制，不保證可靠交付。",
+        "按目的IP、VLAN與成員範圍說明，不能只說都是一對多。"
+      ]
     },
     {
-      "question": "C 看得到 IGMP 加入訊息，能宣稱 C 程式已收到群播資料嗎？",
-      "answer": "不能。IGMP 表示接收意願；還需看資料在 C 的介面是否到達及程式是否讀取。"
+      "level": "foundation",
+      "question": "IGMP report會確認每一筆UDP已到APP嗎？",
+      "answer": [
+        "它描述主機介面成員意圖，不是逐筆資料ACK。",
+        "UDP與APP的接收、解析、播放另有證據。",
+        "用sequence計數與接收日誌驗證，不把join狀態當成功。"
+      ]
     },
     {
-      "question": "A 與 C 在不同 VLAN，A 顯示送出群播。第一個網路層面的問題是什麼？",
-      "answer": "確認兩 VLAN 之間是否配置群播轉送／路由，以及接收端加入狀態與交換器策略。"
+      "level": "application",
+      "question": "算239.5.6.7與239.133.6.7的Ethernet MAC。",
+      "answer": [
+        "後24bits分別05 06 07與85 06 07。",
+        "保留低23bits均05 06 07，因此01:00:5e:05:06:07。",
+        "MAC相同不等於IP群組相同；還需IP與membership過濾。"
+      ]
     },
     {
-      "question": "C 網卡抓得到目的 233.252.0.1:5000 的資料，但程式無資料。下一步查哪裡？",
-      "answer": "優先查 C 程式是否在正確介面加入群組、監聽 UDP 5000，以及 Socket 緩衝與來源過濾。"
+      "level": "application",
+      "question": "每10ms一筆，1秒發100、APP90，匹配ID且視窗完整，觀測損失多少？",
+      "answer": [
+        "(100−90)/100=10%。",
+        "這是兩計數口徑之間缺少的比例，不直接指定路徑故障。",
+        "加網卡/交換器計數與capture-drop，定位損失或觀測漏失。"
+      ]
     },
     {
-      "question": "IPv6 環境查不到 IGMP，就表示沒有群播成員管理嗎？",
-      "answer": "不能。IPv6 使用 MLD；IGMP 是 IPv4 群播成員管理。"
+      "level": "application",
+      "question": "同host兩網卡，G在有線加入卻走Wi-Fi收到，如何讀配置？",
+      "answer": [
+        "membership針對介面，必須核對join使用的本機地址/索引。",
+        "對照實際入站介面和Socket繫結與來源過濾。",
+        "教學環境更正一個介面條件後重測，不把所有網卡全部join當無條件修正。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "TTL1的群播過不了一臺路由器，改TTL8就一定到嗎？",
+      "answer": [
+        "TTL只是允許跳數的限制，增加可解除一項阻礙。",
+        "仍需群播route、成員、政策與範圍配置。",
+        "用路由器入/出觀察驗證，不把TTL擴大視為完整部署。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "網卡見100筆、Socket收100、播放只用80，可以稱網路丟20%嗎？",
+      "answer": [
+        "前兩層完整，缺口在解析、有效性或播放期限。",
+        "查20筆是否格式不符、晚到或被應用策略丟棄。",
+        "分別報告網路可見與播放有效率；修改對應策略並驗證時效。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "成員表正常但A網卡0，來源來自未允許的S2，下一步？",
+      "answer": [
+        "IGMPv3可能有來源過濾，或裝置有源/目的政策。",
+        "核對(S,G)狀態、真實source IP與路由複製port。",
+        "以同G正確S1做對照，在正式規則允許時修正來源；不盲目關所有過濾。"
+      ]
     }
   ],
   "recap": [
-    "單播、廣播與群播的目的範圍不同。",
-    "群播接收要核對群組、來源、介面與 UDP Port。",
-    "IGMP 表達 IPv4 接收意願，不等於資料已送達。",
-    "群播跨 VLAN／網段需要相應交換與路由配置。",
-    "發送端、接收鏈路及接收程式三個觀測點要分開。"
+    "區分單播端點、廣播域與群組位址。",
+    "解釋Socket加入、IGMP報告、snooping與群播路由的分工。",
+    "實算IPv4群播的Ethernet對映與多群組共用MAC。",
+    "依介面及觀測資料定位缺流量和有限修正。"
   ],
   "sources": [
     {
-      "label": "RFC 1112：IPv4 群播基礎",
+      "label": "IETF RFC 1112：IPv4群播與MAC對映",
       "url": "https://www.rfc-editor.org/rfc/rfc1112.html"
     },
     {
-      "label": "RFC 9776：IGMPv3 現行規格",
-      "url": "https://www.rfc-editor.org/rfc/rfc9776.html"
+      "label": "IETF RFC 3376：IGMPv3成員與來源過濾",
+      "url": "https://www.rfc-editor.org/rfc/rfc3376.html"
     },
     {
-      "label": "RFC 6676：IPv4 群播文件範例位址",
-      "url": "https://www.rfc-editor.org/rfc/rfc6676.html"
+      "label": "IETF RFC 4541：IGMP snooping注意事項",
+      "url": "https://www.rfc-editor.org/rfc/rfc4541.html"
+    },
+    {
+      "label": "Microsoft：IPv4/IPv6 JoinMulticastGroup overload",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.udpclient.joinmulticastgroup?view=net-10.0"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/networking-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
+      "label": "網路維護 C# 讀碼模型（Program.cs）",
+      "description": "本章使用 multicast 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
+    },
+    {
+      "path": "./assets/labs/networking-maintenance-lab/README.md",
+      "label": "實驗專案操作說明",
+      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
     }
   ]
 }

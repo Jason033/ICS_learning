@@ -1,174 +1,251 @@
 {
-  "intro": "一份好用的除錯紀錄，要讓沒在場的人看得出「哪次操作、哪條連線、哪個觀測點、什麼時間、最後證明到哪裡」。本章建立最小可交接的跨層證據格式。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "除錯紀錄應讓別人看懂哪次操作、在哪個邊界、做了什麼，以及結果支持哪個結論。這章從身份、來源、時間和資料單位建立證據模型，教你把分散的C#方法、事件、封包與UI紀錄合併，避免因最後一行“成功”就推整體成功。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      14,
+      24
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 evidence 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能為每筆操作建立關聯欄位。",
-    "能在兩台機器時鐘可能不同時謹慎比較。",
-    "能寫出已知、未知、下一個檢查的白話結論。"
+    "建立操作/session/目標與來源的最小可追查紀錄。",
+    "區分牆鐘、經過時間與跨機時間差，計算有根據的延遲。",
+    "從資料關聯到因果假說、有限修正與可讀結論。"
   ],
   "sections": [
     {
-      "heading": "先固定「同一次」的識別",
+      "heading": "紀錄是對觀測的保存，不是事實本身的全部",
+      "kind": "concept",
       "paragraphs": [
-        "可記 request_id、connection_id、session_generation、操作名稱、物件或目標 ID、來源層與時間。真實系統未必有全部欄位，要查是否真的能跨層傳遞。",
-        "不要把密碼、Token、真人語音或完整敏感 payload 放進公開練習與一般日誌；使用者若要檢視公司紀錄，需依授權規則遮蔽。"
-      ],
-      "table": {
-        "caption": "虛構追蹤欄位的用途",
-        "headers": [
-          "欄位",
-          "白話用途",
-          "例值"
-        ],
-        "rows": [
-          [
-            "request_id",
-            "認出同一次命令",
-            "q17"
-          ],
-          [
-            "connection_id",
-            "分開兩條通道",
-            "c1"
-          ],
-          [
-            "session_generation",
-            "區分重連前後",
-            "1／2"
-          ],
-          [
-            "source",
-            "知道誰說的",
-            "View／Adapter／Device"
-          ],
-          [
-            "stage",
-            "定位停在哪一步",
-            "ACK／EVENT／TIMEOUT"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "記「來源」比只記狀態更重要",
-      "paragraphs": [
-        "`state=READY` 若無來源，可能是 UI 快取、Controller 估計、SDK 事件或設備回報。把來源、原始欄位、轉換規則和顯示結果分開。",
-        "若 UI 與設備狀態矛盾，先核對哪個較新、哪個可被信任；不要只改畫面文字遮住缺口。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/integration-evidence.svg",
-        "alt": "一次請求從畫面、程式、Adapter、外部回覆到 UI 更新形成證據階梯，每段只支持相應結論。",
-        "caption": "虛構證據階梯，任一箭頭缺紀錄就標未知。"
-      }
-    },
-    {
-      "heading": "多台時間戳不能直接相減",
-      "paragraphs": [
-        "記時區、時鐘來源、同步狀況與誤差；若兩台機器可能差數百毫秒，不能用 10 ms 的顯示先後推論事件順序。",
-        "先用共同 request_id、訊息內容摘要、端點及可確認的因果關係對照，再用對時後的時間輔助定位。"
+        "紀錄是代碼在某位置寫出的觀察，位置和觸發條件決定證明範圍。“Send success”可能是方法沒有拋例外，也可能是本地入隊；若沒有契約與代碼位置，文字不能說明遠端完成。封包是某接口看見的數據，也不能自動說明應用處理或聲音可聽。斷點是暫停時快照，可能改變時序。不同工具共同描述系統，不是互相替代。",
+        "一份證據應有來源、身份、輸入/輸出、單位與有效範圍。action=Submit、target=D1、value=75、session=3、request=R9比“設備設置了”更可復核。結果另記Accepted與Completed，不讓紀錄文案把兩個階段合併。工程師需要知道沒有記錄是“沒發生”還是“這裡沒有儀表”，否則空白會變成錯誤因果。",
+        "給外行報告不必複製幾千行輸出，但要說明你選擇的關鍵記錄如何連接。先描述影響和模型，再列最少能證明機制的資料、排除甚麼及未覆蓋甚麼。完整紀錄留作證據，正文解釋前因後果；表格只列時間與縮寫無法讓人理解為何修某段。"
       ]
     },
     {
-      "heading": "從四筆紀錄寫出一段結論",
+      "heading": "身份有層級，不能只靠時間或一個名字匹配",
+      "kind": "concept",
       "paragraphs": [
-        "示例：View 點擊 q17；Controller 驗證通過；Adapter 記送出；5 ms 模擬 accepted；沒有狀態事件、50 ms timeout。",
-        "可寫：「本地已送出且收到接受回覆，但設定期限內沒有狀態確認。遠端最終結果未知；下一步查 q17 的設備端處理或權威狀態。」"
+        "同一設備可有多個請求，同一帳號可有多個session，同一程式可有多個controller。RequestId在甚麼範圍唯一必須明確；本地R1在別的客戶端也可能出現。關聯通常需client/controller、session、request與target。SIP Call-ID、序列命令號或SDK物件標識可作為外部映射，但並非同一種身份，也不都保證全局唯一。",
+        "時間相近只能作為線索，不能當強配對。兩筆SetLevel40/80在同毫秒發出，回報80先到；若按最近時間或lastRequest，結果就可能串到40。用明確鍵找到待處理記錄，再核對動作/目標與session，可避免此類錯誤。若外部協議沒ID，只能按其串行/順序契約匹配，並記錄這個限制，不憑空補一個伺服器會懂的ID。",
+        "代碼閱讀卡應追身份建立、傳遞、記錄、回報及狀態應用。adapter翻譯時可能丟request，SDK回呼只有設備狀態時需要另一種歸屬規則。把跨層映射留在一個可審查處，比每層各生成一個新ID再人工猜關聯可靠。ID是關聯工具，不代替認證與權限。"
+      ]
+    },
+    {
+      "heading": "來源與階段決定同名狀態的含義",
+      "kind": "concept",
+      "paragraphs": [
+        "事件originalState來自外部，businessState來自包裝解釋，uiState來自顯示投影。三者都叫Ready仍可能不同；必須記錄來源而不是只一列state。原始Error映為Unknown還是Failed，應有明確規則；若業務結果被UI短期顯示覆蓋，維護者會看不到真實失敗。狀態派送應保存不可變快照與身份，避免後續全局值改變。",
+        "一筆操作可有入口、校驗、外送、接受、執行完成、狀態應用、UI顯示等階段。對每階段記錄肯定發生的事實；只有進入Send並返回Accepted不能說明Completed，handler入口有結果不能說明UI已顯示。把這些階段對在一張時間線，第一條缺失/不一致邊才決定下一觀測。",
+        "記錄失敗也需保留本地與遠端差別。本地IOException可能在外送前，也可能部分送出；遠端Rejected說明對應邊界明確拒絕；Timeout說明觀察期限內結果不足。不要把三者都序列化為success=false不帶階段，否則恢復決策無法解釋。必要字段應服務決策，不是為了“完整”把所有物件內容輸出。"
+      ]
+    },
+    {
+      "heading": "時間是兩類資料：人用時鐘與程式用經過時間",
+      "kind": "concept",
+      "paragraphs": [
+        "UTC/本地牆鐘幫助人把系統事件與日曆對應，但可能因校時改變。經過時間衡量同機兩點間多久，.NET常用Stopwatch的計數與Frequency轉換，不用DateTime.Now相減當所有deadline。計數值只在同一時基內有意義，不能把A程式Stopwatch ticks與B程式直接減。",
+        "不同機器牆鐘即使都寫UTC也可能不同步，負延遲通常先說明基準不匹配。已知同步誤差±5ms時，量到8ms的跨機差也有範圍，不應報告到微秒。若無法確定同步，保留各端本地順序、ID與雙向請求關聯，計算同端往返或處理時間，而不是虛構單向延遲。",
+        "紀錄寫入時間也不一定事件發生時間。回呼20ms收到、100ms才由佇列寫磁碟，如果timestamp在寫入時取，就會把佇列等待當網路延遲。記錄event/source時間（若有）、received、applied、logged時刻及來源定義，可把網路、控制佇列和UI等待分開。基準與故障必須使用相同定義。"
+      ]
+    },
+    {
+      "heading": "例題一：同名R9不是同一次操作",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入命令R9/session3/targetD2/value75，先收到R9/session2/Completed，後收到R9/session3/Completed。兩結果RequestId文字相同，只有第二條session一致。完整程式比較tuple鍵，輸出第一條false、第二條true。它建立“範圍內身份”概念，不能以最後一行Completed就宣佈本次結束。",
+        "用字典key=(session,request)能查回操作記錄，增加controller範圍可進一步避免共享請求文字衝突。關聯成功後仍需狀態前提與終態規則，命令被拒絕不能由誤發結果覆蓋。這個例題只做輸入配對，不自動證明真實設備效果；對應Lab.evidence會明確打印輸入/同步結果/事件階段。",
+        "若外部回報沒有session，adapter需保存發佈者與訂閱時世代或按協議其他鍵映射；不能讀取當前session替舊結果偽造歸屬。證據的核心是保存原始事實和明確轉換，不是加很多ID卻在關鍵邊界丟失。"
       ],
       "code": {
-        "title": "教學紀錄與白話結論",
-        "text": "000 View CLICK q17\n000 Adapter SEND q17\n005 Adapter ACK accepted q17\n050 Controller TIMEOUT q17\n結論：已接受；設備最後狀態未知。"
+        "title": "完整關聯鍵推導；對應evidence",
+        "text": "var command = new LabCommand(\"R9\", 3, \"SetLevel\", \"D2\", 75);\nvar events = new[] { new LabCompletion(\"R9\", 2, \"Completed\"), new LabCompletion(\"R9\", 3, \"Completed\") };\nvar requests = new Dictionary<(int Session, string Request), LabCommand> {\n    [(command.Session, command.RequestId)] = command\n};\nforeach (var e in events)\n{\n    bool match = requests.TryGetValue((e.Session, e.RequestId), out var original);\n    Console.WriteLine($\"session={e.Session} matched={match}\");\n    if(match) Console.WriteLine($\"target={original!.Target} value={original.Value}\");\n}\n// 2 False；3 True，查回D2/75"
       }
     },
     {
-      "heading": "Log、封包、斷點各回答一部分",
+      "heading": "例題二：總耗時拆成能判斷的三個階段",
+      "kind": "worked-example",
       "paragraphs": [
-        "斷點能看本次程式值與 Call Stack；本地 log 能保留時間線；網路封包可顯示該觀測點傳輸資料；遠端 log 才接近對端處理。",
-        "如果通道加密，抓包可能看不到內部命令；不能因封包沒有可讀字串就認定程式沒送。"
+        "輸入同一程式虛擬時基：入口100ms、Send返回108ms、結果收到160ms、控制狀態應用172ms、UI顯示225ms。同步段8ms；返回到收到52ms是等待結果的觀察區間，不能全部叫網路延遲；控制排隊12ms；顯示排隊53ms；總125ms。各段和8+52+12+53=125，檢查單位與順序。",
+        "這組數據支持UI顯示等待較長，但仍不證明UI代碼本身用53ms：排隊與執行可能需要再分。也不能把52ms說設備處理52ms，因為包含外送、遠端、返回與SDK處理。要定位更深需邊界兩端追加觀測。完整推導是數字→階段→限定結論→下一資料，而不是最大數就直接認定根因。",
+        "下列C#只計算固定資料，不調用Sleep，不是效能測量。實際應用可用Stopwatch在同機記錄，牆鐘另供關聯。若某段為負，先檢查時間定義、記錄順序與基準，不把負數當“系統速度超快”。"
+      ],
+      "code": {
+        "title": "完整同一虛擬時基計算",
+        "text": "long enteredMs=100, returnedMs=108, receivedMs=160, appliedMs=172, uiMs=225;\nlong synchronous=returnedMs-enteredMs;\nlong resultWait=receivedMs-returnedMs;\nlong controlQueue=appliedMs-receivedMs;\nlong uiQueue=uiMs-appliedMs;\nlong total=uiMs-enteredMs;\nConsole.WriteLine($\"sync={synchronous} wait={resultWait} control={controlQueue} UI={uiQueue} total={total}\");\nConsole.WriteLine(synchronous+resultWait+controlQueue+uiQueue==total); // True\n// 8、52、12、53、125ms；虛構資料，不是實測"
+      }
+    },
+    {
+      "heading": "紀錄與trace上下文的基本關係",
+      "kind": "concept",
+      "paragraphs": [
+        "結構化紀錄把固定欄位和數值分開，方便依request/session篩選；拼在一段變化文字裡也可人工讀，但自動關聯容易漏。ILogger的message template可以保留鍵值；本Lab用Console保存少量確定字段避免外部套件，不聲稱Console在高頻媒體回呼夠用。紀錄等級用於控制詳細度，不應將所有失敗降成Debug導致調查時消失。",
+        ".NETActivity表示一段工作，可形成父子關係與TraceId/SpanId，幫跨服務追操作。Activity不是業務session或設備命令ID，兩者需映射；SDK自訂串口或私有協議不自動傳播HTTP trace header。添加trace工具也不能補回來已經丟失的目標/狀態語義。先建立最小業務鍵，再按架構需要配trace。",
+        "採樣會讓部分正常資料不保存，所以“沒有trace”不等於任務沒發生。高頻統計適合計數與摘要，故障窗口再增具體記錄；採樣、丟紀錄與寫入故障需可辨認。回呼內同步大量寫紀錄可能堵音訊，觀察工具會改變被觀察系統。驗收應檢查記錄足夠區分機制且不會顯著製造新延遲。"
       ]
     },
     {
-      "heading": "交接給別人時少用神祕縮寫",
+      "heading": "紀錄位置與保存形式會改變證據的含義",
+      "kind": "concept",
       "paragraphs": [
-        "報告開頭先寫症狀與操作，再寫已知事實、仍缺的證據和下一個檢查。必要縮寫第一次出現時用白話解釋。",
-        "例如不要只寫「API timeout／SDK busy」。應寫清哪個 API、哪次請求、何時、收到什麼、對使用者造成什麼現象。"
+        "外部呼叫前寫SendStarted證明進入發送意圖；返回後寫SendAccepted才說明契約接受；catch寫SendException說明控制流進入異常路徑。若把SendStarted命名SendSuccess，調查者會誤以為沒有實際到Send也是成功。代碼位置是證據語義的一部分，每行紀錄須能回到執行點與分支。",
+        "保存資料也要考慮參照。有些異步logger稍後才序列化你交給它的可變物件；若request字段隨後改了，歷史紀錄可能印新值。宜保存必要不可變值或明確快照，避免整顆當前controller物件充當一筆歷史。record適合表達固定輸入，但成員如果含可變陣列仍不自動深複製；快照範圍需按資料類型理解。",
+        "還要把應用版本、配置世代與觀測設置放到證據上下文。修正前後兩份紀錄若用不同時間位置或過濾層級，就不能直接比較延遲與次數。基準應固定這些定義，故障窗口說明哪些字段新增加，復原後保留可復核格式。這樣才能把“紀錄變少了”與“問題真的修好”區分，不用表面記錄量代替機制。"
+      ]
+    },
+    {
+      "heading": "從關聯走到因果，需要候選與反證",
+      "kind": "concept",
+      "paragraphs": [
+        "看到C1結束緊接C2無聲，只能說明先後；若紀錄顯示C1清理在同一共享sender執行Detach、附著從C2變null、Tx隨後失敗，這條機制更具體。再做對照：同樣C1結束但限制清理歸屬，C2保持Tx；恢復故障版又失敗，支持修正改變了該機制。因果證據由可解釋中間狀態與對照組成，不是統計時間接近。",
+        "反證可以快速縮小方向。懷疑網路阻斷，但對應媒體已到receiver並輸出，就應往本地播放查；懷疑請求未送，Sent與外部收到相同ID都存在，就應往結果鏈查。每個候選寫預測和能排除的資料，避免不斷列新原因卻不關閉舊假設。",
+        "工程報告應保留有限性。你排除的是本次觀察點/條件里的某種原因，不必說任何時候都不會。更改後的同條件回歸，再擴展相關生命週期和負荷，讓結論覆蓋明確範圍。證據與結論之間的這條邏輯鏈是本章最重要基礎，而不是工具數量。"
+      ]
+    },
+    {
+      "heading": "追碼實作：先關聯再寫結論",
+      "kind": "lab",
+      "paragraphs": [
+        "執行evidence，在command/receipt/completion建立點寫各自來源與語義，檢查同R9/session2與3的不同。隨後執行trace與commands，從輸出篩同request的Send/Apply/Ignore，整理成原始輸入、接收結果、應用結果三列。不得把Ignored的Completed行併入當前成功結論。",
+        "獨立執行耗時算例，換數據入口20、返回23、收到80、應用81、UI90，計算3/57/1/9/70，再說明哪項尚不能叫網路或設備時間。輸入獨立，答案須寫階段與限制；只給數值不算理解。若改UI時間為79，應先報告時間定義不一致，不繼續把負2ms畫成性能優勢。",
+        "最後寫一個四段報告：症狀、模型/候選、關鍵證據及機制、修正與回歸限制。把完整Console輸出另存臨時證據，不覆蓋README。Lab未測跨機同步與紀錄性能；真實部署取得後再補接口、時鐘來源與採樣配置。"
+      ]
+    },
+    {
+      "heading": "故障鑑別：設備已完成，畫面卻慢很久",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "候選甲結果早到但UI佇列被阻塞；候選乙設備結果其實晚，紀錄在寫入時取timestamp讓人誤認早到；候選丙看的是另一個session同名request完成。先要接收/應用/UI三個同機時點與完整身份，不先升級設備或減少網路超時。",
+        "資料甲received=100、applied=102、UI=900，同ID/session，查UI同步等待與長任務；資料乙source記錄與logged混用，沒有真正received，先補正確觀測定義再判斷；資料丙session不符，修證據關聯與狀態過濾，不將舊完成當當前。三案共同慢畫面，下一資料和修正層卻不同。",
+        "驗收甲在不暫停情況下連續操作和窗口關閉仍響應，紀錄分段顯示；乙新觀測能復核，不宣稱未量前有改善；丙舊/新session和亂序不串。報告讓人懂“慢在哪一段、為何這麼判斷、修後驗證甚麼”，而不是一張只寫latency的表。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【識別】只記時間不記 request_id 的風險？",
-      "answer": "多筆並行操作可能混在一起，跨層難配對。"
+      "question": "【基礎】紀錄“Send成功”究竟能證明甚麼？",
+      "level": "foundation",
+      "answer": [
+        "需先看寫入位置和契約，可能只證明本地接受/沒有例外。",
+        "不能自動證明外部完成或媒體可用。",
+        "記錄來源、身份、階段與結果，再和回報證據關聯。"
+      ]
     },
     {
-      "question": "【來源】`READY` 沒 source 可直接當設備回覆嗎？",
-      "answer": "不能；可能是 UI 或程式快取。"
+      "question": "【基礎】TraceId、Session、RequestId為何不應隨便互換？",
+      "level": "foundation",
+      "answer": [
+        "TraceId關聯診斷工作鏈，session界定業務/連接範圍，request區分一次操作。",
+        "每種建立者與壽命不同，自動trace不會替私有協議補業務語義。",
+        "建立映射並保存原始範圍，不用一個字符串解釋全部關係。"
+      ]
     },
     {
-      "question": "【時間】兩台時鐘未同步可直接比較 10 ms 順序嗎？",
-      "answer": "不能；先估誤差與因果關係。"
+      "question": "【基礎】沒有trace/封包紀錄一定說明沒發生嗎？",
+      "level": "foundation",
+      "answer": [
+        "可能採樣、抓錯接口、過濾、紀錄丟失或該位置無儀表。",
+        "先驗證觀察覆蓋與記錄失敗，再從空白推事實。",
+        "補能區分候選的觀察，不無條件擴大資料。"
+      ]
     },
     {
-      "question": "【證據】Adapter SEND 可證明設備執行嗎？",
-      "answer": "不能；仍需對端或權威狀態。"
+      "question": "【應用】session7/R2收到session6/R2與7/R3，哪項匹配？",
+      "level": "application",
+      "answer": [
+        "兩者都不匹配：第一項世代錯，第二項request錯。",
+        "目標結果保持原狀態，保留Ignore原因。",
+        "再用7/R2驗證成功，避免過濾規則寫成永遠拒絕。"
+      ]
     },
     {
-      "question": "【封包】加密時無可讀指令字串就能說沒送嗎？",
-      "answer": "不能；可能被加密。"
+      "question": "【應用】時基入口10、返回15、收到90、應用94、UI110，算段和總並解釋75ms。",
+      "level": "application",
+      "answer": [
+        "同步5ms，結果觀察等待75ms，控制佇列4ms，UI16ms，總100ms。",
+        "75含外送、遠端、返回與SDK，不等同網路單向延遲。",
+        "按邊界補測才能進一步定位，數值需同一時基。"
+      ]
     },
     {
-      "question": "【安全】可以把 Token 原文放到公開練習嗎？",
-      "answer": "不能；應遮蔽敏感資料。"
+      "question": "【應用】A牆鐘發100ms、B收96ms，時鐘差未知；可報告-4ms嗎？",
+      "level": "application",
+      "answer": [
+        "只能報告兩端記錄值，不可當真實延遲。",
+        "基準未對齊，使用各端本地順序及請求身份，必要時測同步誤差。",
+        "同端往返可量但不等同單向，結論明確範圍。"
+      ]
     },
     {
-      "question": "【結論】ACK accepted 後 timeout，該寫設備失敗嗎？",
-      "answer": "不該；寫期限內無狀態確認，最終結果未知。"
+      "question": "【診斷】C2無聲前有C1結束，只有這兩行；怎樣提高因果證據？",
+      "level": "diagnosis",
+      "answer": [
+        "補C1清理目標、共享媒體身份、C2附著與Tx變化，找具體中間機制。",
+        "對照限制舊清理後C2是否持續，再復現故障版驗證。",
+        "結論注明模型/真實測試範圍，不能僅憑時間相鄰確定根因。"
+      ]
     },
     {
-      "question": "【交接】一句好結論至少有哪些？",
-      "answer": "症狀、已知證據、仍未知與下一個檢查。"
+      "question": "【診斷】received100/apply101/UI700，同身份；另一案只logged700無received。如何不同處理？",
+      "level": "diagnosis",
+      "answer": [
+        "第一案有證據界定顯示等待，查UI佇列/阻塞與關閉行為。",
+        "第二案儀表不夠，先補接收時點，不能把logged當網路時延。",
+        "分別回歸真實不暫停操作或驗證新觀測定義，報告不得混同已測與未測。"
+      ]
     }
   ],
   "recap": [
-    "關聯 ID、來源與版本讓跨層紀錄可讀。",
-    "時鐘誤差限制時間排序結論。",
-    "報告用白話寫已知、未知與下一步。"
-  ],
-  "sources": [
-    {
-      "label": "Python 官方：logging 的情境資訊",
-      "url": "https://docs.python.org/3/library/logging.html"
-    },
-    {
-      "label": "Microsoft Learn：除錯器 Call Stack 與斷點",
-      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
-    },
-    {
-      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
-      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
-    }
+    "證據需身份、來源、階段、單位與時間定義。",
+    "關聯保證同一次，機制與對照才支持因果。",
+    "完整紀錄保留證據，報告解釋症狀、結論、修正與覆蓋範圍。"
   ],
   "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
     {
       "label": "下載虛構 API 事件追蹤程式",
       "path": "./assets/labs/integration-trace-lab.py",
       "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 evidence，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    }
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：分散式trace與Activity身份",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/distributed-tracing-concepts"
+    },
+    {
+      "label": "Microsoft：結構化Logging",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging/overview"
+    },
+    {
+      "label": "Microsoft：Stopwatch時基",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch"
+    },
+    {
+      "label": "NASA：接口關係證據",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
     }
   ]
 }

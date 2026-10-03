@@ -2,175 +2,2094 @@
   "siteTitle": "知識航線",
   "topics": [
     {
-      "id": "networking", "title": "電腦網路", "icon": "◎", "summary": "把 IP、Port、TCP／UDP 與資料經過的網路接成一張圖。",
+      "id": "networking",
+      "title": "電腦網路",
+      "icon": "◎",
+      "summary": "把 IP、Port、TCP／UDP 與資料經過的網路接成一張圖。",
       "chapters": [
-        {"id": "one-conversation", "title": "一次網路通訊的全貌", "summary": "把 IP、Port、Socket、TCP／UDP、封包與除錯證據串成一次完整流程。", "minutes": 60, "status": "ready", "contentType": "full"},
-        {"id": "addresses-and-ports", "title": "IP、Port 與端點", "summary": "讀懂位址、監聽位置與 IPv4／IPv6 端點。", "minutes": 40, "status": "ready", "contentType": "full"},
-        {"id": "ethernet-vlan", "title": "Ethernet、MAC、ARP 與 VLAN", "summary": "看懂本地鏈路、下一站硬體位址與交換網路分區。", "minutes": 35, "status": "ready", "contentType": "full"},
-        {"id": "routes", "title": "子網、閘道與路由", "summary": "用前綴與路由表判斷資料如何走到對方。", "minutes": 40, "status": "ready", "contentType": "full"},
-        {"id": "tcp-udp", "title": "TCP、UDP 與應用程式回覆", "summary": "分清位元組流、資料報、ACK 與業務成功。", "minutes": 40, "status": "ready", "contentType": "full"},
-        {"id": "dns-dhcp-nat", "title": "DNS、DHCP 與 NAT", "summary": "區分名稱解析、網路配置與位址轉換。", "minutes": 35, "status": "ready", "contentType": "full"},
-        {"id": "multicast", "title": "單播、廣播、群播與 IGMP", "summary": "看懂接收範圍、群組加入與群播缺流量。", "minutes": 35, "status": "ready", "contentType": "full"},
-        {"id": "mtu-qos", "title": "MTU、封包大小與 QoS", "summary": "分析大封包卡住與流量優先權的證據。", "minutes": 35, "status": "ready", "contentType": "full"},
-        {"id": "performance", "title": "頻寬、延遲、丟包與 Jitter", "summary": "把「網路慢」變成可比較的量測。", "minutes": 35, "status": "ready", "contentType": "full"},
-        {"id": "network-troubleshooting", "title": "網路故障整合練習", "summary": "從端點到應用回覆，分段定位並設計重測。", "minutes": 45, "status": "ready", "contentType": "full"}
+        {
+          "id": "one-conversation",
+          "title": "一次網路通訊的全貌",
+          "summary": "把 IP、Port、Socket、TCP／UDP、封包與除錯證據串成一次完整流程。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "addresses-and-ports",
+          "title": "IP、Port 與端點",
+          "summary": "讀懂位址、監聽位置與 IPv4／IPv6 端點。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "ethernet-vlan",
+          "title": "Ethernet、MAC、ARP 與 VLAN",
+          "summary": "看懂本地鏈路、下一站硬體位址與交換網路分區。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              19
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "routes",
+          "title": "子網、閘道與路由",
+          "summary": "用前綴與路由表判斷資料如何走到對方。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "tcp-udp",
+          "title": "TCP、UDP 與應用程式回覆",
+          "summary": "分清位元組流、資料報、ACK 與業務成功。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "dns-dhcp-nat",
+          "title": "DNS、DHCP 與 NAT",
+          "summary": "區分名稱解析、網路配置與位址轉換。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              19
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "multicast",
+          "title": "單播、廣播、群播與 IGMP",
+          "summary": "看懂接收範圍、群組加入與群播缺流量。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "mtu-qos",
+          "title": "MTU、封包大小與 QoS",
+          "summary": "分析大封包卡住與流量優先權的證據。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "performance",
+          "title": "頻寬、延遲、丟包與 Jitter",
+          "summary": "把「網路慢」變成可比較的量測。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        },
+        {
+          "id": "network-troubleshooting",
+          "title": "網路故障整合練習",
+          "summary": "從端點到應用回覆，分段定位並設計重測。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              19
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
+          }
+        }
       ]
     },
     {
-      "id": "wireshark", "title": "Wireshark", "icon": "⌕", "summary": "從選網卡與抓包開始，練習用封包支持判斷。",
+      "id": "wireshark",
+      "title": "Wireshark",
+      "icon": "⌕",
+      "summary": "從選網卡與抓包開始，練習用封包支持判斷。",
       "chapters": [
-        {"id": "first-capture", "title": "第一次抓包：從開檔到找到請求", "summary": "開啟教學 PCAP、認識三區塊，選做本機即時擷取。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "packet-panes", "title": "封包列表、細節與原始位元組", "summary": "看時間、方向、IP、Port 與解析欄位，分清證據層級。", "minutes": 40, "status": "ready", "contentType": "full"},
-        {"id": "filters", "title": "擷取與顯示篩選器", "summary": "學會兩套語法、方向條件及 0 筆結果的正確解讀。", "minutes": 40, "status": "ready", "contentType": "full"},
-        {"id": "streams-statistics", "title": "Follow Stream 與統計視窗", "summary": "用 Conversations、Endpoints、I/O Graphs 找對話與時段。", "minutes": 40, "status": "ready", "contentType": "full"},
-        {"id": "tcp-troubleshooting", "title": "TCP 重試、ACK 與無回應", "summary": "比較只有 SYN 和已有 TCP ACK 的兩種故障位置。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "sip-rtp", "title": "觀察 SIP 與 SDP 通話流程", "summary": "從 INVITE、200 OK、ACK 與 SDP 找到音訊端點。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "rtp-analysis", "title": "RTP 串流、序號與 Jitter", "summary": "查雙向媒體、序號缺口與可見品質的證據界線。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "evidence-and-logs", "title": "封包與程式紀錄整合練習", "summary": "把三份 PCAP 和 log 對時，寫出已知、未知與下一步。", "minutes": 45, "status": "ready", "contentType": "full"}
+        {
+          "id": "first-capture",
+          "title": "第一次抓包：從開檔到找到請求",
+          "summary": "開啟教學 PCAP、認識三區塊，選做本機即時擷取。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "packet-panes",
+          "title": "封包列表、細節與原始位元組",
+          "summary": "看時間、方向、IP、Port 與解析欄位，分清證據層級。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              21
+            ],
+            "practice": [
+              35,
+              55
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "filters",
+          "title": "擷取與顯示篩選器",
+          "summary": "學會兩套語法、方向條件及 0 筆結果的正確解讀。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              35,
+              55
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "streams-statistics",
+          "title": "Follow Stream 與統計視窗",
+          "summary": "用 Conversations、Endpoints、I/O Graphs 找對話與時段。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              40,
+              60
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "tcp-troubleshooting",
+          "title": "TCP 重試、ACK 與無回應",
+          "summary": "比較只有 SYN 和已有 TCP ACK 的兩種故障位置。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              45,
+              70
+            ],
+            "exercises": [
+              40,
+              60
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "sip-rtp",
+          "title": "觀察 SIP 與 SDP 通話流程",
+          "summary": "從 INVITE、200 OK、ACK 與 SDP 找到音訊端點。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              40,
+              60
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "rtp-analysis",
+          "title": "RTP 串流、序號與 Jitter",
+          "summary": "查雙向媒體、序號缺口與可見品質的證據界線。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              45,
+              70
+            ],
+            "exercises": [
+              40,
+              65
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "evidence-and-logs",
+          "title": "封包與程式紀錄整合練習",
+          "summary": "把三份 PCAP 和 log 對時，寫出已知、未知與下一步。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              21
+            ],
+            "practice": [
+              50,
+              80
+            ],
+            "exercises": [
+              45,
+              70
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        }
       ]
     },
     {
-      "id": "ozeki", "title": "Ozeki API", "icon": "◌", "summary": "辨認 SDK 版本、物件與事件，逐段追查註冊、通話及音訊。",
+      "id": "ozeki",
+      "title": "Ozeki API",
+      "icon": "◌",
+      "summary": "辨認 SDK 版本、物件與事件，逐段追查註冊、通話及音訊。",
       "chapters": [
-        {"id": "read-a-call", "title": "先看懂一通電話的物件與事件", "summary": "分清應用程式、範例包裝層、SDK 與證據。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "documentation-and-version", "title": "辨認 SDK 版本與官方文件", "summary": "查實際參照、方法宣告及範例與 SDK 的差異。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "registration", "title": "註冊：設定、請求與回報", "summary": "追 REGISTER、認證、回覆與註冊狀態事件。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "calls-and-events", "title": "撥接電話與通話事件", "summary": "追每通電話的物件、來電、撥號與控制結果。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "media", "title": "麥克風、喇叭與媒體連接", "summary": "分開檢查送出與接收音訊的每一段。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "lifecycle-and-events", "title": "事件、資源清理與第二通問題", "summary": "查訂閱、解除、媒體擁有者與回呼時序。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "evidence-troubleshooting", "title": "Ozeki 除錯整合練習", "summary": "用四個虛構故障案例寫出已知、未知與下一步。", "minutes": 55, "status": "ready", "contentType": "full"}
+        {
+          "id": "read-a-call",
+          "title": "先看懂一通電話的物件與事件",
+          "summary": "分清應用程式、範例包裝層、SDK 與證據。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              24
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 graph 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "documentation-and-version",
+          "title": "辨認 SDK 版本與官方文件",
+          "summary": "查實際參照、方法宣告及範例與 SDK 的差異。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              24
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 version 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "registration",
+          "title": "註冊：設定、請求與回報",
+          "summary": "追 REGISTER、認證、回覆與註冊狀態事件。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              25
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 registration 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "calls-and-events",
+          "title": "撥接電話與通話事件",
+          "summary": "追每通電話的物件、來電、撥號與控制結果。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              25
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 calls 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "media",
+          "title": "麥克風、喇叭與媒體連接",
+          "summary": "分開檢查送出與接收音訊的每一段。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              25
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 media 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "lifecycle-and-events",
+          "title": "事件、資源清理與第二通問題",
+          "summary": "查訂閱、解除、媒體擁有者與回呼時序。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              25
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 lifecycle 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "evidence-troubleshooting",
+          "title": "Ozeki 除錯整合練習",
+          "summary": "用四個虛構故障案例寫出已知、未知與下一步。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              26
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 evidence 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        }
       ]
     },
     {
-      "id": "serial", "title": "RS-232 與設備介面", "icon": "⇄", "summary": "從電氣介面、UART 設定到命令、回覆與除錯。",
+      "id": "serial",
+      "title": "RS-232 與設備介面",
+      "icon": "⇄",
+      "summary": "從電氣介面、UART 設定到命令、回覆與除錯。",
       "chapters": [
-        {"id": "serial-layers", "title": "RS-232、串列設定與命令是三件事", "summary": "從埠、字元、電氣介面與設備命令分層看。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "electrical-and-wiring", "title": "電氣規格、接線與控制線", "summary": "依設備文件核對訊號方向，不靠插頭外形猜接法。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "uart-settings", "title": "UART 參數與字元傳送", "summary": "看懂 8N1、鮑率、同位檢查與流量控制。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "frame-and-timing", "title": "資料格式、檢查碼與逾時", "summary": "拆解訊息邊界、HEX 位元組、校驗與等待回覆。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "tools-and-loopback", "title": "串列工具與軟體回環", "summary": "用本機模擬讀取、逾時並建立 TX／RX 紀錄。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "other-interfaces", "title": "RS-422、RS-485 與其他介面", "summary": "辨認多種設備介面的用途與限制。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "serial-troubleshooting", "title": "串列通訊整合除錯", "summary": "用五個虛構案例逐段排查故障。", "minutes": 55, "status": "ready", "contentType": "full"}
+        {
+          "id": "serial-layers",
+          "title": "RS-232、串列設定與命令是三件事",
+          "summary": "從埠、字元、電氣介面與設備命令分層看。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              10,
+              17
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+          }
+        },
+        {
+          "id": "electrical-and-wiring",
+          "title": "電氣規格、接線與控制線",
+          "summary": "依設備文件核對訊號方向，不靠插頭外形猜接法。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+          }
+        },
+        {
+          "id": "uart-settings",
+          "title": "UART 參數與字元傳送",
+          "summary": "看懂 8N1、鮑率、同位檢查與流量控制。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+          }
+        },
+        {
+          "id": "frame-and-timing",
+          "title": "資料格式、檢查碼與逾時",
+          "summary": "拆解訊息邊界、HEX 位元組、校驗與等待回覆。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              18
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+          }
+        },
+        {
+          "id": "tools-and-loopback",
+          "title": "串列工具與軟體回環",
+          "summary": "用本機模擬讀取、逾時並建立 TX／RX 紀錄。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              10,
+              18
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+          }
+        },
+        {
+          "id": "other-interfaces",
+          "title": "RS-422、RS-485 與其他介面",
+          "summary": "辨認多種設備介面的用途與限制。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              19
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+          }
+        },
+        {
+          "id": "serial-troubleshooting",
+          "title": "串列通訊整合除錯",
+          "summary": "用五個虛構案例逐段排查故障。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              10,
+              17
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+          }
+        }
       ]
     },
     {
-      "id": "radio", "title": "無線電通訊", "icon": "◉", "summary": "從收發路徑、頻率與調變，學到品質指標與故障判讀。",
+      "id": "radio",
+      "title": "無線電通訊",
+      "icon": "◉",
+      "summary": "從收發路徑、頻率與調變，學到品質指標與故障判讀。",
       "chapters": [
-        {"id": "tx-rx-path", "title": "發射與接收：聲音走過哪些環節", "summary": "分開看控制、音訊與射頻證據。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "parameters", "title": "頻率、通道、頻寬與波長", "summary": "讀懂設備設定，分清通道號與實際頻率。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "modulation-and-coding", "title": "調變、解調與數位符號", "summary": "認識 AM、FM、FSK、PSK、QAM 與 OFDM。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "rf-chain-and-antenna", "title": "功率、dB、天線與 VSWR", "summary": "把功率、饋線損失和對端品質分開。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "rssi-snr", "title": "RSSI、SNR 與接收品質", "summary": "區分強度、雜訊、錯誤率、靈敏度與靜噪。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "duplex-and-repeater", "title": "收發方向、中繼台與基地台", "summary": "辨認上行、下行與輪流或同時收發。", "minutes": 45, "status": "ready", "contentType": "full"},
-        {"id": "measurements-and-logs", "title": "射頻觀測與可比較的紀錄", "summary": "固定測點、時間窗與儀器設定再比較。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "radio-troubleshooting", "title": "無線電通訊整合除錯", "summary": "用六個虛構案例練習從證據選下一步。", "minutes": 60, "status": "ready", "contentType": "full"}
+        {
+          "id": "tx-rx-path",
+          "title": "發射與接收：聲音走過哪些環節",
+          "summary": "分開看控制、音訊與射頻證據。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "parameters",
+          "title": "頻率、通道、頻寬與波長",
+          "summary": "讀懂設備設定，分清通道號與實際頻率。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              21
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "modulation-and-coding",
+          "title": "調變、解調與數位符號",
+          "summary": "認識 AM、FM、FSK、PSK、QAM 與 OFDM。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              25
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "rf-chain-and-antenna",
+          "title": "功率、dB、天線與 VSWR",
+          "summary": "把功率、饋線損失和對端品質分開。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "rssi-snr",
+          "title": "RSSI、SNR 與接收品質",
+          "summary": "區分強度、雜訊、錯誤率、靈敏度與靜噪。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "duplex-and-repeater",
+          "title": "收發方向、中繼台與基地台",
+          "summary": "辨認上行、下行與輪流或同時收發。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "measurements-and-logs",
+          "title": "射頻觀測與可比較的紀錄",
+          "summary": "固定測點、時間窗與儀器設定再比較。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "radio-troubleshooting",
+          "title": "無線電通訊整合除錯",
+          "summary": "用六個虛構案例練習從證據選下一步。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              40
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀完整機制與兩個算例；模型追碼/變因/復原及陌生題推理，尚待使用者計時校準。"
+          }
+        }
       ]
     },
     {
-      "id": "ptt", "title": "PTT 與設備狀態", "icon": "↟", "summary": "從按鍵、設備回報與音訊時序學會查證發射狀態。",
+      "id": "ptt",
+      "title": "PTT 與設備狀態",
+      "icon": "↟",
+      "summary": "從按鍵、設備回報與音訊時序學會查證發射狀態。",
       "chapters": [
-        {"id": "press-to-tx", "title": "按下 PTT 之後，如何確認真的發射", "summary": "從按鍵到對端接收，逐段建立證據。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "state-machine", "title": "Ready、Busy、TX、RX 狀態", "summary": "區分狀態來源、轉換與逾時。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "interface-box", "title": "介面盒、COR／COS 與燈號", "summary": "分開看按鍵、PTT 輸出、接收回報與音訊。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "busy-and-grant", "title": "通道忙碌與發話權", "summary": "辨別本地忙碌鎖定與特定系統的 Grant。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "audio-timing", "title": "PTT 與音訊的前後時序", "summary": "分析開頭缺字、尾字被切與時鐘誤差。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "release-and-recovery", "title": "放開、逾時與重連後狀態", "summary": "核對停止發射、舊事件及重新查證。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "observability-and-logs", "title": "把 PTT 紀錄寫成證據", "summary": "對齊按鍵、程式、介面盒、電台與對端。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "ptt-troubleshooting", "title": "PTT 整合除錯練習", "summary": "用六個虛構案例選出下一個檢查。", "minutes": 60, "status": "ready", "contentType": "full"}
+        {
+          "id": "press-to-tx",
+          "title": "按下 PTT 之後，如何確認真的發射",
+          "summary": "從按鍵到對端接收，逐段建立證據。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              21
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 press 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "state-machine",
+          "title": "Ready、Busy、TX、RX 狀態",
+          "summary": "區分狀態來源、轉換與逾時。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              21
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 state、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
+          }
+        },
+        {
+          "id": "interface-box",
+          "title": "介面盒、COR／COS 與燈號",
+          "summary": "分開看按鍵、PTT 輸出、接收回報與音訊。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 interface 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "busy-and-grant",
+          "title": "通道忙碌與發話權",
+          "summary": "辨別本地忙碌鎖定與特定系統的 Grant。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              21
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 grant、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
+          }
+        },
+        {
+          "id": "audio-timing",
+          "title": "PTT 與音訊的前後時序",
+          "summary": "分析開頭缺字、尾字被切與時鐘誤差。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              21
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 timing、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
+          }
+        },
+        {
+          "id": "release-and-recovery",
+          "title": "放開、逾時與重連後狀態",
+          "summary": "核對停止發射、舊事件及重新查證。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              21
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 release、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
+          }
+        },
+        {
+          "id": "observability-and-logs",
+          "title": "把 PTT 紀錄寫成證據",
+          "summary": "對齊按鍵、程式、介面盒、電台與對端。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 evidence、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
+          }
+        },
+        {
+          "id": "ptt-troubleshooting",
+          "title": "PTT 整合除錯練習",
+          "summary": "用六個虛構案例選出下一個檢查。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 troubleshooting、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
+          }
+        }
       ]
     },
     {
-      "id": "sockets", "title": "Socket 程式", "icon": "▣", "summary": "理解程式如何送收資料、處理訊息與逾時。",
+      "id": "sockets",
+      "title": "Socket 程式",
+      "icon": "▣",
+      "summary": "理解程式如何送收資料、處理訊息與逾時。",
       "chapters": [
-        {"id": "socket-flow", "title": "Client 與 Server 的收送流程", "summary": "看懂建立端點、連線及雙向收送。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "tcp-udp-apis", "title": "TCP 與 UDP 的 Socket 呼叫", "summary": "分清串流、資料報與各自的收送 API。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "message-boundaries", "title": "訊息邊界與緩衝", "summary": "用明確框架處理半包與黏包。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "binary-protocols", "title": "二進位協定與位元組順序", "summary": "逐位元組讀長度、內容及欄位定義。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "timeouts-and-readiness", "title": "阻塞、逾時與可讀寫通知", "summary": "理解等待範圍及 select／poll／epoll。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "disconnect-and-reconnect", "title": "斷線、重試與重連", "summary": "避免把未知結果誤判為未執行。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "logs-and-debugging", "title": "用 Socket 紀錄定位問題", "summary": "沿連線、收送、解析及回應建立證據。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "socket-troubleshooting", "title": "Socket 整合除錯練習", "summary": "讀虛構紀錄，選下一個最有用的檢查。", "minutes": 60, "status": "ready", "contentType": "full"}
+        {
+          "id": "socket-flow",
+          "title": "Client 與 Server 的收送流程",
+          "summary": "看懂建立端點、連線及雙向收送。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        },
+        {
+          "id": "tcp-udp-apis",
+          "title": "TCP 與 UDP 的 Socket 呼叫",
+          "summary": "分清串流、資料報與各自的收送 API。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        },
+        {
+          "id": "message-boundaries",
+          "title": "訊息邊界與緩衝",
+          "summary": "用明確框架處理半包與黏包。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        },
+        {
+          "id": "binary-protocols",
+          "title": "二進位協定與位元組順序",
+          "summary": "逐位元組讀長度、內容及欄位定義。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              21
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        },
+        {
+          "id": "timeouts-and-readiness",
+          "title": "阻塞、逾時與可讀寫通知",
+          "summary": "理解等待範圍及 select／poll／epoll。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        },
+        {
+          "id": "disconnect-and-reconnect",
+          "title": "斷線、重試與重連",
+          "summary": "避免把未知結果誤判為未執行。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              21
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        },
+        {
+          "id": "logs-and-debugging",
+          "title": "用 Socket 紀錄定位問題",
+          "summary": "沿連線、收送、解析及回應建立證據。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        },
+        {
+          "id": "socket-troubleshooting",
+          "title": "Socket 整合除錯練習",
+          "summary": "讀虛構紀錄，選下一個最有用的檢查。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              45
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
+          }
+        }
       ]
     },
     {
-      "id": "voip", "title": "VoIP 與聲音", "icon": "◍", "summary": "理解 SIP、SDP、RTP、Codec 與聲音收送。",
+      "id": "voip",
+      "title": "VoIP 與聲音",
+      "icon": "◍",
+      "summary": "理解 SIP、SDP、RTP、Codec 與聲音收送。",
       "chapters": [
-        {"id": "call-vs-audio", "title": "通話建立與聲音傳送", "summary": "先分清 SIP、SDP、RTP 與實際聽見。", "minutes": 50, "status": "ready", "contentType": "full"},
-        {"id": "sip-roles-registration", "title": "SIP 角色與註冊", "summary": "理解帳號、UA、Registrar、Proxy 與 REGISTER。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "sip-call-flow", "title": "一通 SIP 電話的流程", "summary": "讀 INVITE、回應、ACK、BYE 與 CSeq。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "sdp-offer-answer", "title": "SDP 與媒體協商", "summary": "從 c=、m= 與 Codec 對照預期音訊端點。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "rtp-rtcp", "title": "RTP／RTCP 與封包判讀", "summary": "讀序號、時間戳、SSRC 與接收報告。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "audio-path", "title": "從麥克風到喇叭", "summary": "理解 ADC、PCM、DAC 與兩個方向的音訊路徑。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "codecs-packetization", "title": "Codec 與封包化", "summary": "算取樣數、位元率與每包音訊時間。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "jitter-and-quality", "title": "抖動緩衝與音質", "summary": "區分延遲、遺失、晚到、回音與音量問題。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "voip-troubleshooting", "title": "VoIP 整合除錯練習", "summary": "用虛構雙端證據排查無聲與斷續。", "minutes": 65, "status": "ready", "contentType": "full"}
+        {
+          "id": "call-vs-audio",
+          "title": "通話建立與聲音傳送",
+          "summary": "先分清 SIP、SDP、RTP 與實際聽見。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              21
+            ],
+            "practice": [
+              30,
+              50
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "sip-roles-registration",
+          "title": "SIP 角色與註冊",
+          "summary": "理解帳號、UA、Registrar、Proxy 與 REGISTER。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              25,
+              45
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "sip-call-flow",
+          "title": "一通 SIP 電話的流程",
+          "summary": "讀 INVITE、回應、ACK、BYE 與 CSeq。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              30,
+              50
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "sdp-offer-answer",
+          "title": "SDP 與媒體協商",
+          "summary": "從 c=、m= 與 Codec 對照預期音訊端點。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              35,
+              55
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "rtp-rtcp",
+          "title": "RTP／RTCP 與封包判讀",
+          "summary": "讀序號、時間戳、SSRC 與接收報告。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              19
+            ],
+            "practice": [
+              40,
+              65
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "audio-path",
+          "title": "從麥克風到喇叭",
+          "summary": "理解 ADC、PCM、DAC 與兩個方向的音訊路徑。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              11,
+              19
+            ],
+            "practice": [
+              40,
+              60
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "codecs-packetization",
+          "title": "Codec 與封包化",
+          "summary": "算取樣數、位元率與每包音訊時間。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              19
+            ],
+            "practice": [
+              35,
+              55
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "jitter-and-quality",
+          "title": "抖動緩衝與音質",
+          "summary": "區分延遲、遺失、晚到、回音與音量問題。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              40,
+              65
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        },
+        {
+          "id": "voip-troubleshooting",
+          "title": "VoIP 整合除錯練習",
+          "summary": "用虛構雙端證據排查無聲與斷續。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              50,
+              80
+            ],
+            "exercises": [
+              45,
+              70
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
+          }
+        }
       ]
     },
     {
-      "id": "integration", "title": "ICS／RCS 與廠商 API", "icon": "◇", "summary": "學會閱讀文件、追程式呼叫與事件回報。",
+      "id": "integration",
+      "title": "ICS／RCS 與廠商 API",
+      "icon": "◇",
+      "summary": "學會閱讀文件、追程式呼叫與事件回報。",
       "chapters": [
-        {"id": "trace-an-action", "title": "追查一次操作的程式路徑", "summary": "從畫面操作找到實際呼叫與回報。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "layers-and-ownership", "title": "包裝層、物件關係與生命週期", "summary": "分清 View、控制邏輯、Adapter 與資源所有者。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "read-an-icd", "title": "怎麼讀 API Manual 與 ICD", "summary": "辨認版本、連線、欄位、回覆與錯誤。", "minutes": 60, "status": "ready", "contentType": "full"},
-        {"id": "commands-and-events", "title": "命令、回覆與事件", "summary": "比較同步返回、Callback、事件與 Polling。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "sessions-and-state", "title": "連線、驗證與狀態", "summary": "分開看 Transport、Session 與設備真實狀態。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "audio-and-device-boundaries", "title": "音訊與設備控制的分界", "summary": "沿控制鏈與音訊鏈找各自的觀測點。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "errors-and-recovery", "title": "錯誤、逾時與重連後恢復", "summary": "避免把未知結果與舊事件當成新狀態。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "correlate-evidence", "title": "跨層紀錄與證據對齊", "summary": "用請求 ID、時間與來源整理已知及未知。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "integration-troubleshooting", "title": "整合程式除錯練習", "summary": "讀虛構程式與時間線，選第一個應補的證據。", "minutes": 65, "status": "ready", "contentType": "full"}
+        {
+          "id": "trace-an-action",
+          "title": "追查一次操作的程式路徑",
+          "summary": "從畫面操作找到實際呼叫與回報。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 trace 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "layers-and-ownership",
+          "title": "包裝層、物件關係與生命週期",
+          "summary": "分清 View、控制邏輯、Adapter 與資源所有者。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 layers 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "read-an-icd",
+          "title": "怎麼讀 API Manual 與 ICD",
+          "summary": "辨認版本、連線、欄位、回覆與錯誤。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              24
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 icd 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "commands-and-events",
+          "title": "命令、回覆與事件",
+          "summary": "比較同步返回、Callback、事件與 Polling。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 commands 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "sessions-and-state",
+          "title": "連線、驗證與狀態",
+          "summary": "分開看 Transport、Session 與設備真實狀態。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 sessions 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "audio-and-device-boundaries",
+          "title": "音訊與設備控制的分界",
+          "summary": "沿控制鏈與音訊鏈找各自的觀測點。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              24
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 boundaries 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "errors-and-recovery",
+          "title": "錯誤、逾時與重連後恢復",
+          "summary": "避免把未知結果與舊事件當成新狀態。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 recovery 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "correlate-evidence",
+          "title": "跨層紀錄與證據對齊",
+          "summary": "用請求 ID、時間與來源整理已知及未知。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              24
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 evidence 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        },
+        {
+          "id": "integration-troubleshooting",
+          "title": "整合程式除錯練習",
+          "summary": "讀虛構程式與時間線，選第一個應補的證據。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              25
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              25,
+              40
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 troubleshooting 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+          }
+        }
       ]
     },
     {
-      "id": "reliability", "title": "可靠性與並行處理", "icon": "↻", "summary": "從逾時、重試、佇列與事件順序，學會判斷系統何時只是未知、何時真的恢復。",
+      "id": "reliability",
+      "title": "可靠性與並行處理",
+      "icon": "↻",
+      "summary": "從逾時、重試、佇列與事件順序，學會判斷系統何時只是未知、何時真的恢復。",
       "chapters": [
-        {"id": "timeouts", "title": "逾時與整體期限", "summary": "分清單次等待、整筆期限與結果未知。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "retries-and-idempotency", "title": "重試、退避與避免重複執行", "summary": "控制重試負擔，辨認具有副作用的操作。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "liveness-and-recovery", "title": "心跳、重連與恢復", "summary": "分辨有連線、還活著與能正常工作。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "queues-and-backpressure", "title": "佇列、緩衝與背壓", "summary": "從到達速度、處理速度和丟棄規則判讀積壓。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "event-ordering", "title": "重複、亂序與舊事件", "summary": "用請求、序號與連線世代避免錯誤更新。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "concurrency", "title": "執行緒與共享狀態", "summary": "看懂競爭、鎖、號誌與等待通知。", "minutes": 60, "status": "ready", "contentType": "full"},
-        {"id": "async-event-loops", "title": "非同步與事件迴圈", "summary": "辨認 await、回呼、UI 執行緒與阻塞點。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "observability-and-load", "title": "負載、紀錄與恢復驗證", "summary": "把佇列、延遲、重試和狀態變化接成證據鏈。", "minutes": 55, "status": "ready", "contentType": "full"},
-        {"id": "reliability-troubleshooting", "title": "可靠性與並行除錯練習", "summary": "用八個虛構案例找第一個證據缺口。", "minutes": 65, "status": "ready", "contentType": "full"}
+        {
+          "id": "timeouts",
+          "title": "逾時與整體期限",
+          "summary": "分清單次等待、整筆期限與結果未知。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              22
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "retries-and-idempotency",
+          "title": "重試、退避與避免重複執行",
+          "summary": "控制重試負擔，辨認具有副作用的操作。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              14,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "liveness-and-recovery",
+          "title": "心跳、重連與恢復",
+          "summary": "分辨有連線、還活著與能正常工作。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "queues-and-backpressure",
+          "title": "佇列、緩衝與背壓",
+          "summary": "從到達速度、處理速度和丟棄規則判讀積壓。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "event-ordering",
+          "title": "重複、亂序與舊事件",
+          "summary": "用請求、序號與連線世代避免錯誤更新。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "concurrency",
+          "title": "執行緒與共享狀態",
+          "summary": "看懂競爭、鎖、號誌與等待通知。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              15,
+              26
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "async-event-loops",
+          "title": "非同步與事件迴圈",
+          "summary": "辨認 await、回呼、UI 執行緒與阻塞點。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              13,
+              23
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "observability-and-load",
+          "title": "負載、紀錄與恢復驗證",
+          "summary": "把佇列、延遲、重試和狀態變化接成證據鏈。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              20
+            ],
+            "practice": [
+              20,
+              35
+            ],
+            "exercises": [
+              20,
+              35
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        },
+        {
+          "id": "reliability-troubleshooting",
+          "title": "可靠性與並行除錯練習",
+          "summary": "用八個虛構案例找第一個證據缺口。",
+          "status": "ready",
+          "contentType": "full",
+          "contentVersion": 2,
+          "studyTime": {
+            "reading": [
+              12,
+              19
+            ],
+            "practice": [
+              30,
+              50
+            ],
+            "exercises": [
+              30,
+              50
+            ],
+            "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
+          }
+        }
       ]
     },
     {
-      "id": "systems", "title": "Windows／Linux 觀測", "icon": "▤", "summary": "找到程序、服務、裝置、網路設定與紀錄。",
+      "id": "systems",
+      "title": "Windows／Linux 觀測",
+      "icon": "▤",
+      "summary": "找到程序、服務、裝置、網路設定與紀錄。",
       "chapters": [
-        {"id": "find-evidence", "title": "從作業系統找證據", "summary": "對照程序、網卡、音訊設備與時間戳。", "status": "planned"}
+        {
+          "id": "find-evidence",
+          "title": "從作業系統找證據",
+          "summary": "對照程序、網卡、音訊設備與時間戳。",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "satellite", "title": "衛星與多鏈路", "icon": "⌁", "summary": "理解高延遲鏈路、狀態監測與切換。",
+      "id": "satellite",
+      "title": "衛星與多鏈路",
+      "icon": "⌁",
+      "summary": "理解高延遲鏈路、狀態監測與切換。",
       "chapters": [
-        {"id": "latency", "title": "高延遲對程式的影響", "summary": "從 RTT、丟包與 timeout 開始。", "status": "planned"},
-        {"id": "failover", "title": "鏈路故障與切換", "summary": "看懂健康檢查、切換與恢復。", "status": "planned"}
+        {
+          "id": "latency",
+          "title": "高延遲對程式的影響",
+          "summary": "從 RTT、丟包與 timeout 開始。",
+          "status": "planned"
+        },
+        {
+          "id": "failover",
+          "title": "鏈路故障與切換",
+          "summary": "看懂健康檢查、切換與恢復。",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "dsp", "title": "訊號、DSP 與 SDR", "icon": "∿", "summary": "先建立訊號與頻譜的直覺，再進入模擬。",
+      "id": "dsp",
+      "title": "訊號、DSP 與 SDR",
+      "icon": "∿",
+      "summary": "先建立訊號與頻譜的直覺，再進入模擬。",
       "chapters": [
-        {"id": "time-frequency", "title": "時域與頻域", "summary": "從圖像理解取樣、頻譜與噪聲。", "status": "planned"},
-        {"id": "sdr-intro", "title": "SDR 模擬入門", "summary": "認識訊號源、濾波與通道模型。", "status": "planned"}
+        {
+          "id": "time-frequency",
+          "title": "時域與頻域",
+          "summary": "從圖像理解取樣、頻譜與噪聲。",
+          "status": "planned"
+        },
+        {
+          "id": "sdr-intro",
+          "title": "SDR 模擬入門",
+          "summary": "認識訊號源、濾波與通道模型。",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "security", "title": "通訊資安", "icon": "⬡", "summary": "辨認驗證、權限、憑證與安全日誌問題。",
+      "id": "security",
+      "title": "通訊資安",
+      "icon": "⬡",
+      "summary": "辨認驗證、權限、憑證與安全日誌問題。",
       "chapters": [
-        {"id": "auth", "title": "驗證與權限", "summary": "分清網路不通、驗證失敗與無權操作。", "status": "planned"}
+        {
+          "id": "auth",
+          "title": "驗證與權限",
+          "summary": "分清網路不通、驗證失敗與無權操作。",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "troubleshooting", "title": "故障分析方法", "icon": "⌖", "summary": "從症狀與證據出發，建立可驗證的排查步驟。",
+      "id": "troubleshooting",
+      "title": "故障分析方法",
+      "icon": "⌖",
+      "summary": "從症狀與證據出發，建立可驗證的排查步驟。",
       "chapters": [
-        {"id": "evidence", "title": "症狀、假設與證據", "summary": "練習提出下一個最有用的檢查。", "status": "planned"},
-        {"id": "one-way-audio", "title": "單向語音案例", "summary": "逐步排查一個模擬故障。", "status": "planned"}
+        {
+          "id": "evidence",
+          "title": "症狀、假設與證據",
+          "summary": "練習提出下一個最有用的檢查。",
+          "status": "planned"
+        },
+        {
+          "id": "one-way-audio",
+          "title": "單向語音案例",
+          "summary": "逐步排查一個模擬故障。",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "big-picture", "title": "通訊系統概念地圖", "icon": "✣", "summary": "用可選的綜合案例，把已學概念放到同一張圖。",
+      "id": "big-picture",
+      "title": "通訊系統概念地圖",
+      "icon": "✣",
+      "summary": "用可選的綜合案例，把已學概念放到同一張圖。",
       "chapters": [
-        {"id": "control-and-audio", "title": "控制與聲音的兩條路", "summary": "練習在簡化架構圖上區分已知與未知。", "status": "planned"}
+        {
+          "id": "control-and-audio",
+          "title": "控制與聲音的兩條路",
+          "summary": "練習在簡化架構圖上區分已知與未知。",
+          "status": "planned"
+        }
       ]
     }
   ]

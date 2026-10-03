@@ -1,177 +1,276 @@
 {
-  "intro": "知道線路是對的，還要讓兩端把每個字元讀成相同的位元。這章用 9600,8,N,1 及幾個對照例子，理解鮑率、資料位元、同位檢查、停止位元與流量控制；這些不是設備命令的長度或結束符。",
-  "plan": [
-    {
-      "label": "讀 8N1 圖",
-      "minutes": 10
-    },
-    {
-      "label": "比較時間與效率",
-      "minutes": 10
-    },
-    {
-      "label": "辨認設定不符",
-      "minutes": 10
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 15
-    }
+  "contentVersion": 2,
+  "intro": "UART沒有共用clock線，卻仍以時鐘取樣；雙方引數決定如何把變化恢復為字元。本章從start偵測、bit中心、data/parity/stop推導baud、錯誤與flow control的工程後果。",
+  "prerequisites": [
+    "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
+    "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
+  "studyTime": {
+    "reading": [
+      11,
+      18
+    ],
+    "practice": [
+      20,
+      40
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
+  },
   "goals": [
-    "能解讀 9600,8,N,1，辨認 UART 字元邊界。",
-    "能估算 8N1 在 9600 baud 的理想傳送時間。",
-    "能依亂碼、無資料與漏資料症狀選擇要核對的參數。"
+    "畫出8N1與7E1欄位位置並計算時間。",
+    "解釋LSB-first、parity、framing及overrun差異。",
+    "以累計取樣偏移理解時鐘誤差。",
+    "區分軟硬體流控與應用訊息/業務成功。"
   ],
   "sections": [
     {
-      "heading": "8N1 說的是一個字元，不是一整個命令",
+      "kind": "concept",
+      "heading": "非同步不是沒有時鐘，而是每字元重新對齊",
       "paragraphs": [
-        "8N1 是 8 個資料位元、無同位檢查、1 個停止位元；非同步 UART 通常還有 1 個開始位元。因此典型 8N1 傳一個資料位元組要佔 10 個位元時間。它不告訴你一整筆設備命令要幾個位元組，也不告訴你命令用 CR LF、長度欄或其他方式結束。",
-        "兩端對字元格式的設定要相容；有些裝置或驅動對特殊組合的支援不同，仍應以設備手冊與實測為準。"
+        "UART傳送與接收各有時鐘，沒有同步clock線。線路idle，start邊緣通知新字元；接收者依據設定baud，在預計bit中心取樣資料與後續欄位。許多實現使用oversampling與多點判定，具體倍數由晶片決定。重新以每個start對齊減少跨長訊息的累計誤差，但單字元內仍會因時鐘不一致偏離中心。",
+        "Baud是每秒符號變化機會的速率；普通二值UART一符號承載一bit，因此線bit rate與baud數值相同，不代表有效應用bytes/s相同。每個byte還需start/stop/parity開銷；裝置處理與間隙再降低實際交易量。保持這個層次，才能解釋9600baud為何不是9600bytes/s。"
       ],
       "image": {
         "src": "./assets/diagrams/serial-8n1.svg",
-        "alt": "一個 8N1 字元含開始位元、八個資料位元、沒有同位位元、一個停止位元。",
-        "caption": "自製字元框架示意；圖不表示 RS-232 實際電壓或資料位元順序。"
+        "alt": "8N1的start、八data與stop時序。",
+        "caption": "8N1的start、八data與stop時序。"
       }
     },
     {
-      "heading": "鮑率與理想傳送時間",
+      "kind": "mechanism",
+      "heading": "8N1的每個欄位為什麼存在",
       "paragraphs": [
-        "在本章的簡化非同步 UART 設定中，9600 baud 代表每秒約 9600 個訊號時間單位；8N1 每個資料位元組約需 10 個位元時間，所以理想上限約 960 資料位元組／秒。單一字元約 10/9600 秒，也就是約 1.04 毫秒。",
-        "這只是序列化時間估算；設備處理、USB 轉接器、作業系統緩衝、流量控制與回覆等待都另加時間，不能拿 1.04 毫秒當完整命令的逾時值。"
-      ],
-      "table": {
-        "caption": "簡化計算",
-        "headers": [
-          "設定",
-          "一個資料位元組的線上位元時間",
-          "約略結果"
-        ],
-        "rows": [
-          [
-            "9600,8,N,1",
-            "1 開始 + 8 資料 + 1 停止 = 10",
-            "約 1.04 ms／位元組"
-          ],
-          [
-            "9600,7,E,1",
-            "1 開始 + 7 資料 + 1 同位 + 1 停止 = 10",
-            "約 1.04 ms／位元組"
-          ],
-          [
-            "9600,8,E,1",
-            "1 開始 + 8 資料 + 1 同位 + 1 停止 = 11",
-            "約 1.15 ms／位元組"
-          ]
-        ]
-      }
+        "8N1：8data、No parity、1stop；每字元還有1start，共10bit times。Start提供起點，data是payload，stop提供idle區間與結束檢查。UART常按LSB-first送data，byte0x53二進位高到低01010011，實際data順序11001010。不要把HEX紙面從左到右當線路先後。",
+        "7E1使用7data、Even parity、1stop，同樣1+7+1+1=10bits，傳送時間可與8N1相等，但第8位位置是parity而非data。若配置不一致，有時某些字元碰巧透過、有些錯誤，不會因為同樣10bits就相容。Stop bits可在支援的配置有不同長度，需手冊與UART能力一致。"
+      ]
     },
     {
-      "heading": "同位檢查只能抓到部分位元錯誤",
+      "kind": "mechanism",
+      "heading": "Parity、framing與overrun分別來自哪裡",
       "paragraphs": [
-        "N 表示沒有同位檢查；E/O 表示偶／奇同位。接收端依設定檢查資料位元的 1 的個數關係，可能抓到某些傳輸錯誤，但不能保證資料完整或命令語意正確。",
-        "錯誤現象可能是亂碼、同位錯誤或收不到有效回覆。不要只改鮑率而忽略資料位元與同位檢查；也不要以為應用層 checksum 可取代 UART 參數一致。"
-      ],
-      "table": {
-        "caption": "設定不符可能留下的線索",
-        "headers": [
-          "不符項目",
-          "可能表現",
-          "要核對"
-        ],
-        "rows": [
-          [
-            "鮑率",
-            "亂碼、框架錯誤、沒有可解文字",
-            "雙方手冊與實際設定"
-          ],
-          [
-            "資料位元／同位檢查",
-            "文字錯、同位錯或資料缺失",
-            "8N1、7E1 等完整組合"
-          ],
-          [
-            "停止位元",
-            "框架錯誤或不穩定",
-            "雙方設定與裝置支援"
-          ],
-          [
-            "流量控制",
-            "看似卡住、沒有送出或漏資料",
-            "RTS/CTS、XON/XOFF、控制線"
-          ]
-        ]
-      }
+        "Even parity讓data加parity的1總數為偶數；odd為奇數。0x53有4個1，even parity0、odd1。Parity只檢查部分字元錯誤：兩bit翻轉可能仍保總奇偶，不能代替整訊息CRC或防重放。沒有parity是某契約選擇，不表示線完美無誤。",
+        "Framing error通常與接收預期stop處不見有效stop條件相關，可由引數/波形/時鐘影響；overrun是新字元到達時舊資料未及時取出導致硬體/緩衝丟失。二者不能都叫亂碼。應用buffer overflow與UART硬體overrun又是不同位置，API可見性依驅動。log與測點要明確哪層錯誤，才選baud、讀執行緒或負載修正。"
+      ]
     },
     {
-      "heading": "流量控制與同位檢查是不同問題",
+      "kind": "mechanism",
+      "heading": "取樣重同步與有效吞吐：字元內與交易間的邊界",
       "paragraphs": [
-        "RTS/CTS 是使用控制線的常見硬體流量控制；XON/XOFF 是在資料流中使用特定控制字元的軟體流量控制。是否使用、何時啟用，要依設備文件及雙方設定。",
-        "同位檢查關乎字元位元是否符合檢查規則；流量控制關乎何時允許繼續傳送。資料線可用，但流量控制設定或接線不符時仍可能像「完全沒送」。"
-      ],
-      "note": "DTR/DSR 在部分系統也作控制或就緒訊號，但不應直接視為 RTS/CTS 的同義詞。"
+        "每個字元start重新定位，意味著時鐘差不是跨整份1000bytes累積1000倍；但字元內部仍有約一個字元長度的漂移。接收oversampling讓邊緣定位與多數判定更穩定，並不能使兩時鐘任意不一致。實際有效誤差取決於發端與收端誤差的合成，不只一個裝置標示±1%；如果一端快、另一端慢，相對差會增加。",
+        "8N1只傳送0x00時data連續低，0xFF時data連續高，start/stop仍提供邊界。不同bit pattern對不良邊緣或取樣偏移的表現可不同，因此只測試AAAA等一種字串不保證所有字元穩定。可在授權軟體模型用00/FF/55/AA及實際命令作已知輸入，保留HEX與錯誤類別；真實電氣測量仍依手冊。",
+        "有效吞吐還取決於查詢協議。例如9600 8N1，若每回合請求9/回覆10、裝置處理20ms，線與處理下界39.79ms，理想每秒約25.13回合，收到有效回覆約251.3bytes/s，遠低單方向960bytes/s。這不是UART浪費錯誤，而是交易順序與對端工作的後果；協議若要求逐筆，不能擅改併發。",
+        "Flow control反應也有在途資料：接收者要求暫停時，傳送器/橋已排入或線上的字元可能繼續到達，容量必須考慮這個餘裕。軟體XOFF經過傳送與解釋也需時間，硬體control也非零延遲。若buffer只剩1byte才通知且在途10bytes，仍會overflow。維護應量暫停前後額外bytes與服務速率，不用「開handshake」代替完整容量模型。",
+        "Data bits也限制一個字元可承載的數值範圍：7bits有128種、8bits有256種。ASCII基本集合可用7bits，但UTF-8編碼可能含最高bit為1的byte，需要完整8bits承載。若某資料byte為E4（228），只保留低7bits會成64（100），文字自然改變；這不是字型或顯示程式可以事後修回的資訊。",
+        "7E1和8N1都用10bit times，但有效data效率分別7/10及8/10。它們對一個「資料字元」的時間相同，對可攜的資料位元量不同。以9600計，7E1理想data bits/s為6720，8N1為7680，其他處理開銷另計。寫報告前先定義byte或字元到底對哪個資料欄位計數，避免效率比較自相矛盾。",
+        "文字解碼要依訊息編碼而不是UART引數自動選擇；UART送8bit不意味UTF-8，7bit也不自動意味英文命令。線路字元、bytes、encoding與命令語意必須各自有契約。看到亂碼時核對原HEX與錯誤類別，才能區分bit沒有正確到達和到達後解碼方式錯。"
+      ]
     },
     {
-      "heading": "虛構案例：兩邊都寫 9600，卻讀成亂碼",
+      "kind": "worked-example",
+      "heading": "例題一：9600的字元、請求及回覆時間",
       "paragraphs": [
-        "設備手冊片段：9600,7,E,1。程式設定：9600,8,N,1。兩者鮑率相同，但每個字元的資料位元和同位位置不同。應先修正成與手冊一致，再用已知文字或十六進位資料重測。",
-        "若修正後仍不對，才往接線、電氣、編碼與命令層查；不要把參數不符直接當成唯一根因。"
+        "9600baud每bit為1/9600s=104.1667µs。8N1每字元10bit，10/9600=1.041667ms；9-byte查詢9.375ms，10-byte回覆10.416667ms。若裝置處理20ms，最短線加處理約39.7917ms；USB橋、排程與flow等待另計。若應用每200ms查一次，不能把該39.8當每次實際值，只作為已知機制下界。",
+        "19200baud且7E1仍10bits/char，9bytes為90/19200=4.6875ms；若改8E1則11bits，9bytes99/19200=5.15625ms。只有提高baud不會縮短裝置固定20ms工作，交易時長不是線時間按比例全減半。引數、訊息長與處理條件必須一起算。"
       ],
       "code": {
-        "title": "虛構對照",
-        "text": "設備卡：9600, 7 data bits, even parity, 1 stop bit\n程式：  9600, 8 data bits, no parity, 1 stop bit\n相同：  baud rate\n不同：  data bits 與 parity"
+        "title": "原創教學資料／C#閱讀片段",
+        "text": "double baud = 9600;\nint dataBits = 8, parityBits = 0, stopBits = 1;\nint bitsPerChar = 1 + dataBits + parityBits + stopBits;\ndouble bitTimeUs = 1_000_000 / baud;\ndouble requestMs = 9 * bitsPerChar * 1000 / baud;\ndouble responseMs = 10 * bitsPerChar * 1000 / baud;\nConsole.WriteLine($\"bit={bitTimeUs:F6}us request={requestMs:F6}ms response={responseMs:F6}ms\");"
       }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：取樣誤差與容量實算",
+      "paragraphs": [
+        "理想模型假設start對齊，接收bit time比傳送長3%，到9.5傳送bit times附近，累計偏移約9.5×.03=.285bit；6%時.57bit，可能越過中心到另一位置。真實可容誤差需結合雙方誤差、偵測與取樣設計、data/stop配置，不把5%當所有產品保證。故障常取決於字元pattern而非每筆都壞。",
+        "容量例8N1/9600理論payload960bytes/s；來源以900bytes/s持續送，而APP平均只處理600，每秒積壓300。1200-byte可用buffer從空約4s填滿，burst會更早。提高read速度或啟用相應flow control與限速可處理容量問題；調整parity不會增加長期APP服務速率。硬體字元正確也可以在buffer丟失。"
+      ],
+      "table": {
+        "caption": "例題二：取樣誤差與容量實算",
+        "headers": [
+          "量",
+          "計算",
+          "說明"
+        ],
+        "rows": [
+          [
+            "3%取樣偏移",
+            "9.5×0.03=.285bit",
+            "理想字元內模型"
+          ],
+          [
+            "6%偏移",
+            "9.5×0.06=.57bit",
+            "不作器件允差保證"
+          ],
+          [
+            "payload上限",
+            "9600/10=960bytes/s",
+            "不含額外間隙"
+          ],
+          [
+            "積壓",
+            "900−600=300bytes/s",
+            "1200容量約4s"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "硬體流控與軟體流控如何形成反饋",
+      "paragraphs": [
+        "RTS/CTS硬體流控使用額外控制線傳達允許/暫停資料，傳統modem角色與現代receiver-ready用法可能不同，按兩端manual決定方向與語意。它控制傳送能否繼續，不是對每命令的業務ACK。若啟用flow但線未相符，傳送可停在等CTS；Write進入本機buffer不證明線路正在傳送。",
+        "XON/XOFF軟體流控將控制字元混在資料中，常用XON11與XOFF13（HEX）。若二進位payload合法含11/13且未設計相應轉義，可能被誤當暫停/恢復。None則沒有此反饋保護，需靠服務容量/協議/有界buffer等機制。不能為消除等待就永久設None，也不能為防丟就兩端任意開flow；通訊契約需共同支援。"
+      ]
+    },
+    {
+      "kind": "maintenance",
+      "heading": "有效配置值比UI預設更重要",
+      "paragraphs": [
+        "公司程式可能先載入XML再覆寫SerialPort引數，或開啟後其他物件改變握手；畫面顯示9600不等於執行值。讀建立、配置、Open、回呼與Close位置，並記錄每例項的effective settings。串列bytes的時間戳通常是APP讀到的時間，不等於每bit線上時間，USB批次及排程會把多字元時間壓成一行。",
+        "若業務每個回應需先發請求，flow之外還要遵循應用交易序列。有些裝置不能並行多命令，不能因串列理論容量高就提高查詢頻率。更快baud、更多併發、較大buffer各改變不同機制，維護前先說清目標及可能後果，再按裝置規定驗證。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "實作：算欄位而非只記8N1名稱",
+      "paragraphs": [
+        "執行uart，先手算0x53的LSB序與even parity，核對時間輸出。將baud改19200，只線時間減半；把paritybits改1，bitsPerChar變11。另外紙算7E1與8N1的欄位位置並說明為何總長相同卻不同內容，避免只看時間認為相容。",
+        "模型不生成電壓波形或硬體錯誤。驗收交bit時序、兩種字元時間、交易下界及buffer積壓表；復原引數再重跑。實際硬體允差與flow方向需裝置manual，不能用理想6%示範替代規格。"
+      ],
+      "steps": [
+        "畫start/data/parity/stop並標bit中心。",
+        "算9600與19200、8N1與8E1。",
+        "單改引數觀察時間，解釋哪些裝置處理項不變。",
+        "復原，列overrun與framing應取得的不同證據。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "案例：低速少量正常，高速大量開始缺字",
+      "paragraphs": [
+        "候選H1時鐘/波形導致字元錯誤、H2接收buffer服務不足、H3訊息parser分段假設。第二輪UART誤碼計數未增加，APP讀執行緒每次sleep200ms，入流1800bytes/s而有效讀取約1000；raw接收唯一序號缺口與buffer飽和一致。H2具體符合，但還應核對驅動可見計數和訊息分塊。",
+        "隔離程式修正讀排程並以有界處理佇列避免讀迴圈持鎖等業務，依正式協議選適當flow。驗證高負載raw字元/訊息計數、buffer上界、業務結果與恢復，不只確認短字串透過。若之後framing增高另查H1，parser錯誤另查H3，保留錯誤分類。"
+      ]
     }
   ],
   "exercises": [
     {
-      "question": "【8N1】N 代表什麼？",
-      "answer": "沒有同位檢查；8 是資料位元數，1 是停止位元數，通常還有一個開始位元。"
+      "level": "foundation",
+      "question": "9600baud為何不是9600bytes/s？",
+      "answer": [
+        "普通UART每bit一個符號，但byte還需start/stop/parity。",
+        "8N1共10bits/char，所以9600/10=960bytes/s理論有效上限。",
+        "裝置間隙與flow/處理再降低交易量。"
+      ]
     },
     {
-      "question": "【邊界】8N1 能告訴你命令 STATUS? 是否要加 CR LF 嗎？",
-      "answer": "不能。8N1 是每個 UART 字元的格式；命令邊界由設備協定決定。"
+      "level": "foundation",
+      "question": "parity與整訊息checksum可互相代替嗎？",
+      "answer": [
+        "Parity針對字元奇偶，只偵測部分錯誤，偶數翻轉可能漏過。",
+        "訊息checksum/CRC檢查另個範圍，也不保證操作語意或身分。",
+        "按協議組合機制，不自動增刪。"
+      ]
     },
     {
-      "question": "【計算】9600 baud、8N1 時一個資料位元組的理想線上時間約多少？",
-      "answer": "約 10/9600 秒，即 1.04 毫秒；這不包含處理、緩衝與回覆時間。"
+      "level": "application",
+      "question": "38400baud8E1，16bytes線時間多少？",
+      "answer": [
+        "1+8+1+1=11bits，16×11=176bits。",
+        "176/38400s=4.583333ms。",
+        "未含裝置等待與橋接，不能直接當交易timeout。"
+      ]
     },
     {
-      "question": "【比較】9600,7,E,1 與 9600,8,N,1 是否相容？",
-      "answer": "不能只因鮑率相同就認為相容；資料位元與同位設定不同，應依設備手冊核對。"
+      "level": "application",
+      "question": "0x35有幾個1？even與odd parity分別？",
+      "answer": [
+        "0x35=00110101，共4個1。",
+        "even parity0，odd1。",
+        "依實際data bits範圍計數，檢查字元契約。"
+      ]
     },
     {
-      "question": "【同位】偶同位檢查通過，能證明整筆命令無錯嗎？",
-      "answer": "不能。它只檢查每個字元的部分位元錯誤，仍需應用層長度、校驗和語意核對。"
+      "level": "application",
+      "question": "輸入1200bytes/s、服務900、buffer1500，從空簡化填滿時間？",
+      "answer": [
+        "淨積壓300bytes/s。",
+        "1500/300=5s，burst可能更早。",
+        "只有擴大buffer延後問題，需處理速率或反饋。"
+      ]
     },
     {
-      "question": "【流控】RTS/CTS 和 XON/XOFF 分別使用什麼？",
-      "answer": "RTS/CTS 用控制線；XON/XOFF 用資料流中的控制字元。是否使用要依兩端文件設定。"
+      "level": "application",
+      "question": "8N1和7E1都10bits，為何讀取不同？",
+      "answer": [
+        "data field分別8與7，後一bit在7E1屬於parity。",
+        "欄位位置與解釋不同，碰巧時間相同不能相容。",
+        "測試字元pattern及完整引數，而非僅baud。"
+      ]
     },
     {
-      "question": "【逾時】1 個字元約 1.04 ms，就能把整筆設備回覆 timeout 設 1 ms 嗎？",
-      "answer": "不能。回覆可能有多位元組，加上設備處理、緩衝與系統延遲；逾時要依完整交易與實測設定。"
+      "level": "diagnosis",
+      "question": "Write有數目卻TX線上停著，Handshake開啟CTS false，先查？",
+      "answer": [
+        "傳送可能等待硬體流控，不是write資料自動出現線路。",
+        "核對control方向與manual及實際CTS。",
+        "按正式flow契約修復，別直接強制繞過容量條件。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "binary資料含0x13後就停，XON/XOFF啟用，列機制與驗證。",
+      "answer": [
+        "0x13可能被解釋為XOFF而非payload，隨後暫停。",
+        "比較同資料在契約規定flow/轉義下表現，並讀取相關狀態。",
+        "修正共同協議後測11/13與一般byte，不單改編碼掩蓋問題。"
+      ]
     }
   ],
   "recap": [
-    "8N1 是單個 UART 字元格式，不是設備訊息格式。",
-    "鮑率估算只涵蓋線上傳送，不代表整筆回覆時間。",
-    "參數不符與流量控制不符都可能表現為亂碼或無資料。"
+    "畫出8N1與7E1欄位位置並計算時間。",
+    "解釋LSB-first、parity、framing及overrun差異。",
+    "以累計取樣偏移理解時鐘誤差。",
+    "區分軟硬體流控與應用訊息/業務成功。"
   ],
   "sources": [
     {
-      "label": "Analog Devices：UART 字元結構",
+      "label": "Analog Devices：UART字元與非同步傳送",
       "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
     },
     {
-      "label": "NI：串列參數與流量控制",
-      "url": "https://www.ni.com/docs/es-ES/bundle/labview/page/serial-port-communication.html"
+      "label": "pySerial：引數、讀取與timeout",
+      "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
     },
     {
-      "label": "pySerial：設定參數與讀取行為",
-      "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
+      "label": "Microsoft：Handshake控制",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.handshake?view=net-10.0-pp"
+    },
+    {
+      "label": "Microsoft：DataReceived時序與執行緒",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived?view=dotnet-plat-ext-8.0"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/serial-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/Program.cs",
+      "label": "串列C#概念與解析模型",
+      "description": "本章用uart模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
+    },
+    {
+      "path": "./assets/labs/serial-maintenance-lab/README.md",
+      "label": "獨立.NET10模型操作說明",
+      "description": "本章用uart模式；固定資料與計算，不開COM、不使用SerialPort或裝置。"
     }
   ]
 }

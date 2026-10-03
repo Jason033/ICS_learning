@@ -1,178 +1,256 @@
 {
-  "intro": "最後用八個完全虛構的 DemoCtrl-A／教學程式案例練排查。它們不對應任何已知 ICS／RCS 部署；練習重點是根據第一個證據缺口選下一步，而不是背一張固定的公司架構圖。",
-  "plan": [
-    {
-      "label": "建立概念",
-      "minutes": 12
-    },
-    {
-      "label": "閱讀程式與文件",
-      "minutes": 14
-    },
-    {
-      "label": "判讀證據",
-      "minutes": 14
-    },
-    {
-      "label": "練習與回顧",
-      "minutes": 25
-    }
+  "contentVersion": 2,
+  "intro": "整合除錯的目標是把一個失敗的使用者意圖，沿著程式與外部邊界找出最先偏離契約的位置。本章將前面學到的物件、事件、狀態、ICD、時間與媒體連接成可操作推理：先知道每條證據代表甚麼，才決定改哪一層。",
+  "prerequisites": [
+    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
+    "本章使用明確定義的 Lab 模型逐步解釋介面與狀態，不需要公司 DLL 或預先熟悉架構。"
   ],
+  "studyTime": {
+    "reading": [
+      15,
+      25
+    ],
+    "practice": [
+      20,
+      35
+    ],
+    "exercises": [
+      25,
+      40
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 troubleshooting 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
+  },
   "goals": [
-    "能對不同層的故障選正確觀測點。",
-    "能區分方法呼叫、接受、設備狀態與音訊結果。",
-    "能保留 RCSCall／iCallAPI 等待查名稱的界線。"
+    "用輸入、身份與契約建立一個可復核故障問題。",
+    "區別正向調用斷點、反向事件過濾與獨立媒體失敗。",
+    "用一次可解釋變因驗證機制，並給出修正與回歸範圍。"
   ],
   "sections": [
     {
-      "heading": "先畫本題基準，不預設公司拓撲",
+      "heading": "從使用者的意圖定義問題，而非直接從錯誤名稱開始",
+      "kind": "concept",
       "paragraphs": [
-        "教學基準：View CLICK q17 → Controller VALIDATED → Adapter SEND → Accepted → StatusReport READY → UI 更新。音訊是另一條路。每個案例會刪掉或改變一個關鍵證據。",
-        "先標已知，再找第一個未證實的箭頭。練習腳本可重跑 success、timeout、late、duplicate、stale-session 五種時間線。"
+        "“系統沒反應”不是單一故障。用戶可能說按下設置等級，畫面仍舊；也可能畫面已成功但聲音沒有變化。先寫操作物件、輸入、預期結果、實際結果和發生條件，讓問題可以重現。操作目標與觀察點應一致：想改變設備等級，不應只驗收按鈕顏色；想收到聲音，不應只驗收控制Accepted。",
+        "一個完整基準包括入口、驗證、請求建立、adapter發送、同步回傳、異步完成、狀態應用、畫面或媒體效果。各點不是必須有同一文件內的函數，而是維護者為了理解行為分出的邊界。知道界線以後，才可利用斷點、紀錄或測試驗證哪個事實成立。沒有紀錄不能直接斷言那一步沒執行，也可能只是觀測缺漏。",
+        "問題卡也需要正常對照。同版程式與相同設備條件下，成功一次時哪些字段、狀態和事件出現？比較失敗與成功，找第一個有意義差異，而不是搜幾十個錯誤後挑最醒目的一行。正常基準不是永久真理；版本或配置變化時，要重新確認它仍代表當前契約。"
+      ]
+    },
+    {
+      "heading": "三種圖分別回答不同問題",
+      "kind": "concept",
+      "paragraphs": [
+        "呼叫圖回答一個入口會叫哪些方法，呼叫堆疊回答當下執行走到哪裡；物件依賴圖回答這些方法由哪個實例執行、誰持參照；時間線回答先後發生甚麼、事件可能何時插入。三者相關卻不等價：同一個class可有兩實例，後續事件不在最初堆疊中，替換字段也不自動改變已構造的物件依賴。",
+        "先畫最小一條路徑，例如View→Controller→LabAdapterPort實際物件A，反向A.Completed→Controller.OnComplete→結果表。圖上標請求ID、session與target。再把媒體畫為獨立方向路徑，避免將控制箭頭誤畫成音訊數據。這樣能自然提出問題：Send對A，訂閱卻對B？完成帶的是當前session？媒體發送是否附著當前會話？",
+        "名稱本身只提供搜尋入口，不能證明物件關係。看到公司RCSCall或iCallAPI時，先查聲明、創建位置、構造傳入、調用與訂閱；看到方法Start也不能自動解釋為無線電發射。把當前實作與契約對齊以後才能定語義。教學模型的具體流程幫助你練會追蹤方法，而不是代替實際公司拓撲。"
+      ]
+    },
+    {
+      "heading": "定位正向路徑：輸入怎樣變成一次有效外送",
+      "kind": "concept",
+      "paragraphs": [
+        "參數要從UI原值追到adapter實際值。轉換可能改變單位、大小寫、空白、預設值或目標地址；同為int不保證同語意。將Value=50百分比錯誤解釋為50毫秒，編譯不會報錯，運行卻可能完全不同。維護者需要ICD定義和實際轉換代碼同時做依據。",
+        "在Controller入口檢查連接、權限、Ready等guard以及待處理記錄建立時點。guard拒絕意味本地沒允許發出，不等於網路阻斷；記錄Pending之後仍可能adapter明確拒絕或拋例外。進入Send方法證明調用發生，是否外送仍需Send內部或外部觀測。層層提升證據時，應說明每一層怎樣實現而不是統一寫“已發送”。",
+        "如果輸入經三層封裝，不需要把每個方法都背下來。跟蹤這一條參數、返回值、例外與身份如何變化，找語義轉換邊界。利用編譯器查定義/參照幫助搜尋，斷點驗證運行實例與分支；靜態存在的代碼可能本次根本沒走到，動態一次運行也不能覆蓋所有版本條件。"
+      ]
+    },
+    {
+      "heading": "定位反向路徑：事件到了仍可能沒有成為狀態",
+      "kind": "concept",
+      "paragraphs": [
+        "完成通知先由誰接收、在哪條線程、交給哪個handler，再經過request/session/terminal/closed過濾，才更新狀態。每一步都可解釋“收到但畫面不變”。事件訂閱不等於開啓新線程；發佈者可同步觸發，因而pending應先於Send建立。若UI線程需要派送，調用完成又不代表派送已執行。",
+        "相同通知可能由傳輸重復、發佈者重復觸發或同handler多次訂閱導致。先區分收到消息數量與handler進入數量，再統計真正應用數量，才能選擇修發佈者、訂閱生命週期或去重規則。只把重復紀錄刪掉沒有修機制；對所有結果都去重也可能誤丟不同請求的合法完成。",
+        "狀態更新以同一次觀察為單位。舊session的結果對舊歷史可能有價值，對新當前狀態卻不可直接套用。合法當前晚到結果能解析Unknown，明確Rejected或終態則不能被無條件覆寫。若當前契約有中間狀態，不能一看到Accepted就把整次任務標終結；診斷必須理解狀態意義。"
+      ]
+    },
+    {
+      "heading": "例題一：Accepted且完成已發，為甚麼Pending",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入控制器借A，Submit SetLevel30得到請求C-S1-R1且A.Sent一條。我們用B.Emit同身份Completed，控制器仍Pending。第一觀察是命令被A接受，第二觀察是B發佈結果；它們不是同一發布者。即便文字身份吻合，控制器構造時訂的是A，因此B消息沒有到它。",
+        "增加觀測確認A實例、B實例與controller的訂閱位置，比延長timeout更能區分機制。修正把完成注入實際A，Results變Completed且Applied1。真實系統中應使adapter實例與其外部通道及生命週期一致，不能為修本次而把所有adapter廣播訂給所有controller。",
+        "下面完整代碼給出初始故障、增加證據與修正結果。回歸需要同A正確完成、B誤結果不影響、重復完成只應用一次、其他controller不串線。這個案例說明“有Accepted、有Completed紀錄”並不足夠；物件、身份與路徑必須形成完整關係。"
       ],
-      "flow": [
-        "View",
-        "Controller",
-        "Adapter",
-        "接受回覆",
-        "設備狀態",
-        "UI"
+      "code": {
+        "title": "完整雙實例案例",
+        "text": "using var a=new LabScriptedAdapter();\nusing var b=new LabScriptedAdapter();\nusing var c=new LabController(a);\nstring id=c.Submit(\"SetLevel\",30);\nb.Emit(new LabCompletion(id,c.Session,\"Completed\"));\nConsole.WriteLine(c.Results[id]); // Pending\nConsole.WriteLine(a.Sent.Count); // 1\nConsole.WriteLine(b.Sent.Count); // 0\na.Emit(new LabCompletion(id,c.Session,\"Completed\"));\nConsole.WriteLine(c.Results[id]); // Completed\na.Emit(new LabCompletion(id,c.Session,\"Completed\"));\nConsole.WriteLine(c.Applied); // 1"
+      }
+    },
+    {
+      "heading": "例題二：同ID通知到了，為甚麼仍被過濾",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入session1的R1已建立，隨後Reconnect令session2，Auth與DeviceReady須重新確認。我們恢復這兩旗標，建立當前R2，然後注入攜R2文字ID卻session1的Completed。模型忽略，R2仍Pending、Ignored1。此時發佈者正確，request也存在，唯獨觀察世代不符。",
+        "再注入R2/session2的Completed，模型接受並Applied1。這種數據刻意避免只因舊request不存在而通過測試；它單獨檢驗session guard。如果測試只發R1舊ID，即便刪除世代檢查，未知ID過濾也可擋下，測試會虛假通過。診斷與回歸都必須設計能區分兩個候選機制的輸入。",
+        "真實接口未必攜session字段；可在adapter回呼訂閱閉包或觀察上下文保存本地世代，但不能隨意給外部結果貼當前世代。驗證舊已排隊結果、重新使用ID和多連接並行，才能證明界線。代碼示範Lab契約，不把模型的session語義套成公司現成API。"
+      ],
+      "code": {
+        "title": "完整單獨驗證世代guard",
+        "text": "using var a=new LabScriptedAdapter();\nusing var c=new LabController(a);\nstring old=c.Submit(\"QueryState\",0);\nc.Reconnect();\nc.Authenticated=true; c.DeviceReady=true;\nstring current=c.Submit(\"QueryState\",0);\na.Emit(new LabCompletion(current,1,\"Completed\"));\nConsole.WriteLine(c.Results[current]); // Pending\nConsole.WriteLine(c.Ignored); // 1\na.Emit(new LabCompletion(current,2,\"Completed\"));\nConsole.WriteLine(c.Results[current]); // Completed"
+      }
+    },
+    {
+      "heading": "控制成功而實體效果錯誤，繼續跨正確的邊界",
+      "kind": "concept",
+      "paragraphs": [
+        "完成只證明對應契約所定義的工作完成。若控制是選通道，Completed可能說明設備已選，不說明該通道有音訊；若命令只入隊，它甚至不代表設備執行。建立邊界清單，明確本層成功能擔保甚麼、下層還需甚麼，才能從軟體繼續檢查資料或實體效果。",
+        "音訊問題先分方向：發送端有樣本嗎、格式是否匹配、sender是否附著當前會話、遠端是否接收、接收後是否播放？RF問題又需電台工作條件與測量，不能憑播放器有聲音推斷無線端正常。控制紀錄與媒體計數可關聯同會話，卻仍分別表達不同事實。",
+        "排查物理層應由具權限與設備知識的人在安全範圍進行。教材不要求學習者隨意接電或發射，它讓你知道軟體能證實到哪裡，以及要請求哪種授權證據。維護工程師的能力包括明確界限，避免把看不見的一段用猜測補成“已通過”。"
       ]
     },
     {
-      "heading": "案例 A：畫面有點擊，控制器沒收到",
+      "heading": "修正責任由擁有的事實決定",
+      "kind": "concept",
       "paragraphs": [
-        "View 記 CLICK q17，找不到 Controller 入口紀錄；其他操作正常。現階段先查事件綁定、輸入條件與 log 是否遺漏。",
-        "不能直接說 SDK 或設備故障，因為尚未有跨到控制器的證據。"
+        "一個錯誤會出現在多層，不表示每層都應各自修一次。UI擁有輸入與顯示，controller擁有工作狀態和准入，adapter擁有協議轉換及外部通知封裝，資源owner擁有釋放。若UI直接跳過controller調用adapter，它可能沒有pending、權限驗證和恢復政策；為了方便而繞過一層，反而破壞完整契約。",
+        "讀碼時把依賴方向和行為責任分別寫出。接口讓controller只依賴操作與通知的約定，具體SDK依賴可留在adapter；但接口不自動保證錯誤階段、線程或Dispose責任。構造參數說明借哪個物件，注釋/契約說明誰釋放，測試則說明實作是否遵守。三個證據互補，不能因為class實現了接口就認定長期行為穩定。",
+        "選修正位置的原則是離違反契約的責任邊界近，並保持其他使用者的約定。如果單位錯誤在UI到controller轉換，改adapter固定除100可能讓其他調用者原本正確數據變錯；如果舊回呼來自共用adapter，關閉一個view就Dispose它會讓其他view失效。先列所有調用者與owner，再做有限修改，避免本次修好卻擴大問題。",
+        "回歸應涵蓋受到影響的相鄰路徑：正常輸入、拒絕輸入、兩控制器共享、重復/晚到、重連、關閉。不是每次都跑全公司系統，而是根據依賴和狀態變更挑有意義邊界。先用Lab瞭解為甚麼這些案例存在，再映射實際程式；這樣讀者能解釋檢查目的，不只背一張測試清單。"
       ]
     },
     {
-      "heading": "案例 B：控制器有呼叫，但 Adapter 未外送",
+      "heading": "選擇下一項觀察：盡量讓候選機制分開",
+      "kind": "concept",
       "paragraphs": [
-        "Controller 記 VALIDATED q17，Adapter 記拒絕 `E_FORMAT`；沒有 SEND。先核對欄位型別、必填值、版本與轉換。",
-        "不能把這例寫成網路逾時；虛構錯誤碼只供教學，不是公司產品定義。"
+        "假設Pending的候選甲是外部尚未完成，乙是完成已收但被過濾。查看外部端完成記錄或adapter接收點，比再次看UI顏色有鑒別力。若候選甲是wrong instance，乙是wrong session，接收紀錄同時記錄發佈者和session即可分開；新觀測應針對假設，而非無差別收更多文本。",
+        "每次實驗只改變足以檢驗機制的條件，並保持版本、輸入、目標與環境可比。延長timeout後偶爾成功，只說明時序相關，不能直接確定網路慢；handler、UI或設備排隊也有時序。先看時間分段與佇列，再用獨立測量驗證。修正後反向恢復舊錯誤可再現，是強證據，但仍限定測試範圍。",
+        "若不能重現，可保留高質量證據與候選，不應假裝已確定。報告寫症狀、已證實關係、缺口、當前最支持機制與下一觀測。清楚的不確定性來自具體缺口，而不是每段籠統說版本未知。已理解的語言、物件與事件機制仍可準確解釋，不需要等待公司所有資料才開始學習。"
       ]
     },
     {
-      "heading": "案例 C：Accepted 後沒有完成事件",
+      "heading": "追碼實作：用故障開關驗證觀察能力",
+      "kind": "lab",
       "paragraphs": [
-        "Adapter 記 SEND、5 ms 收 Accepted、50 ms timeout；沒有可匹配的 StatusReport。結果未知。",
-        "下一步查 q17 在外部端的處理與權威狀態；若是有副作用命令，先別盲目重試。"
+        "執行troubleshooting和all，定位三個關鍵驗證：Rejected終態不能被Completed覆寫、Closed不再應用、不同controller在共享adapter不串request。記錄每個斷言對應哪一條契約，別只把PASS當結論。模型不涉及真實I/O，所以驗證是控制器語義，不是公司網路連線。",
+        "故障一刪除Rejected過濾，預期rejected_command_cannot_be_completed失敗；故障二讓所有controller請求固定R1，預期shared_request_ids_are_isolated失敗；故障三移除session guard，用例題二當前ID舊session檢驗。一次改一個，保留原檔，復原後all通過。測試能抓錯才有資格當回歸依據。",
+        "最後寫一個短維護記錄：輸入與預期、初始資料、兩個候選、新增證據、修正代碼責任、結果與剩餘邊界。公司程式取得後，依實際Adapter入口替換觀察點與ICD，而不是複製Lab到正式系統。你現在的能力目標是能讀懂關係並驗證修正，不是從名字編一套看似完整的公司架構。"
       ]
     },
     {
-      "heading": "案例 D：完成事件到了，UI 仍舊",
+      "heading": "故障鑒別：同樣沒完成，修正可以完全不同",
+      "kind": "diagnostic-case",
       "paragraphs": [
-        "Controller 已確認本次 q17 的 READY，但畫面仍顯示 Busy。先查 Controller→View 的事件派送、資料綁定與過期畫面快取。",
-        "不要退回宣稱設備沒回覆；但仍需確認 READY 的來源和時間。"
-      ]
-    },
-    {
-      "heading": "案例 E：重連後舊事件蓋住新狀態",
-      "paragraphs": [
-        "Session 2 已建立，卻用 Session 1 的晚到 READY 更新畫面；接著新 Session 回 Busy。",
-        "先查事件關聯與排序，畫面應按產品規則顯示權威新狀態；本機腳本的 stale-session 案例示範先隔離舊事件。"
-      ]
-    },
-    {
-      "heading": "案例 F：控制鏈可用但單向無聲",
-      "paragraphs": [
-        "設備狀態回 READY，B 端表示聽不到 A；未見 A→B 媒體接收紀錄。",
-        "先追 A 的音訊輸入與送出、媒體路徑及 B 端接收，而非只重複查 GetStatus。"
-      ]
-    },
-    {
-      "heading": "案例 G：同一個事件處理兩次",
-      "paragraphs": [
-        "一次外部回報導致 View 更新兩次；程式上可見兩次訂閱同一 handler，但還沒有設備發兩次的證據。",
-        "先查訂閱／解除訂閱生命週期與 handler 紀錄，再決定是本地重複處理還是外部重複事件。"
-      ]
-    },
-    {
-      "heading": "案例 H：只有名稱，沒有程式或文件",
-      "paragraphs": [
-        "有人說 `RCSCall`、`iCallAPI`、`vv_service`、`*19`、`*23` 和 `callarea`「一定」形成某個固定控制順序，但沒有版本相符的原始碼、文件或執行紀錄。",
-        "正確結論是關係未證實；列出要找的定義、呼叫、事件、介面文件與測試。不能把先前助手的整理圖當成證據。"
-      ]
-    },
-    {
-      "heading": "把結果寫給下一位維護者",
-      "paragraphs": [
-        "範例 C 可寫：「q17 已送出並收到 Accepted；50 ms 內沒有狀態回報，遠端結果未知。下一步查設備端 q17 處理和當前狀態。」",
-        "這比「API 壞了」更能指引工作。實際查公司資料時，只把取得授權且能確認的結果加入私有筆記，不複製進公開教材。"
+        "資料甲Send收到Rejected:InvalidValue，原始輸入1.2被錯誤四捨五入轉換成120，合法範圍0–100；資料乙Send Accepted，adapter接收Completed但handler因session1對當前2拒絕；資料丙Completed已應用，UI700ms才派送。三案用戶都說沒反應，但分別在輸入語意、觀察世代與顯示佇列。",
+        "甲修單位轉換與邊界驗證，回歸0/100/範圍外及單位；乙修舊觀察隔離或錯誤貼世代路徑，回歸重連/當前/舊排隊事件；丙修UI派送或阻塞，回歸響應與關閉，不去刪session guard。定位前若統一Reconnect，可能暫時掩蓋三案而留下機制。",
+        "驗收寫可觀察結果和不變條件：正常值恰一次外送，拒絕不被完成覆蓋，舊觀察不應用，當前結果及時顯示，資源在owner範圍釋放。加上控制與媒體獨立核對，報告讀者能知道哪一邊已驗證、哪一邊仍待實體證據。這才是可持續維護的除錯閉環。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【A】View 有 CLICK、Controller 無紀錄，先查哪裡？",
-      "answer": "查 View 到 Controller 的事件綁定、條件與 log 完整性。"
+      "question": "【基礎】調用圖、物件圖、時間線各回答甚麼？",
+      "level": "foundation",
+      "answer": [
+        "調用圖說明方法路徑；物件圖說明實例參照與所有權；時間線說明先後與異步插入。",
+        "同一class不證明同實例，後續事件也不一定處於原調用堆疊。",
+        "使用三者共同關聯身份，才能定位物件錯誤與時序錯誤。"
+      ]
     },
     {
-      "question": "【B】Adapter 本地 E_FORMAT、未 SEND，先查網路嗎？",
-      "answer": "不是；先查欄位轉換、必填資料與版本。"
+      "question": "【基礎】Send返回Accepted、紀錄又見Completed，為甚麼還不能說本次完成？",
+      "level": "foundation",
+      "answer": [
+        "需確認Accepted語義、Completed來源實例和request/session。",
+        "再驗證狀態過濾與實際應用，而非僅兩字符串出現。",
+        "最終效果也依契約邊界，媒體/實體不能憑控制紀錄自動證明。"
+      ]
     },
     {
-      "question": "【C】Accepted 後逾時，結果是失敗還是未知？",
-      "answer": "未知；先查遠端處理與權威狀態。"
+      "question": "【基礎】沒有handler紀錄能斷言沒收到嗎？",
+      "level": "foundation",
+      "answer": [
+        "不能，可能沒記錄、被前置過濾或記錄點在派送後。",
+        "核對觀測位置，並在發佈者接收、handler入口、過濾與應用補點。",
+        "將無證據與否定證據分開報告。"
+      ]
     },
     {
-      "question": "【D】Controller 已確認而 UI 未更新，下一段是？",
-      "answer": "Controller 到 View 的派送、資料綁定及快取。"
+      "question": "【應用】當前S4/R8，A接收S4/R8，B發佈S4/R8，controller訂A；狀態Pending。先查哪關係？",
+      "level": "application",
+      "answer": [
+        "發佈者B與所訂A不同，先追反向路徑實例與外部通道映射。",
+        "保持輸入與身份不變讓A發佈可區分實例問題。",
+        "修成一致路徑，再回歸B誤消息不應用與合法結果一次應用。"
+      ]
     },
     {
-      "question": "【E】新 Session 收到舊 Session 事件，能直接套用嗎？",
-      "answer": "不能；需檢查關聯與權威新狀態。"
+      "question": "【應用】測session guard只發不存在舊ID，測試會有甚麼盲點？",
+      "level": "application",
+      "answer": [
+        "未知ID檢查可能已擋下結果，即使session guard刪除也通過。",
+        "要建立當前合法ID卻配舊session，單獨考驗世代判斷。",
+        "另外保留舊ID/舊session組合覆蓋真實時間線，兩者用途不同。"
+      ]
     },
     {
-      "question": "【F】READY 但 B 聽不到 A，先補什麼？",
-      "answer": "補 A→B 的音訊輸入、送出、路徑與 B 接收。"
+      "question": "【應用】received100、apply102、UI900，同請求同session；先增加網路timeout嗎？",
+      "level": "application",
+      "answer": [
+        "證據定位主要等待於apply後顯示路徑，先查UI佇列/阻塞與派送。",
+        "網路timeout不能修這段機制；同時確認received記錄的真實位置。",
+        "回歸正常互動、延遲顯示與畫面關閉後的任務邊界。"
+      ]
     },
     {
-      "question": "【G】一個回報觸發兩次 handler，能直接斷言設備送兩次嗎？",
-      "answer": "不能；可能重複訂閱，先查來源與 handler 次數。"
+      "question": "【診斷】輸入0.8被送80，ICD單位0–1，Rejected；另一案0.8Accepted但無回報。分別處理？",
+      "level": "diagnosis",
+      "answer": [
+        "第一案單位轉換錯，查輸入到adapter鏈並修ICD映射。",
+        "第二案接受不等於完成，補外部執行與反向接收/過濾證據。",
+        "分別回歸單位邊界與超時/晚到，不能統一判斷網路壞。"
+      ]
     },
     {
-      "question": "【H】只有名稱和先前推測圖，能宣布公司實際架構嗎？",
-      "answer": "不能；需版本、定義、呼叫、事件及授權測試證據。"
-    },
-    {
-      "question": "【總結】整合報告的結尾應包含什麼？",
-      "answer": "已知的觀測、未證實的箭頭、下一個最能縮小範圍的檢查。"
+      "question": "【診斷】控制Completed，Tx樣本持續，Rx樣本0；本地喇叭自測可響。能確定遠端揚聲器壞嗎？",
+      "level": "diagnosis",
+      "answer": [
+        "不能，Rx0只定位接收資料缺口，尚未證實遠端發送及傳輸。",
+        "先核對方向、遠端樣本/發送、媒體路徑、接收目標與會話身份。",
+        "喇叭自測只證明本地測試條件播放能力，補鏈後才能確認故障層。"
+      ]
     }
   ],
   "recap": [
-    "從第一個證據缺口選下一步。",
-    "接受、完成、設備狀態與音訊結果要分開。",
-    "公司依賴關係未驗證前維持未知。"
-  ],
-  "sources": [
-    {
-      "label": "Microsoft Learn：Visual Studio 搜尋定義與參照",
-      "url": "https://learn.microsoft.com/en-us/visualstudio/ide/writing-code-in-the-code-and-text-editor?view=visualstudio"
-    },
-    {
-      "label": "Microsoft Learn：除錯器 Call Stack 與斷點",
-      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
-    },
-    {
-      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
-    },
-    {
-      "label": "NASA：介面管理與 ICD 的用途",
-      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
-    },
-    {
-      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
-      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
-    }
+    "除錯要把意圖、契約、實例、身份、時間與效果形成可復核關係。",
+    "候選機制用有鑒別力觀察分開，再有限修正與回歸。",
+    "維護記錄說明證據到哪裡，不讓名字或綠燈替代事實。"
   ],
   "resources": [
+    {
+      "path": "./assets/labs/integration-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 原始碼與操作說明；解壓後依本章步驟追讀。自行建立的模型，與公司專案分開。"
+    },
     {
       "label": "下載虛構 API 事件追蹤程式",
       "path": "./assets/labs/integration-trace-lab.py",
       "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    },
+    {
+      "path": "./assets/labs/integration-maintenance-lab/Program.cs",
+      "label": "下載自製 C# 事件與媒體模型原始碼",
+      "description": "完整專案由主題練習包提供；本章追讀 troubleshooting，型別均為 Lab 前綴，沒有公司 DLL 或真實設備。"
+    }
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：呼叫堆疊窗口",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
+    },
+    {
+      "label": "Microsoft：事件訂閱與解除",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/how-to-subscribe-to-and-unsubscribe-from-events"
+    },
+    {
+      "label": "Microsoft：例外邊界",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/exceptions/best-practices-for-exceptions"
+    },
+    {
+      "label": "NASA：接口管理",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
+    },
+    {
+      "label": "Microsoft：依賴與所有權",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/extensions/dependency-injection/guidelines"
     }
   ]
 }

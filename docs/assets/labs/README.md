@@ -1,45 +1,48 @@
-# 教學練習檔
+# 教學資料與C#追讀專案
 
-本資料夾放六種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環、Socket 本機 TCP／UDP 練習、VoIP 音訊取樣，虛構 API 事件追蹤，以及可靠性與並行處理的純本機示範。全部不含公司資料，也沒有真實設備的設定。
+這些資料用來檢查教材中的推導：先手算或預測，再執行與比較，修改一個條件，最後復原並驗證。基礎觀念在章節正文解釋，不需先操作設備才能閱讀。
 
-## Wireshark 合成封包
+所有PCAP、log、ICD及設備情境都是自行建立的合成資料；沒有公司封包、帳號或原始碼。C#專案是Lab模型，不是廠商SDK替代品。完整專案ZIP包含原始碼、csproj與README，沒有編譯後執行檔。
 
-這三份 PCAP 是為個人學習網站**合成**的練習資料，不是從公司、設備或任何人的網路擷取。位址使用文件保留範圍，SIP 名稱使用保留網域；固定時間從 2026-01-01 00:00:00 UTC 起算。它們適合練工具操作與判讀證據，不能當成真實網路效能或語音品質的量測。
+## 第二版資料
 
-- `wireshark-first-capture.pcap`：13 筆。DNS 查詢／回覆 2 筆；TCP 8080 握手、GET `/status`、HTTP 200 回覆與關閉共 11 筆。
-- `wireshark-tcp-cases.pcap`：8 筆。TCP 7000 只有三次 SYN 嘗試；TCP 7001 有握手、`STATUS?` 與 TCP ACK，沒有應用回覆。檔案內沒有程式逾時紀錄。
-- `wireshark-sip-rtp.pcap`：16 筆。SIP 控制訊號 7 筆、RTP 9 筆；B→A 方向刻意沒有 RTP 序號 302。這只能表示**此檔沒有收錄**該序號，不能直接證明網路在哪裡遺失。RTP 負載是固定靜音教學位元組，沒有真實人聲。
+| 資源 | 解決的學習問題 | 不能用來證明 |
+| --- | --- | --- |
+| networking-maintenance-lab | 逐步計算端點、位址、路由、TCP、MTU、群播及效能 | 真實網路已連通或公司路由配置正確 |
+| wireshark-maintenance-mixed／receiver／truncated.pcap | 比較原始bytes、觀測位置、TCP重組、SIP與RTP；三份檔案有不同留存條件 | 實際線路一定丟包，或收到RTP就一定聽得到 |
+| wireshark-maintenance-logs.csv、manifest.json | 把請求ID與時間對齊；分析後再核對原始欄位 | 真實公司log的探針位置與時鐘語義 |
+| ozeki-maintenance-lab | 理解class／interface、事件、通話歸屬、媒體方向及清理 | 已在Ozeki DLL編譯或真實電話接通 |
+| serial-maintenance-lab | 由UART時序、HEX與框架讀到解析、校驗、期限及關聯 | 接線電平、線材、實際COM驅動正常 |
+| radio-maintenance-lab | 讀設備參數與功率、品質、鏈路的教學演算 | 天線／RF量測或真實發射效能 |
+| ptt-maintenance-lab | 追按鍵、狀態輸入、忙碌、音訊時序與釋放責任 | 廠商實體PTT訊號、燈號或發射狀態 |
+| sockets-maintenance-lab | 追Socket生命週期、收送、框架與取消；以各模式README所述為準 | 教學端點等於公司協定或部署拓撲 |
+| voip-maintenance-lab | 取樣、PCM資料量、封包化、播放期限與音訊追讀 | 實測聲卡、麥克風、SDK或真人語音品質 |
+| integration-maintenance-lab、integration-demo-icd.md | 比對ICD、呼叫、命令、會話、錯誤與事件關聯 | 已確認RCSCall／iCallAPI的真實依賴 |
+| reliability-maintenance-lab | 算整體期限、重試、佇列、事件順序與共享狀態 | 生產級去重、備援或WPF實際反應時間 |
 
-來源程式是專案根目錄的 `tools/generate_wireshark_labs.py`。在專案根目錄執行 `python3 tools/generate_wireshark_labs.py` 可重建全部三份檔案；再執行 `python3 tests/verify_labs.py` 檢查 PCAP 格式、時間順序、IP／TCP／UDP checksum 與課程預期的封包數、Port、SIP／RTP 欄位。教材 JSON 的 `resources` 欄位連到這裡的檔案。若要更改案例，請同步修正產生器、驗證程式與相關教材的預期答案。
+## 使用方式與驗收
 
-練習檔可在 Wireshark 用「檔案 → 開啟」直接讀取，不需要即時抓包權限。若 Wireshark 的解析設定沒有自動辨認 SIP 後的 RTP，先核對 SDP 與 UDP Port；只對已知的教學流使用「Decode As」。
+C#需.NET 10 SDK。下載對應ZIP到自己的練習資料夾，解壓後讀README，再執行本章指定的`dotnet run -- <模式>`。音訊專案的參數是輸出資料夾，其他專案的模式也不同；不要只跑第一個模式就當作學完所有章節。程式的檢查通過，代表這個教學模型的不變條件成立，不代表真實設備已通過。
 
-## RS-232 主題的軟體回環
+基準、要改的變因、預期結果與修正後的重測都寫在各章。第一次裝工具另計時間。公司舊.NET Framework與SDK的版本、執行緒和資源規則需另核對；模型原始碼與公司程式分開。
 
-`serial-loopback.py` 使用 pySerial 的 `loop://`，把虛構的四個位元組 `AA 01 10 11` 回送給同一個程式，分兩次讀回，最後示範逾時回空。它不會開啟 COM Port，也不連任何實體設備；成功只表示這個本機程式的寫入、讀取與逾時運作，不能驗證轉接器、RS-232 電平、接線或設備回覆。
+Wireshark使用PCAP開檔，不需連公司網路。維護版內容包含多連線與干擾流量；先定位自己的請求，再用manifest核對，不先從答案反推篩選器。截短檔可讀到標頭，並不表示應用內容也保存完整。
 
-先安裝 Python 和 pySerial，再在下載檔所在資料夾執行 `python3 serial-loopback.py`；Windows 可使用 `py serial-loopback.py`。預期前兩次讀取合併為原本的四個位元組，第三次讀取顯示 `(empty)`。若環境不允許安裝套件，直接閱讀[串列工具與軟體回環章節](../../content/lessons/serial--tools-and-loopback.json)的輸出解說即可。
+## 資料一致性檢查
 
-## Socket 主題的本機 TCP／UDP 練習
+在儲存庫根目錄執行：
 
-`socket-tcp-lab.py` 與 `socket-udp-lab.py` 只使用 Python 標準函式庫，伺服器綁在 `127.0.0.1`，Port 由作業系統自動分配，不連外部網路。兩個腳本都交換虛構的 `STATUS?` 與 `OK,READY`；前者在兩端使用 2-byte 大端序長度前綴、限制內容最多 1024 bytes，並示範分兩次呼叫 `sendall` 後仍應依長度讀取；後者示範 `sendto`／`recvfrom` 和回覆來源檢查。它們不模擬封包遺失或真實設備狀態。
+```bash
+python3 tests/verify_labs.py
+python3 docs/assets/labs/wireshark-maintenance-verify.py
+```
 
-在下載檔所在資料夾執行 `python3 socket-tcp-lab.py` 和 `python3 socket-udp-lab.py`；Windows 可用 `py socket-tcp-lab.py` 和 `py socket-udp-lab.py`。預期都印出請求、回覆和「本機範例通過」。若本機政策禁止啟動回環服務，可直接閱讀對應教材及練習；腳本成功不代表公司系統的 Socket、SDK 或設備也相同。
+第一個驗證舊三份PCAP，第二個驗證第二版三份PCAP的留存長度、時間、可用checksum、TCP序號與框架、SIP Content-Length、RTP逐來源序號及雙觀測點差異。驗證不等同於Wireshark GUI實際操作或語音播放。
 
-## VoIP 主題的音訊取樣
+`wireshark-maintenance-generator.py`是第二版產生器；`tools/generate_wireshark_labs.py`產生舊三份檔案。重產前先核對教材依賴的frame、端點與情境，改資料後需一併審查題目和解答。
 
-`voip-tone-lab.py` 使用 Python 標準函式庫合成一秒鐘的 440 Hz 教學音，印出 8 kHz、16-bit、單聲道 PCM 的樣本數、原始資料量與每 20 ms 的分幀數。直接執行 `python3 voip-tone-lab.py` 不會建立檔案；加上 `--write-wav` 才會在目前資料夾產生 `voip-tone-lab.wav`，若同名檔已存在則拒絕覆寫。Windows 可改用 `py voip-tone-lab.py`。
+## 第一版保留的輔助資料
 
-這個腳本不讀麥克風、不連網，也**沒有**實作 G.711、G.729、RTP 或通話；它只驗證教材裡的取樣與原始 PCM 算式。VoIP 章節另沿用本資料夾的合成 `wireshark-sip-rtp.pcap` 觀察 SIP、SDP 與 RTP；其負載為固定教學位元組，不可當成真人語音或品質測試。
+舊三份PCAP及Python腳本保留原網址：wireshark-first-capture、wireshark-tcp-cases、wireshark-sip-rtp；serial-loopback、socket-tcp-lab、socket-udp-lab、voip-tone-lab、integration-trace-lab、reliability-timeline-lab、reliability-race-lab。它們可用於局部觀察，已不代表整個主題的完整教材。
 
-## ICS／RCS 與廠商 API 主題的事件追蹤
-
-`integration-trace-lab.py` 是 Python 標準函式庫寫的虛構 `DemoCtrl-A` 模擬器，不連網、不存檔、不呼叫 SDK 或實體設備，也不使用公司原始碼。它用虛擬時間列出 View→Controller→Adapter→虛構設備的五種案例：`success`、`timeout`、`late`、`duplicate`、`stale-session`。其中 `ACK accepted` 只表示教學模型接受處理；只有相符的狀態事件才可在此模型中確認 READY。晚到或舊 Session 事件的處理規則是此腳本的示範策略，不代表真實產品。
-
-下載後執行 `python3 integration-trace-lab.py` 可看全部案例；Windows 可使用 `py integration-trace-lab.py`。若只想比較一個情境，可加 `--case timeout` 等參數。數字是固定教材時間，不是設備性能或通用逾時設定；任何公司元件關係仍須用授權程式碼和版本相符文件查證。
-
-## 可靠性與並行處理主題的純本機示範
-
-`reliability-timeline-lab.py` 使用固定的虛擬毫秒列出逾時但晚完成、逾時且未送達、重送、同會話亂序與有限容量佇列五種情況。執行 `python3 reliability-timeline-lab.py` 看全部；`--case queue-growth` 可只看排隊。它沒有真實等待、不連網，不會呼叫設備；數字只供練算式。
-
-`reliability-race-lab.py` 用 Python 標準函式庫的 `Barrier` 固定兩個執行緒先讀到同一個舊值，示範兩次加一卻只得到 1，再用 `Lock` 包住完整的讀改寫得到 2。執行 `python3 reliability-race-lab.py`；Windows 可用 `py` 取代 `python3`。它示範一種刻意安排的交錯，不是效能測試，也不能證明公司程式有相同競爭。
+輸出產物應放自己的練習或暫存資料夾，避免混進網站assets。C#的bin／obj是編譯中間檔；公開包由`tools/package_labs.py`以原始碼重新產生。

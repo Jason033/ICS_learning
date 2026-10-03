@@ -60,8 +60,17 @@ for (const topic of catalog.topics) {
     } else assert.equal(chapter.status, 'planned');
   }
 }
-assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 83);
+const originalRoutes = JSON.parse(fs.readFileSync(path.join(root, 'revision/remaining-topics/scope.json'), 'utf8')).original_routes;
+for (const original of originalRoutes) {
+  const topic = catalog.topics.find(t => t.id === original.topic);
+  assert(topic?.chapters.some(c => c.id === original.chapter), `既有網址遺失：${original.topic}/${original.chapter}`);
+}
+const previousLessons = JSON.parse(fs.readFileSync(path.join(root, 'revision/final-content-metrics.json'), 'utf8'));
+for (const previous of previousLessons) {
+  const topic = catalog.topics.find(t => t.id === previous.topic);
+  assert(topic?.chapters.some(c => c.id === previous.chapter && c.status === 'ready'), `既有章節遺失：${previous.topic}/${previous.chapter}`);
+}
+assert(readyCount >= previousLessons.length, '不能移除已完成章節');
 const elements = new Map();
 function element(selector) {
   if (!elements.has(selector)) {
@@ -98,7 +107,9 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /選一個主題，開始學/);
   assert.match(element('#main').innerHTML, /Ozeki API/);
-  assert.match(element('#main').innerHTML, /規劃中/);
+  const hasPlanned = catalog.topics.some(t => t.chapters.some(c => c.status === 'planned'));
+  if (hasPlanned) assert.match(element('#main').innerHTML, /規劃中/);
+  else assert.match(element('#main').innerHTML, /所有目錄章節均可閱讀/);
   assert(element('#explore-topics').listeners.click, '首頁探索按鈕未綁定');
 
   for (const topic of catalog.topics) {
@@ -128,7 +139,8 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   assert.deepEqual(JSON.parse(storage.get('learning-site-completed-v1')), ['ozeki/read-a-call']);
   context.location.hash = '#/topic/ozeki';
   await vm.runInContext('renderRoute()', context);
-  assert.match(element('#main').innerHTML, /<strong>1<span> \/ 7<\/span><\/strong>/);
+  const ozekiTotal = catalog.topics.find(t => t.id === 'ozeki').chapters.filter(c => c.status === 'ready').length;
+  assert(element('#main').innerHTML.includes(`<strong>1<span> / ${ozekiTotal}</span></strong>`));
   context.location.hash = '#/lesson/ozeki/read-a-call';
   await vm.runInContext('renderRoute()', context);
   element('#complete-button').listeners.click({ currentTarget: element('#complete-button') });
@@ -170,9 +182,12 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這個主題目前不在清單中/);
 
-  context.location.hash = '#/lesson/systems/find-evidence';
+  // The planned-content branch must stay available even after this curriculum is complete.
+  vm.runInContext("catalog.topics[0].chapters.push({id:'test-planned',title:'test',status:'planned'})", context);
+  context.location.hash = `#/lesson/${catalog.topics[0].id}/test-planned`;
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這篇教材尚未開放/);
+  vm.runInContext("catalog.topics[0].chapters.pop()", context);
 
   console.log(`通過：${catalog.topics.length} 個獨立主題、${readyCount} 篇教材，以及首頁／主題／完整教材／進度／規劃中頁面的互動檢查。`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

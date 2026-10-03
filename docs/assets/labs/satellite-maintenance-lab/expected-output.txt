@@ -1,0 +1,38 @@
+MODE latency
+oneWayMs=273.000 roundTripWithWorkMs=576.000
+PASS distance serialization queue work have separate units
+PASS 500ms wait times out while 650ms admits baseline
+PASS lower geometric path does not remove queues
+MODE budget
+fsplDb=206.074825 receivedDbm=-93.074825 marginDb=6.925175
+PASS km GHz free space formula
+PASS 8dB extra loss crosses required receive power
+PASS doubling distance adds roughly 6dB loss
+MODE capacity
+normalPayloadBps=240000 robustPayloadBps=160000
+PASS code rate is a fraction not bits per second
+PASS quality recovery may still overload payload service
+PASS quality and delay variation need separate observations
+MODE queues
+bdpBytes=150000 windowBoundBps=426666.667 queueBytes=12500 waitMs=625
+PASS flight window and link capacity are distinct
+PASS persistent offered excess accumulates delay
+PASS admission reduction creates drain capacity
+MODE health
+PASS working destination beats low RTT without service reachability
+PASS stale success cannot prove current health
+PASS fresh verified backup is eligible
+PASS success resets consecutive misses
+PASS three consecutive misses enter failed decision
+MODE failover
+PASS candidate does not immediately become active
+PASS old epoch cannot commit new switch
+PASS route without new session is insufficient
+PASS route and session evidence complete activation
+PASS sustained recovery avoids immediate flapping
+active=B epoch=2 sessionReady=True
+MODE diagnose
+PASS same geometry plus traffic suggests queue delay not orbit change
+PASS carrier up is not application recovery
+PASS tunnel overhead can cross an example MTU
+PASS all requested checks

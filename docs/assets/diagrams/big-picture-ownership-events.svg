@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 975" role="img" aria-labelledby="title desc"><title id="title">共享publisher的owner、借用者與事件路徑</title><desc id="desc">最外層Console owner建立共享adapter。B及C controller借用並各自訂閱，正向Send、反向Completed依target/session/request套用。B關閉只退訂，adapter仍活且C仍工作；全部退訂後owner釋放。</desc>
+<rect width="430" height="975" rx="18" fill="#f4f7fb"/>
+<g font-family="sans-serif" fill="#16304f" text-anchor="middle"><text x="215" y="42" font-size="24" font-weight="bold">共享物件：誰用，誰釋放？</text>
+<g fill="#dceafb" stroke="#28609b"><rect x="20" y="83" width="390" height="80" rx="12"/><rect x="20" y="222" width="390" height="90" rx="12"/></g>
+<text x="215" y="116" font-size="23">Console：owner</text><text x="215" y="149" font-size="20">建立 a；最後負責 Dispose a</text><text x="215" y="199" font-size="19">↓ 所有權，不是普通呼叫關係</text>
+<text x="215" y="256" font-size="23">共享 Adapter a</text><text x="215" y="291" font-size="20">同一實例；兩個合法訂閱者</text>
+<path d="M110 313v88M320 313v88" stroke="#567797" stroke-width="3"/>
+<text x="110" y="349" font-size="19">↑ Send</text><text x="110" y="380" font-size="18">↓ Completed</text><text x="320" y="349" font-size="19">↑ Send</text><text x="320" y="380" font-size="18">↓ Completed</text>
+<g fill="#fff" stroke="#8aa5bd"><rect x="20" y="409" width="185" height="99" rx="12"/><rect x="225" y="409" width="185" height="99" rx="12"/></g>
+<text x="112" y="445" font-size="23">Controller B</text><text x="112" y="479" font-size="19">借用 a、訂閱 a</text><text x="317" y="445" font-size="23">Controller C</text><text x="317" y="479" font-size="19">借用 a、訂閱 a</text>
+<text x="215" y="550" font-size="20">每個 handler 都按完整身份過濾</text><text x="215" y="582" font-size="19">相同 R1 不代表相同 target</text>
+<g fill="#e0f0e3" stroke="#287344"><rect x="20" y="617" width="390" height="104" rx="12"/><rect x="20" y="757" width="390" height="108" rx="12"/></g>
+<text x="215" y="650" font-size="22">B 關閉：只退訂自己</text><text x="215" y="682" font-size="20">a 仍活；Subscribers 2 → 1</text><text x="215" y="709" font-size="18">C 仍可收到與套用合法結果</text>
+<text x="215" y="791" font-size="22">C 結束：Subscribers 1 → 0</text><text x="215" y="825" font-size="20">owner 此後才釋放 a</text><text x="215" y="854" font-size="18">借用者不擅自釋放共用資源</text>
+<text x="215" y="913" font-size="20">wrong 實例的 Emit 不會進入 a</text><text x="215" y="948" font-size="18">Lab單執行緒：未驗證並行關閉競爭</text></g></svg>

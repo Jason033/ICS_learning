@@ -1,0 +1,16 @@
+{
+  "sdk": "10.0.401",
+  "sourceHash": "c61df47ea72258ee5dbb82dd95ff11b71faef661d85db48bc7a4a2035309c93f",
+  "baselineMode": "all",
+  "mechanismChecks": 25,
+  "baselineExitCode": 0,
+  "mutation": "remove Commit epoch guard in isolated copy",
+  "mutationExitCode": 1,
+  "mutationStdout": "MODE failover\nPASS candidate does not immediately become active\n",
+  "mutationStderr": "FAIL old epoch cannot commit new switch\n",
+  "limitations": [
+    "No satellite equipment or RF",
+    "No actual OS routing, TCP, NAT, SIP, or vendor SDK",
+    "No BFD protocol implementation"
+  ]
+}

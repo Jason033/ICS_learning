@@ -1,0 +1,18 @@
+{
+  "browser": "Chromium",
+  "mobile_lessons": 123,
+  "widths": [
+    1440,
+    390
+  ],
+  "javascript_errors": [],
+  "checks": [
+    "search",
+    "progress persistence",
+    "answer disclosure",
+    "mobile navigation",
+    "overflow",
+    "diagram decoding and original-image links",
+    "unavailable content"
+  ]
+}

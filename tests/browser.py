@@ -44,6 +44,17 @@ def main():
             expected_lesson = json.loads((ROOT / f"docs/content/lessons/{topic}--{chapter}.json").read_text())
             assert page.locator(".exercise-card").count() == len(expected_lesson["exercises"])
             assert page.locator("a[download][href='#']").count() == 0
+            # Force below-the-fold lazy diagrams to load, then verify SVG decoding
+            # and that the large-image link opens the same original asset.
+            page.evaluate("""async () => {
+                await Promise.all([...document.querySelectorAll('.lesson-image')].map(async figure => {
+                    const img = figure.querySelector('img');
+                    img.loading = 'eager';
+                    await img.decode();
+                    if (!img.naturalWidth || figure.querySelector('.diagram-link')?.href !== img.src)
+                        throw new Error('diagram decoding or original-image link failed');
+                }));
+            }""")
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), f"page overflow: {topic}/{chapter}"
 
         lesson("networking", "one-conversation")
@@ -78,13 +89,16 @@ def main():
         assert "#/lesson/reliability/concurrency" in page.url
         if args.screenshots:
             page.screenshot(path=str(args.screenshots / "mobile.png"))
-        page.goto(base + "#/lesson/systems/find-evidence")
+        unavailable = next((f"{t['id']}/{c['id']}" for t in catalog["topics"]
+                            for c in t["chapters"] if c["status"] == "planned"),
+                           "systems/no-such-chapter")
+        page.goto(base + "#/lesson/" + unavailable)
         page.wait_for_selector(".error-page")
         assert "尚未開放" in page.locator("#main").inner_text()
         assert not errors, errors
         print(json.dumps({"browser": "Chromium", "mobile_lessons": count,
                           "widths": [1440, 390], "javascript_errors": errors,
-                          "checks": ["search", "progress persistence", "answer disclosure", "mobile navigation", "overflow", "planned content"]},
+                          "checks": ["search", "progress persistence", "answer disclosure", "mobile navigation", "overflow", "diagram decoding and original-image links", "unavailable content"]},
                          ensure_ascii=False, indent=2))
         browser.close()
 

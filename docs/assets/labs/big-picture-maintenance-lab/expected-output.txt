@@ -1,0 +1,34 @@
+MODE paths
+control=Completed mediaAttached=0 current=1 output=False
+PASS control_complete_media_stale
+PASS current_media_nonzero
+PASS media_requires_ready
+PASS output_call_not_nonzero
+MODE contracts
+ui=75 percent deviceLevel=75 state=Pending
+PASS accepted_not_completed
+PASS invalid_input_not_sent
+PASS wrong_target_ignored
+PASS unknown_result_not_applied
+PASS old_session_current_request_ignored
+historical=Pending current=Pending applied=0
+PASS historical_pending_session_guard
+PASS current_completion_applied
+MODE trace
+synchronous-event state=Completed applied=1
+PASS pending_before_callback
+PASS duplicate_result_once
+Submit target=B session=1 request=R1 level=30
+Callback publisher=A target=B session=1 request=R1
+Apply result=Completed applied=1
+Send returned accepted=True state=Completed
+Callback publisher=A target=B session=1 request=R1
+MODE ownership
+PASS publisher_instance_matters
+PASS shared_target_isolation
+after-B-close adapterDisposed=False subscribers=1
+PASS borrower_unsubscribes_not_disposes_shared
+PASS other_borrower_still_works
+PASS closed_controller_no_callback
+PASS all_borrowers_detached
+PASS all selected scenarios

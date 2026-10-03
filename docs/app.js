@@ -105,6 +105,7 @@ function topicCard(topic, index, completed) {
 function renderHome() {
   const completed = getCompleted();
   const readyCount = catalog.topics.reduce((count, topic) => count + readyChapters(topic).length, 0);
+  const hasPlanned = catalog.topics.some(topic => topic.chapters.some(chapter => chapter.status !== 'ready'));
   document.title = `${catalog.siteTitle}｜主題總覽`;
   app.innerHTML = `<div class="shell page-home">
     <section class="hero">
@@ -120,7 +121,7 @@ function renderHome() {
       </div>
     </section>
     <section class="catalog-section" id="topics" aria-labelledby="topics-title">
-      <div class="section-heading"><div><p class="eyebrow">EXPLORE TOPICS</p><h2 id="topics-title">選一個主題，開始學</h2><p>各主題有自己的章節順序。標示「規劃中」的內容，會在後續逐步補上。</p></div><div class="catalog-count">${catalog.topics.length}<small>個主題 · ${readyCount} 篇可閱讀</small></div></div>
+      <div class="section-heading"><div><p class="eyebrow">EXPLORE TOPICS</p><h2 id="topics-title">選一個主題，開始學</h2><p>各主題有自己的章節順序。${hasPlanned ? '標示「規劃中」的內容，會在後續逐步補上。' : '目前所有目錄章節均可閱讀；可依需要選擇主題。'}</p></div><div class="catalog-count">${catalog.topics.length}<small>個主題 · ${readyCount} 篇可閱讀</small></div></div>
       <label class="search-box"><span aria-hidden="true">⌕</span><span class="sr-only">搜尋主題</span><input id="topic-search" type="search" placeholder="搜尋主題，例如 Wireshark、PTT、RS-232" autocomplete="off"></label>
       <div id="topic-grid" class="topic-grid">${catalog.topics.map((topic, index) => topicCard(topic, index, completed)).join('')}</div>
       <p id="empty-search" class="empty-search" hidden>找不到符合的主題，試試其他關鍵字。</p>
@@ -169,7 +170,7 @@ function renderSection(section, index) {
     ${section.bullets ? `<ul class="content-list">${section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join('')}</ul>` : ''}
     ${section.steps ? `<ol class="step-list">${section.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>` : ''}
     ${section.table ? `<div class="data-table-wrap" role="region" tabindex="0" aria-label="可左右捲動的表格：${escapeHtml(section.table.caption || section.heading)}"><span class="table-scroll-hint">表格可左右滑動</span><table class="lesson-table"><caption>${escapeHtml(section.table.caption || section.heading)}</caption><thead><tr>${section.table.headers.map((header) => `<th scope="col">${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
-    ${section.image ? `<figure class="lesson-image"><img src="${escapeHtml(safeAsset(section.image.src))}" alt="${escapeHtml(section.image.alt || '')}" loading="lazy"><figcaption>${escapeHtml(section.image.caption || '教學示意圖')}</figcaption></figure>` : ''}
+    ${section.image ? `<figure class="lesson-image"><img src="${escapeHtml(safeAsset(section.image.src))}" alt="${escapeHtml(section.image.alt || '')}" loading="lazy"><figcaption>${escapeHtml(section.image.caption || '教學示意圖')} <a class="diagram-link" href="${escapeHtml(safeAsset(section.image.src))}" target="_blank" rel="noopener">開啟大圖 ↗</a></figcaption></figure>` : ''}
     ${section.code ? `<figure class="code-example"><figcaption>${escapeHtml(section.code.title || '教學範例')}</figcaption><pre><code>${escapeHtml(section.code.text)}</code></pre></figure>` : ''}
     ${section.note ? `<aside class="note-box"><strong>留意這一點</strong><p>${escapeHtml(section.note)}</p></aside>` : ''}
   </div></section>`;

@@ -1,0 +1,77 @@
+{
+  "sdk": "10.0.401",
+  "program_sha256": "b2f9d691410487c4197e8040985eb9fa079b91e6ea5cd5bc2d9958df9631739a",
+  "build_output": "  Determining projects to restore...\n  All projects are up-to-date for restore.\n  BigPictureMaintenanceLab -> /tmp/ics-big-picture-mutations/bin/Debug/net10.0/BigPictureMaintenanceLab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:02.43\n",
+  "mutations": [
+    {
+      "mutation": "historical_pending_session",
+      "mode": "contracts",
+      "expected_failure": "historical_pending_session_guard",
+      "exit_code": 134,
+      "output": "MODE contracts\nui=75 percent deviceLevel=75 state=Pending\nPASS accepted_not_completed\nPASS invalid_input_not_sent\nPASS wrong_target_ignored\nPASS unknown_result_not_applied\nPASS old_session_current_request_ignored\nhistorical=Completed current=Pending applied=1\nUnhandled exception. System.InvalidOperationException: FAIL historical_pending_session_guard\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 50\n"
+    },
+    {
+      "mutation": "media_session",
+      "mode": "paths",
+      "expected_failure": "control_complete_media_stale",
+      "exit_code": 134,
+      "output": "MODE paths\ncontrol=Completed mediaAttached=0 current=1 output=True\nUnhandled exception. System.InvalidOperationException: FAIL control_complete_media_stale\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 20\n"
+    },
+    {
+      "mutation": "media_ready",
+      "mode": "paths",
+      "expected_failure": "media_requires_ready",
+      "exit_code": 134,
+      "output": "MODE paths\ncontrol=Completed mediaAttached=0 current=1 output=False\nPASS control_complete_media_stale\nPASS current_media_nonzero\nUnhandled exception. System.InvalidOperationException: FAIL media_requires_ready\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 23\n"
+    },
+    {
+      "mutation": "unit_scale",
+      "mode": "contracts",
+      "expected_failure": "accepted_not_completed",
+      "exit_code": 134,
+      "output": "MODE contracts\nui=75 percent deviceLevel=1 state=Pending\nUnhandled exception. System.InvalidOperationException: FAIL accepted_not_completed\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 34\n"
+    },
+    {
+      "mutation": "unknown_result",
+      "mode": "contracts",
+      "expected_failure": "unknown_result_not_applied",
+      "exit_code": 134,
+      "output": "MODE contracts\nui=75 percent deviceLevel=75 state=Pending\nPASS accepted_not_completed\nPASS invalid_input_not_sent\nPASS wrong_target_ignored\nUnhandled exception. System.InvalidOperationException: FAIL unknown_result_not_applied\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 42\n"
+    },
+    {
+      "mutation": "duplicate_terminal",
+      "mode": "trace",
+      "expected_failure": "duplicate_result_once",
+      "exit_code": 134,
+      "output": "MODE trace\nsynchronous-event state=Completed applied=1\nPASS pending_before_callback\nUnhandled exception. System.InvalidOperationException: FAIL duplicate_result_once\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 65\n"
+    },
+    {
+      "mutation": "missing_unsubscribe",
+      "mode": "ownership",
+      "expected_failure": "borrower_unsubscribes_not_disposes_shared",
+      "exit_code": 134,
+      "output": "MODE ownership\nPASS publisher_instance_matters\nPASS shared_target_isolation\nafter-B-close adapterDisposed=False subscribers=2\nUnhandled exception. System.InvalidOperationException: FAIL borrower_unsubscribes_not_disposes_shared\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 83\n"
+    },
+    {
+      "mutation": "borrower_disposes_owner",
+      "mode": "ownership",
+      "expected_failure": "borrower_unsubscribes_not_disposes_shared",
+      "exit_code": 134,
+      "output": "MODE ownership\nPASS publisher_instance_matters\nPASS shared_target_isolation\nafter-B-close adapterDisposed=True subscribers=0\nUnhandled exception. System.InvalidOperationException: FAIL borrower_unsubscribes_not_disposes_shared\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 83\n"
+    },
+    {
+      "mutation": "pending_created_after_send",
+      "mode": "trace",
+      "expected_failure": "pending_before_callback",
+      "exit_code": 134,
+      "output": "MODE trace\nsynchronous-event state=Pending applied=0\nUnhandled exception. System.InvalidOperationException: FAIL pending_before_callback\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-big-picture-mutations/Program.cs:line 98\n   at Program.<Main>$(String[] args) in /tmp/ics-big-picture-mutations/Program.cs:line 63\n"
+    }
+  ],
+  "restored_all_exit_code": 0,
+  "restored_output": "MODE paths\ncontrol=Completed mediaAttached=0 current=1 output=False\nPASS control_complete_media_stale\nPASS current_media_nonzero\nPASS media_requires_ready\nPASS output_call_not_nonzero\nMODE contracts\nui=75 percent deviceLevel=75 state=Pending\nPASS accepted_not_completed\nPASS invalid_input_not_sent\nPASS wrong_target_ignored\nPASS unknown_result_not_applied\nPASS old_session_current_request_ignored\nhistorical=Pending current=Pending applied=0\nPASS historical_pending_session_guard\nPASS current_completion_applied\nMODE trace\nsynchronous-event state=Completed applied=1\nPASS pending_before_callback\nPASS duplicate_result_once\nSubmit target=B session=1 request=R1 level=30\nCallback publisher=A target=B session=1 request=R1\nApply result=Completed applied=1\nSend returned accepted=True state=Completed\nCallback publisher=A target=B session=1 request=R1\nMODE ownership\nPASS publisher_instance_matters\nPASS shared_target_isolation\nafter-B-close adapterDisposed=False subscribers=1\nPASS borrower_unsubscribes_not_disposes_shared\nPASS other_borrower_still_works\nPASS closed_controller_no_callback\nPASS all_borrowers_detached\nPASS all selected scenarios\n",
+  "limitations": [
+    "single-thread Lab contracts",
+    "no company SDK/network/physical audio",
+    "output call and RMS not audible speech"
+  ]
+}

@@ -1,0 +1,245 @@
+{
+  "id": "network-endpoints",
+  "topicId": "systems",
+  "title": "網卡、路由與程序端點",
+  "intro": "在作業系統中，網卡、IP、路由、監聽Socket與程序是不同對象。這一章由它們如何合作收送開始，教你讀本機實際選路與端點責任，判斷「ping可通但程式不通」究竟還缺哪一層證據。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "不要求先學完整網路；IP、前綴、埠及回環在本章補必要定義。",
+    "知道程序有身分與生命週期即可；命令與.NET範例皆在本章解讀。"
+  ],
+  "goals": [
+    "說明介面、來源位址、路由、端點與程序的關係。",
+    "依最長前綴與成本推演本機路徑，讀監聽範圍與PID。",
+    "區分觀測範圍、命名空間、防火牆及應用層失敗。"
+  ],
+  "sections": [
+    {
+      "heading": "網路介面與位址是兩種對象",
+      "kind": "concept",
+      "paragraphs": [
+        "網路介面是作業系統收送網路資料的入口，可代表實體網卡、回環、VPN或虛擬連結。介面能存在但未啟用、沒有連線或未配置可用位址；反過來，一張介面也可以有多個IPv4與IPv6位址。看到「有網卡」不能直接推出目標可達。",
+        "IP位址標示網路端點的位置，前綴指出其網路範圍，例如192.0.2.10/24在此教學採用前24位為網路部分。埠則把同一IP上的TCP或UDP服務進一步區分。TCP的9100與UDP的9100屬不同協定空間，查其中一個不能證明另一個存在。",
+        "回環127.0.0.1或::1讓同一網路視圖中的本機程序互通，不走實體LAN。若程序只綁回環，外部送往LAN位址的流量不會被該綁定匹配。0.0.0.0代表IPv4通配綁定，不是對方應該連去的目的地址；IPv6的::是否接受IPv4還需看雙堆疊選項與平臺。",
+        "因此收送路徑先分成介面與路由選擇、傳輸協定與端點匹配、程序讀取與應用處理。不同層可以同時存在問題；好的查證先找最早確定不符合需求的一層，再修正並檢驗後續，不能一次改網卡、Port與timeout後只說好了。"
+      ]
+    },
+    {
+      "heading": "本機送出時如何選路與來源",
+      "kind": "mechanism",
+      "paragraphs": [
+        "目的IP交給核心後，路由規則決定下一跳與輸出介面。簡化單一路由表的選擇先用最長匹配前綴：越多前綴位數符合，目的範圍越具體，優先於較寬範圍。等長候選才依該平臺的成本與政策處理；數值metric較小並不是跨所有前綴的優先權。",
+        "直接相連路由表示可以在對應連結找到目的，經由gateway的路由則把資料先交下一跳。IPv4常需ARP找本地下一跳的MAC，IPv6用鄰居探索。鄰居表有紀錄只說明某個連結層解析狀態，不表示遠端應用接受本次工作。",
+        "來源IP也重要。程式可指定本地綁定位址，或讓核心按輸出介面與規則選擇；若VPN改變路由，來源及回程可能改變，對端防火牆或ACL就可能拒絕。維護時記錄實際local endpoint而不只配置中的目的地址。",
+        "真實系統還可能有政策路由、來源規則、VRF或多個表，不能用一條預設路由解釋全部。Linux的ip route get是對給定目的及條件求選路結果，與列出route表不同。Windows也有有效路由與介面成本；本章模型只驗證明確給定的單表規則。"
+      ]
+    },
+    {
+      "heading": "接收端如何把資料交給正確程序",
+      "kind": "mechanism",
+      "paragraphs": [
+        "TCP伺服程式先建立Socket、bind指定本地位址與埠，再listen接受新連線。監聽代表核心有這個接收入口，accept後才形成一條與遠端配對的連接。傳輸Established仍不證明程式已讀取、成功解析或執行，因為資料可以留在覈心或應用緩衝。",
+        "端點表的LocalAddress、LocalPort、RemoteAddress、RemotePort與State描述傳輸對象，OwningProcess或Linux程序欄則提供持有者線索。把它與同時的程序開始時間匹配，避免PID重用。服務名可能不同於程序名，不能看到另一個exe名稱就直接認為被惡意佔用。",
+        "UDP沒有TCP那種listen/accept握手與Established狀態。綁定UDP端點能接到匹配資料，但沒有回應可能是遠端未送、路徑丟包、核心緩衝溢出、應用不讀或協定不匹配。TCP和UDP要用各自的傳輸證據，不要求UDP出現TCP成功狀態。",
+        "同一Port綁定規則受位址、協定、重用選項與平臺影響。AddressAlreadyInUse在本地bind失敗，這發生在任何對端業務之前。先查既有持有者、有效配置與是否重複啓動，再判斷誰應釋放；不能不查身份就終止所有使用這個數字埠的程序。"
+      ]
+    },
+    {
+      "heading": "命名空間、容器與觀測位置",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Linux網路命名空間把介面、路由、Socket與相關網絡狀態隔離成不同視圖。容器中127.0.0.1通常是該容器的回環，不是宿主也不是另一容器；宿主ss沒有看到某端點，可能因爲它在另一個namespace，而非服務沒有啓動。",
+        "容器Port映射另建立外部到內部的轉送規則。外部目的9100可映射到內部9200，因此內部程序實際bind9200；查宿主9100與容器9200要說明各自位置。Windows虛擬機、WSL及VPN同樣可能讓主機與程序所見網絡不同，實際機制依平臺覈對。",
+        "防火牆規則在自己的執行位置對流量做決策，可能依協定、介面、方向、來源、目的、程式及安全profile匹配。規則顯示允許某Port，不代表本次流量符合所有條件，也不代表下游路徑允許。要以有效規則及受規則影響的當次流量判斷。",
+        "封包抓取位置也影響缺席解釋。宿主LAN看到資料不表示容器應用收到；容器入口看到TCP資料不等於解析成功。圖應標示抓取點與轉送邊界，再把觀察連到同實例log。未知公司環境只能以實際證據建立，不能照教學的NAT圖宣稱公司一定如此。"
+      ]
+    },
+    {
+      "heading": "例題一：長前綴比低metric先決定",
+      "kind": "worked-example",
+      "paragraphs": [
+        "給定單路由表：0.0.0.0/0經WAN metric5；198.51.100.0/24經VPN metric80；198.51.100.128/25經LAB metric100。目的198.51.100.140同時符合三條，假設無政策路由和特殊綁定。",
+        "先比較範圍：/0涵蓋所有IPv4，/24涵蓋198.51.100.0到255，/25涵蓋128到255；140在/25內。最長前綴25優先，所以選LAB，不能因WAN的5最小就選WAN。metric只在同等匹配候選中按給定規則比較。",
+        "第二目的198.51.100.70不在128到255，於是/25不匹配；/24比/0更長，選VPN。第三目的203.0.113.7只符合/0，選WAN。這樣三個目的得到不同路徑，是目的前綴而不是“VPN開着所以都走VPN”決定。",
+        "補證據可用只讀路由查詢得到實際輸出介面、gateway和source；若實際與模型不同，檢查政策路由、源地址條件或其它表，不能先宣佈OS忽略metric。模型的前提被明確列出，才能知道何時應換更完整規則。"
+      ]
+    },
+    {
+      "heading": "例題二：端點存在，仍不是同一條連線",
+      "kind": "worked-example",
+      "paragraphs": [
+        "合成表有TCP監聽192.0.2.10:9300 PID700與127.0.0.1:9400 PID701。客戶端記錄送往192.0.2.10:9400失敗，另有ping192.0.2.10成功。任務需求是訪問服務B，實際B屬於701且只供本機。",
+        "先按目的地址、Port和協定匹配，不按程序存在或ping結果匹配。9300不能接9400，127.0.0.1:9400不能接LAN9400；因此客戶端指定的目標沒有給定匹配接收端。ping的ICMP回應僅確認特定ICMP往返，不補上TCP應用入口。",
+        "如果部署原意是本機應用調用B，修正客戶端位置或目的回環；若確實需遠端B，應按部署規則改變B的綁定及有效防火牆範圍。這裏不同業務需求產生不同修正，不能把所有localhost自動改成0.0.0.0。",
+        "驗證同時檢查新端點持有者開始時間與配置，再從預定來源發一個合法查詢，取得同一請求業務回應。若TCP隨後成功而收到Unauthorized，說明端點問題改善，但需轉到身份權限層；不能說原網絡修正失敗。"
+      ]
+    },
+    {
+      "heading": "讀C#：位址解析、綁定與資料接收",
+      "kind": "code-reading",
+      "paragraphs": [
+        "教學程式建立TcpListener(IPAddress.Loopback,0)，0讓OS指派可用臨時埠，Start後讀LocalEndpoint取得實際數字。它只允許本機回環；爲了練習端點，不需要開放LAN或碰公司的Port。完整project中模型route不實際改路由。",
+        "這裏局部代碼的finally總會調用Stop，擁有者結束監聽。AcceptTcpClientAsync與Client是後續連接對象，不能認爲Listener.Stop會負責所有已接受的業務清理；不同生命週期要逐個追。異常產生在bind/listen時應與收到資料後解析失敗分類。",
+        "代碼中IPAddress是地址值，IPEndPoint把位址和埠組合；Socket的LocalEndPoint與RemoteEndPoint取實際傳輸配對。配置字符串是意圖，Start之後取得的端點纔是當前本地觀察，不要用配置裏的0當給客戶的連接Port。",
+        "跨舊.NET Framework時查相關API契約與異步/取消支援，不能機械套.NET10示例。基本責任仍相同：配置→創建→綁定→監聽→接受→收送→關閉，只是可用方法與錯誤類別可能不同。"
+      ],
+      "code": {
+        "title": "可在隔離回環環境追讀的.NET標準型別",
+        "text": "var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);\ntry {\n    listener.Start();\n    var actual = (System.Net.IPEndPoint)listener.LocalEndpoint;\n    Console.WriteLine(actual.Address); // 127.0.0.1\n    Console.WriteLine(actual.Port > 0);\n} finally { listener.Stop(); }"
+      }
+    },
+    {
+      "heading": "只讀輸出：分清列表與路徑查詢",
+      "kind": "maintenance",
+      "paragraphs": [
+        "Windows Get-NetTCPConnection輸出LocalAddress、LocalPort、State、OwningProcess；Get-NetUDPEndpoint則針對UDP。Get-NetIPConfiguration顯示介面相關配置，Get-NetRoute列路由。命令模塊及權限依Windows版本，教材採用已覈對文件，不聲稱本Linux工作環境執行過這些Windows命令。",
+        "Linux ss -lntp看TCP監聽、ss -lunp看UDP端點；ip -brief address看介面/位址，ip route get目的看實際求路結果。輸出src是選擇的源地址，via是下一跳，dev是介面，不是目標應用程序或業務連接ID。",
+        "下方合成route輸出src192.0.2.20表示該查詢條件下的來源選擇。若程序先綁192.0.2.30，實際查詢條件可能不同，應補from條件和真實Socket local endpoint。只列預設路由或只看一張網卡截圖無法說明已綁定程序的完整路徑。",
+        "本章故意不用ping作爲唯一驗收。traceroute類工具探測的是特定探測包的響應路徑，設備不響應不代表它不轉送；吞吐工具會產生額外流量，tc/netem會改變鏈路。本輪只讀觀測及離線模型不執行負載或修改網絡策略。"
+      ],
+      "code": {
+        "title": "唯讀命令及合成欄位",
+        "text": "Windows:\nGet-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,State,OwningProcess\nGet-NetUDPEndpoint | Select-Object LocalAddress,LocalPort,OwningProcess\nLinux:\nss -lntp\nss -lunp\nip route get 198.51.100.140\n合成：198.51.100.140 via 192.0.2.1 dev lab0 src 192.0.2.20"
+      }
+    },
+    {
+      "heading": "故障分支：連線成功但沒有業務回覆",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "給定症狀TCP連接Established卻查詢一直等待。候選A網絡未建立、B程序沒讀或卡住、C應用格式錯誤、D業務權限失敗。端點快照與同請求收送log確認客戶端已連接，伺服器收到12個位元組；A無法解釋此一已收到數據的部分。",
+        "下一份資料顯示伺服器解析器需要長度前綴的完整16位元組框架，客戶端只傳12後等待回應。當前證據支持C的邊界不完整，而非防火牆丟掉ACK。Established與位元組收到都沒有證明應用消息完整，需看協議解析中間狀態。",
+        "有限修正客戶端正確計算長度並送完框架，保留原端點和授權配置。重測完整、分段、過長、斷中途與超時案例，伺服器應完成合法查詢並對非法框架有限失敗；TCP一次Write仍可能被多次Read接收。",
+        "若補到的資料改爲ParsedOK後AuthorizationDenied，則應改查D的身份與權限，而不是套長度修正。診斷邏輯依據具體分支證據改變，不能因爲兩者都表現無回覆而只背一個答案。"
+      ]
+    },
+    {
+      "heading": "實作：離線選路與端點匹配",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- endpoints。模型不髮網絡流量：用已給定路由列表計算140、70與203.0.113.7三個輸出介面，同時斷言回環綁定不匹配LAN目的。先手算最長前綴，再讀OrderByDescending爲何先依Prefix排序。",
+        "將排序改成先按Metric，140會誤選WAN，基準斷言應FAIL；還原後PASS。另增加同前綴候選並給較低metric，預測給定單表規則會換路徑，再確認舊/新結果，避免把metric教成毫無作用。",
+        "對端點條件把TCP改成UDP，即使數字埠相同也應不匹配；把LAN地址改爲回環且協定一致，才進入匹配。每次只改一條輸入，輸出理由會展示哪個責任邊界改變。",
+        "驗收要解釋各結果成立的路由模型前提與觀測位置。真實VPN、政策路由、防火牆與namespace仍須用獲準的只讀查詢確認，本模型沒有改路由，也沒驗證公司網絡可達。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "介面存在、IP存在、TCP監聽與合法業務回應，各哪層？",
+      "answer": [
+        "介面是收送入口，IP是配置地址，TCP監聽是傳輸接收入口，合法回應纔到應用契約。",
+        "按路徑逐層關聯同一個時間窗與實例；不能用前一層替代後層。",
+        "如果某層缺觀測，補相應只讀查詢或同請求log，不直接把整機判壞。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "0.0.0.0監聽是否表示遠端應該連0.0.0.0？",
+      "answer": [
+        "它是IPv4通配綁定語義，表示本地接受匹配介面流量，不是給遠端的目的位址。",
+        "遠端應使用可路由的服務位址與正確Port，仍受防火牆及權限限制。",
+        "驗證實際LocalEndpoint及預定來源的業務回應，不能只讀配置。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生路由：0/0 metric1，203.0.113.0/24 metric90，203.0.113.64/26 metric200。目的80與140各走哪條？",
+      "answer": [
+        "/26覆蓋64到127，因此80匹配/26並優先；140不在該範圍。",
+        "140符合/24，/24比/0更長，所以選/24；不比較不同前綴的metric大小來覆蓋最長規則。",
+        "這只在給定單表無政策規則前提成立；實際查詢若不同，補來源及規則證據。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生輸出：目標經vpn0，src192.0.2.30；程式log local=192.0.2.40。可以直接拼成同一路徑嗎？",
+      "answer": [
+        "來源條件不一致，可能程式主動bind、查詢時刻不同或規則不同。不能直接認定同一路徑。",
+        "按真實程序世代與local地址補求路條件，保留時間與namespace。",
+        "再查當次傳輸端點和回應路徑，避免將泛用查詢替代實際Socket。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：宿主ss無監聽，容器內0.0.0.0:9200有監聽，外部需求9100。下一證據？",
+      "answer": [
+        "兩個觀測在不同namespace，宿主缺監聽不能否定容器內部入口。",
+        "查明確的外部9100到內部9200轉送/映射及有效防火牆，再與容器實例對齊。",
+        "有限修正映射或端點後從目標來源驗證，不能在宿主終止無關程序。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：TCP Established，服務log收到10位元組，框架規定18位元組。可以宣佈防火牆沒放行嗎？",
+      "answer": [
+        "至少這條連接已收到10位元組，現有主要斷點是應用框架未完整。",
+        "查客戶端剩餘8位元組是否送出、解析緩衝和截止條件，不能拿Established當ParsedOK。",
+        "改正確消息邊界後測分段收取及斷線中途，確認服務不會無限等。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "ping成功爲何不能證明某個UDP API可用？",
+      "answer": [
+        "ping的ICMP探測與UDP業務使用不同協定、端點與應用處理。",
+        "同主機ICMP響應不補上UDP綁定、消息格式、身份及結果。",
+        "用合法無副作用UDP查詢、同請求端點與業務回應驗證，並保留無連接傳輸的限制。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "本地Bind出現AddressAlreadyInUse時，先查遠端設備合理嗎？",
+      "answer": [
+        "失敗發生在本地接收資源取得，尚未到遠端處理。遠端狀態不能解釋這次本地綁定失敗。",
+        "查同協議/位址/Port的持有者、實例開始時間及重複啓動，辨識生命週期或配置問題。",
+        "有限處理應釋放的舊資源或修正部署後重測，不盲目終止所有佔同數字Port的程序。"
+      ]
+    }
+  ],
+  "recap": [
+    "依地址、埠、協定與視圖匹配端點，不以數字Port單獨判讀。",
+    "路由選擇先理解前綴，實際來源與政策條件仍要查證。",
+    "端點建立、位元組收取與業務完成是不同責任。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：Get-NetTCPConnection",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/nettcpip/get-nettcpconnection?view=windowsserver2025-ps"
+    },
+    {
+      "label": "iproute2：ss 端點與程序觀測",
+      "url": "https://man7.org/linux/man-pages/man8/ss.8.html"
+    },
+    {
+      "label": "iproute2：ip route 的查詢與選路",
+      "url": "https://man7.org/linux/man-pages/man8/ip-route.8.html"
+    },
+    {
+      "label": "Linux man-pages：網路命名空間",
+      "url": "https://man7.org/linux/man-pages/man7/network_namespaces.7.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 作業環境觀念追讀專案",
+      "path": "./assets/labs/systems-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 endpoints，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      14,
+      23
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 endpoints 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

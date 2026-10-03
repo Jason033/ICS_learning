@@ -1,0 +1,268 @@
+{
+  "contentVersion": 2,
+  "intro": "修正不是讓原症狀暫時消失，也不是把所有測試改到綠燈。本章從契約、狀態不變量和修正責任開始，教你設計正常與拒絕兩種驗收，使用故障注入檢查測試是否有能力發現錯誤，再把前因後果寫成下一位維護者能繼續使用的紀錄。",
+  "prerequisites": [
+    "能區分一次操作的預期與實際結果；本章會從零補充證據與推理所需概念。",
+    "例題使用本文完整定義的 Lab 契約，不需要公司原始碼、SDK、Wireshark 或裝置。"
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含定義、兩個逐步例題與程式追讀；操作包含預測基準、改一個變因、反證及復原；作答需要列推理和驗收。尚待個人計時校準。"
+  },
+  "goals": [
+    "將定位證據轉成有限修正與責任邊界，區分原因修復、緩解與契約變更。",
+    "從前置條件、後置條件與不變量建立正面、負面和相鄰路徑回歸。",
+    "驗證測試能抓刻意錯誤並復原，交付可閱讀結論、完整證據與明確限制。"
+  ],
+  "sections": [
+    {
+      "heading": "症狀消失、風險緩解與原因修復",
+      "kind": "concept",
+      "paragraphs": [
+        "把timeout從50改500ms可能讓錯誤不再顯示，但不一定改變造成排隊的原因；重啟可能清掉重複訂閱，卻不保證下一通不再累積。這些動作可能是有價值的緩解，但報告應說明它改變了哪個條件、會保留甚麼風險，不能直接寫根因已修復。",
+        "原因修復是改變已被證據支持的失效機制。例如來源沿用session7令當前8拒絕，修正在重連生命週期建立正確媒體上下文；如果只是讓接收端忽略session，就讓症狀消失卻破壞隔離。先列機制和契約，才能判斷哪個修改是真正修復，哪個只是繞過保護。",
+        "契約變更則是重新決定合法行為，如播放buffer由40改60ms，允許更晚資料但增加20ms等待。它可能合理，卻不是維持原期限的修復。要同時說明新需求、代價、受影響使用者與驗收；把測試門檻改大而不交代行為變化，是讓維護者失去判斷基準。"
+      ]
+    },
+    {
+      "heading": "前置、後置與不變量：為測試找目的",
+      "kind": "concept",
+      "paragraphs": [
+        "前置條件描述執行前需要成立的事，例如目前session8、目標B、資料格式合法；後置條件描述完成後應見結果，例如及時非零資料未靜音時進入模型輸出。兩者一起形成條件承諾：符合前置時，這個操作保證哪些後果，不是「任何資料都應成功」。",
+        "必須維持的條件稱為不變量（invariant），是整個允許生命週期中都必須保持的關係。例如舊session不能更新當前狀態、Release後不再送出、各目標身份不串線。正常一次輸出只能測後置的一個案例，無法證明不變量在重連、晚到或關閉時仍成立；回歸應按狀態邊界挑輸入。",
+        "負面驗收不是讓測試本身失敗，而是給不合法條件並驗證系統正確拒絕。例如舊session Accepted0是成功的負面測試。故障注入則是刻意改壞實作，期待原先正確的測試報失敗。兩種「負面」要分清楚，否則讀者會誤以為測試全綠就是所有資料都被接受。"
+      ]
+    },
+    {
+      "heading": "有限修正應跟著事實的owner",
+      "kind": "mechanism",
+      "paragraphs": [
+        "責任owner是有權維持某條事實或資源的人/物件。來源知道自己使用哪個session，接收端知道目前准入規則，裝置owner知道開啟與釋放。修改應靠近違反契約的責任邊界，而不是看哪個函式最容易塞一個if。",
+        "若來源重連後仍送舊session，接收端保護原本正確；修來源重新繫結，比取消接收guard更能維持其他使用者。若controller借用共用adapter，一個view關閉不應直接Dispose共用物件，否則本view釋放正常而其他view斷線。修正前找所有呼叫者與持有者，避免局部改善造成共同資源故障。",
+        "變更範圍也影響驗收。只改一個target的單位轉換，測該target及另一個不受影響target；改共用身份規則，則測多target、ID復用與重連。不是每次都要跑全公司所有裝置，但必須有理由說明哪些相鄰路徑可能被影響，以及怎樣確認它們。"
+      ]
+    },
+    {
+      "heading": "例題一：修舊session無聲，卻放進歷史資料",
+      "kind": "worked-example",
+      "paragraphs": [
+        "初始正常資料session8能輸出3，故障資料session7 Received3/Accepted0/Energetic0。維護者甲刪除session guard後，故障資料也輸出3，宣佈修好；但這只表示非法舊資料被放行，並沒有證明來源使用當前上下文。假設重連前後不同通話，這種修改還可能把上一通內容帶入現在。",
+        "修正乙保留接收guard，將來源的當前資料改為session8；預期當前8正常輸出3，7仍Received3/Accepted0。正面測試確認合法新資料可用，負面測試確認歷史資料仍隔離。兩條需要獨立輸入：不能只用不存在request的舊事件，因為其他guard可能已擋住，測不出session檢查被刪。",
+        "本模型old-session已保持目標B、正常期限與非零樣本，只有session不同，所以對session guard有鑑別力。刻意移除guard後repair_stale_negative應失敗，復原後透過。這種能抓到指定失效的測試，比只檢查畫面有聲音更接近維護所需保護。"
+      ]
+    },
+    {
+      "heading": "例題二：增加buffer有效，但需要承認新契約",
+      "kind": "worked-example",
+      "paragraphs": [
+        "原策略T0=S0=0、clock8000、buffer40，三幀timestamp0/160/320，arrival50/70/90，期限40/60/80，三幀晚10ms。改buffer60後期限60/80/100，三幀提前10ms，全能進輸出。這是完整輸入與規則支持的改善，不需要猜測網路是否變好。",
+        "同時，正常arrival20/40/60的資料原本目標40/60/80，現在變60/80/100，每幀多等20ms。保留內容與控制互動速度可能有衝突；若系統需要低延遲對講，增加等待不一定可接受。驗收報告同時列及時率、目標播放等待和最大延遲，不只列聲音恢復。",
+        "若正式同意新buffer60，應更新對應期限契約及測試，並加入arrival恰60、61等邊界。若仍要求原40，則需定位arrival為何增加，如佇列或處理阻塞，不能以門檻改大冒充維持原需求。修改測試的正當理由是契約變化，不是它剛好讓程式透過。"
+      ],
+      "table": {
+        "caption": "共同Lab時間軸；buffer變更是策略變化，不是網路改善證明。",
+        "headers": [
+          "buffer ms",
+          "三幀期限ms",
+          "arrival ms",
+          "結果",
+          "新代價"
+        ],
+        "rows": [
+          [
+            "40",
+            "40/60/80",
+            "50/70/90",
+            "全部晚10",
+            "原等待"
+          ],
+          [
+            "60",
+            "60/80/100",
+            "50/70/90",
+            "全部提前10",
+            "各多等20ms"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "回歸從狀態與責任邊界展開",
+      "kind": "mechanism",
+      "paragraphs": [
+        "第一類是正常路徑：合法輸入、目前身份、已Ready、期限內、可用資源，結果符合後置。第二類是不合法輸入或狀態：錯目標、舊session、格式不符、Release後、超期，應被有限拒絕而不汙染當前。第三類是生命週期轉移：重連、第二次操作、關閉、共享資源、晚到通知。",
+        "邊界值往往比再增加同類正常案例更有用。模型arrival>deadline拒絕，所以恰等於期限接受、超一毫秒拒絕；PTT t>=Ready允許，t<Release要求恰Release不送。寫出兩側期望，能檢查>=和>等容易看漏的差別。",
+        "數量與效能也應有範圍。只驗證最後bool正確，可能漏掉重複副作用、佇列越積越大或記錄丟失；只測低負載，可能漏掉log成本互動作用。根據修正的機制選幾項有意義數值，如應用次數、排隊等待、資源數與跨世代拒絕，不以巨大無目的測試清單代替推理。"
+      ]
+    },
+    {
+      "heading": "測試也需要被驗證：讓一個保護故意失效",
+      "kind": "mechanism",
+      "paragraphs": [
+        "測試可以寫錯，也可能靠另一道guard意外透過。要專門驗session，必須確認其餘條件真的成立：目標正確、資料及時，而且拿掉session guard後查找仍會成功。僅保留request文字不夠；若字典以(Request,Session,Target)完整索引，改session會使完整key不存在，lookup已能拒絕。可用重連前仍保留為Pending的歷史完整key，讓查找成功而當前世代不符；或按實際設計選擇其他能區分保護的輸入。要驗Release則令Ready已成立並產生Release後幀。指定缺陷真的使測試失敗，才能支持它有鑑別力。",
+        "故障注入要在獨立暫存副本進行，定義「哪行改壞、為什麼壞、哪個測試應失敗」。實際看到該測試失敗，證明它能區分正確與這類錯誤；不代表它能抓全部錯誤。恢復原source後再跑全體與比較數值，避免把實驗性修改留下來。",
+        "若修改後測試仍透過，先檢查注入是否真的走到該路徑，再檢查斷言是否弱、案例是否被其他條件擋住。不應為了出現紅燈任意改答案；目標是讓案例能驗證明確契約。可靠回歸是一組有解釋的證據，不是一個只能喊PASS的輸出程式。"
+      ]
+    },
+    {
+      "heading": "讀碼：正面與負面條件各有獨立用途",
+      "kind": "code-reading",
+      "paragraphs": [
+        "regression模式先確認正常三幀非零輸出，再用old-session、mute、late三個獨立情境保留保護。每個Run建立新結果，不共享累計，減少互相汙染。target identity測試以同request/session但不同B/C構造，確保不是靠ID不同才區分。",
+        "下面呼叫是專案內已有LabAudio與LabIdentity型別，放在該模式可編譯，不是SDK用法。Check條件若為false會丟擲FAIL併產生非零退出狀態，測試不會在失敗後繼續假裝全部成功。輸出中的PASS只是斷言結論，正文與預期檔案說明其輸入、機制與侷限。"
+      ],
+      "code": {
+        "title": "取自實際可跑regression模式，Check失敗會中止並回傳非零",
+        "text": "var repaired = LabAudio.Run(\"normal\");\nCheck(repaired.Energetic == 3, \"repair_positive\");\nCheck(LabAudio.Run(\"old-session\").Accepted == 0, \"repair_stale_negative\");\nCheck(LabAudio.Run(\"mute\").Played == 0, \"repair_mute_negative\");\nCheck(LabAudio.Run(\"late\").Played == 0, \"repair_deadline_negative\");\nvar ids = new[] { new LabIdentity(\"R1\", 8, \"B\"),\n                  new LabIdentity(\"R1\", 8, \"C\") };\nCheck(ids.Distinct().Count() == 2, \"repair_target_isolation\");"
+      }
+    },
+    {
+      "heading": "實作：用一個反例確認測試不是裝飾",
+      "kind": "lab",
+      "paragraphs": [
+        "下載獨立.NET 10專案，先執行regression與all，儲存原始預期。列五個斷言的前置、結果與它能反駁的錯誤；不懂作用的斷言先回到來源分支。源資料與版本、模式、命令一起儲存，stdout不能取代實驗說明。",
+        "在暫存副本移除session guard，只跑regression，應看repair_stale_negative失敗；恢復後透過。另一次移除muted guard，應看repair_mute_negative失敗；它與session測試不同，因此不能用一個發現就宣稱全部保護已驗證。最後復原all並比對原數值。",
+        "把例題二當契約變更評審，手算buffer40/60與邊界arrival，不實際改公司引數。寫一個維護結論說明選擇、代價、正面/負面回歸和仍未測的裝置層。如果新策略不能滿足核心目標，就保留原契約繼續定位，不為結束任務而接受明顯偏離要求的改變。"
+      ]
+    },
+    {
+      "heading": "診斷分支：修正後仍Pending，是修錯還是未覆蓋",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "初始current session8的正常結果Pending。候選甲sender錯session、乙合法結果已接收但本地Apply堵塞。來源與入口紀錄都session8，但Apply在期限後；若只從另一個案例複製來源重繫結，結果仍Pending，並不說明所有分析方法無效，而是本次證據從未支持甲。",
+        "定位本地佇列並修後，Pending減少，但第二個controller收到別人的完成。新增證據兩controller共用adapter且都把requestID重用R1，修派送時丟掉target範圍。原排隊問題與新串線都需要分別解釋；不能以大多數任務成功忽略新的隔離破壞。",
+        "有限修正恢復完整身份與佇列責任，回歸正常合法完成、兩個target同ID不串、舊session、晚到、關閉與負載。若當前沒有足夠證據定位佇列機制，報告支持的責任段與下一觀察，不造一個具體執行緒死鎖答案。結論的清楚來自輸入與因果，而非看起來專業的故障名。"
+      ]
+    },
+    {
+      "heading": "維護紀錄要讓未參與的人單獨看懂",
+      "kind": "maintenance",
+      "paragraphs": [
+        "一份可讀記錄先說問題和目標，再給正常契約、失敗證據、兩個候選、新增觀測、有限修正、回歸結果和限制。比如「來源session7被current8拒絕；重連後改用8恢復三幀非零模型輸出，7仍拒絕；未測真實裝置」。它讓外行也能理解為何修來源、為何保留拒絕與結論到哪裡。",
+        "完整原始輸出、配置與逐次資料可以放附件或JSON，但README負責解釋前因後果，不用一堆表格迫讀者自行猜結論。失敗試驗及否定的假設也應保留，幫下一位避免重複調查；公開教材不附公司秘密日誌或憑證，只用本文可重建資料。",
+        "修復記錄還應寫恢復方式與後續觀測：如果新版本在同樣條件再次失敗，該看哪個身份、計數和時段；如果修正引入新症狀，如何退回已知基準。回退是可操作步驟，不是「必要時還原」一句話。真正長期維護成果是一組可解釋的契約、證據和驗證方法，而非一次綠燈。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "重啟後第二通暫時正常，是根因修復嗎？取消session guard讓舊資料有輸出呢？",
+      "answer": [
+        "重啟可能清除殘留，是有價值的緩解但尚未改變重複發生機制。",
+        "取消session保護則可能破壞隔離，即使症狀消失也不是維持原契約的正確修復。",
+        "分別記錄緩解條件、保留風險與已定位機制；驗收原歷史條件和負面保護。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "負面驗收與故障注入有什麼差別？",
+      "answer": [
+        "負面驗收給不合法輸入，期待正確系統拒絕，測試本身應透過。",
+        "故障注入在隔離副本改壞實現，期待相關測試失敗，證明能抓這類錯誤。",
+        "恢復原碼後全部應再次透過；不能把失敗殘留當正式結果。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生current session30、B；舊結果session29卻request不存在。用它測試session guard有什麼盲點？",
+      "answer": [
+        "未知request可能被另一道guard拒絕，刪掉session檢查也仍透過；若採完整(Request,Session,Target)索引，即使request文字存在，舊session對應的完整key仍可能不存在。這個題目未給索引與歷史保留政策，不能直接宣稱只換session已隔離專用guard。",
+        "先查實際查找key、狀態及其餘前置條件。若如概念地圖Lab保留重連前的歷史完整key為Pending，可送該合法目標/結果，使查找會成功而當前session30不符；另一種按request查找的實作，則須確保該request仍可被查到。兩種不能混用。",
+        "先預測只移除session guard時選定案例會被接受，再實際注入確認指定斷言失敗，恢復後拒絕通過。若完整key查找仍擋下，這只驗整條隔離效果，不能證明專用guard；本主題LabAudio沒有request字典，old-session保持其他條件成立，故其repair_stale_negative有獨立鑑別力。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生同軸clock8000、T0=S0=0，timestamp160、arrival68；buffer40/55各deadline、late與代價？",
+      "answer": [
+        "媒體時間160/8000×1000=20ms；buffer40期限60，晚8ms。",
+        "buffer55期限75，提前7ms，播放目標多等15ms。",
+        "這是策略變化，若仍要求原延遲目標，應定位arrival變晚原因而非直接放大門檻。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生PTT Ready50、Release90，時點49/50/89/90。依t>=Ready且t<Release哪些可送？",
+      "answer": [
+        "49未Ready，不可送；50恰Ready可送；89在視窗內可送；90恰Release不可送。",
+        "這兩個邊界分別檢驗>=和<，不能只測60一箇中間正常值。",
+        "真裝置若不同，先改變契約並說明收尾政策，再調整斷言；不按語法猜裝置語義。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生兩target B/C共用request R5、session6。只按request去重會造成甚麼？回歸如何設計？",
+      "answer": [
+        "第二個target的合法結果可能被誤當重複，或第一份結果錯誤套到兩者。",
+        "用完整(Request,Session,Target)保持作用範圍，給同request/session不同target的新資料。",
+        "斷言兩者各應用一次、B重複只影響B去重、舊session均不更新當前。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "修復後正常輸出3、舊session也輸出3，作者說「成功率提高」。如何稽核？",
+      "answer": [
+        "正面透過卻負面隔離失敗；不合法資料可輸出不是成功率提升，而是保護被破壞。",
+        "追session guard是否刪除或被錯誤當前標記，恢復來源/接收責任邊界。",
+        "驗收當前合法3、舊session接受0、靜音0、超期0與多目標隔離，未實測真人聽感。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "修佇列後期限內完成，但日誌丟失率升到30%。報告只寫「timeout消失」缺什麼？",
+      "answer": [
+        "修復改善期限，但破壞可診斷性；觀察資料缺失會弱化以後故障定位。",
+        "核對日誌分母、丟失計數和關鍵身份欄位，評估效能與完整性需求並補合理策略。",
+        "回歸同時報告處理時段、負載、記錄完整性和新舊session，說明代價/限制，不能只刪除錯誤文字。"
+      ]
+    }
+  ],
+  "recap": [
+    "將定位證據轉成有限修正與責任邊界，區分原因修復、緩解與契約變更。",
+    "從前置條件、後置條件與不變量建立正面、負面和相鄰路徑回歸。",
+    "驗證測試能抓刻意錯誤並復原，交付可閱讀結論、完整證據與明確限制。"
+  ],
+  "sources": [
+    {
+      "label": "Google SRE：故障假設、實驗與觀測副作用",
+      "url": "https://sre.google/sre-book/effective-troubleshooting/"
+    },
+    {
+      "label": "Google SRE：故障回顧的證據與後續行動",
+      "url": "https://sre.google/sre-book/postmortem-culture/"
+    },
+    {
+      "label": "Microsoft：Dispose與資源責任",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab.zip",
+      "label": "下載完整 C# 故障分析模型",
+      "description": ".NET 10 原始碼、說明與實際預期輸出；獨立邏輯時間模型，不連網或讀音訊裝置。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/Program.cs",
+      "label": "故障分析 Program.cs",
+      "description": "本章主要追讀 regression 模式；Lab 型別不是廠商 API。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/README.md",
+      "label": "環境、各模式及可驗收邊界",
+      "description": "將程式觀測、非零樣本與真人聽見分開；操作包含故障注入與復原。"
+    }
+  ]
+}

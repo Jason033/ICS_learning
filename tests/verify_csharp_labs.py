@@ -41,7 +41,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ics-csharp-check-") as temp:
         temp = Path(temp)
         env = dict(os.environ, DOTNET_CLI_HOME=str(temp / "dotnet-home"), DOTNET_SKIP_FIRST_TIME_EXPERIENCE="1",
-                   DOTNET_CLI_TELEMETRY_OPTOUT="1", DOTNET_NOLOGO="1")
+                   DOTNET_CLI_TELEMETRY_OPTOUT="1", DOTNET_NOLOGO="1", DOTNET_CLI_UI_LANGUAGE="en-US")
         for folder in sorted(LABS.glob("*-maintenance-lab")):
             topic = folder.name.removesuffix("-maintenance-lab")
             if args.topics and topic not in args.topics:
@@ -54,6 +54,8 @@ def main():
                                    capture_output=True, text=True, timeout=120)
             if build.returncode:
                 raise SystemExit(f"{topic} build failed:\n{build.stdout}\n{build.stderr}")
+            if "0 Warning(s)" not in build.stdout or "0 Error(s)" not in build.stdout:
+                raise SystemExit(f"{topic} build has warnings or an unexpected summary:\n{build.stdout}")
             commands = configurations.get(topic, [["all"]])
             if topic == "voip":
                 commands = [[str(temp / "audio-output")]]
@@ -63,9 +65,16 @@ def main():
                                      capture_output=True, text=True, timeout=45)
                 if run.returncode:
                     raise SystemExit(f"{topic} {command} failed:\n{run.stdout}\n{run.stderr}")
+                expected_matched = None
+                if topic in {"systems", "satellite", "dsp", "security", "troubleshooting", "big-picture"} and command == ["all"]:
+                    expected = (folder / "expected-output.txt").read_text(encoding="utf-8")
+                    expected_matched = run.stdout.splitlines() == expected.splitlines()
+                    if not expected_matched:
+                        raise SystemExit(f"{topic}: all output differs from the published expected-output.txt")
                 runs.append({"arguments": ["<temporary-output>"] if topic == "voip" else command,
                              "exit_code": run.returncode, "stdout": run.stdout.replace(str(temp), "<temporary>"),
-                             "stderr": run.stderr.replace(str(temp), "<temporary>")})
+                             "stderr": run.stderr.replace(str(temp), "<temporary>"),
+                             "published_expected_output_matched": expected_matched})
             result = {"topic": topic, "sdk": sdk, "build_exit_code": build.returncode,
                       "build_output": build.stdout.replace(str(temp), "<temporary>"),
                       "source_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()

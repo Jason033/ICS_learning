@@ -1,0 +1,250 @@
+{
+  "id": "audit-and-least-privilege",
+  "topicId": "security",
+  "title": "稽覈、最小權限與安全維護",
+  "intro": "安全維護要同時看可用性、權力與證據。這一章從Windows存取Token/ACL、Linux身分/路徑權限與應用政策開始，教你明確哪項權力缺失，再建立能查問題卻不泄漏祕密的審計，避免“改管理員就好”的維護習慣。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "不要求懂所有權限指令；主體、資源與動作在此複習並對應OS。",
+    "只用合成權限卡和純字串審計模型；實際命令爲唯讀，不改ACL/羣組或生產帳號。"
+  ],
+  "goals": [
+    "分開程序身分、OS資源權限與業務政策。",
+    "推導目錄遍歷/文件操作與權限取得點。",
+    "用白名單審計/有限修正/拒絕迴歸保證可維護邊界。"
+  ],
+  "sections": [
+    {
+      "heading": "最小權限是具體責任，不是抽象低權力",
+      "kind": "concept",
+      "paragraphs": [
+        "最小權限表示每個責任只取得完成其需求的權限範圍與時間。讀狀態的服務不需寫任意系統文件，音訊輸出不需修改所有帳號，操作某通道不應自動控制所有通道。它需要明確主體、資源、動作和有效條件，而不是把所有服務都換一個名叫lowpriv的帳號。",
+        "可用性與安全邊界同時構成需求。無權主體必須拒絕，合法服務必須能取得其必要資源；故障時無限放寬權限雖然讓一次工作成功，卻改變部署規格。合理修正應小到解釋“爲什麼這項權限需要”，再保留其他拒絕。",
+        "OS權限保護本機對象，業務政策保護遠端或應用資源。服務LabSvc能讀config不說明BridgeReader能tx；應用允許read也不能讓OS打開本地私鑰。審計將兩種主體分開，避免看到一個AccessDenied就去改所有role和文件ACL。",
+        "權力還可通過可信代理、服務或設備代執行。調用者要求服務幫它寫文件時，服務必須驗證調用者對同一實際目標的權力，不能因爲服務自己有管理員就任意執行。服務的高權限會放大輸入驗證和授權責任。"
+      ]
+    },
+    {
+      "heading": "Windows：存取Token、SID與DACL",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Windows的訪問Token攜帶程序/執行緒相關的用戶SID、羣組與特權等安全上下文。SID是安全主體識別，顯示名稱方便人讀但不代替實際身份。某些執行緒可模擬客戶端身份，因此只查程序啓動帳號仍可能沒完整說明當次資源操作主體。",
+        "DACL是對象的存取控制列表，ACE條目描述允許或拒絕哪些主體哪些權利。系統按具體規則、順序、繼承與請求權利處理，不是簡單“看到某條Allow就全部可用”。文件、目錄、私鑰容器和設備的資源規格也不完全相同。",
+        "本章不把Windows一般對象DACL套成設備通用規則。OpenDenied可能是ACL、獨佔使用、驅動狀態或其它接口條件，需實際錯誤及持有者證據。特權與管理員也不保證某個設備/用戶會話可用，較高權力不是萬用除錯機制。",
+        "讀有效權限時把當次主體、對象、要求的rights與結果記錄。UAC使某些登入身份的程序有不同Token，桌面“屬於管理員羣組”與這個程序現在有何權力不是同一證明。修正後以原部署方式和當次有效身分測試。",
+        "Windows的空DACL與沒有DACL不是同一意思：一般該模型下沒有DACL可允許完整存取，存在卻沒有任何ACE的DACL則拒絕。看到工具空白輸出時先辨識是真的空列表、未取得或NULL狀態，不能讓整理表格把三者都寫成無權限。正式讀取和評估交由平臺API，這裡只教資料語意邊界。"
+      ]
+    },
+    {
+      "heading": "Linux：身份、模式與路徑遍歷",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Linux程序有UID/GID、補充羣組等credential；文件模式的owner/group/other位元限制讀、寫與執行，ACL及安全模塊、capability和namespace還可能增加其他規則。用戶名方便人看，UID與有效上下文才接到實際判斷。",
+        "對一般文件read是讀內容、write是寫內容，execute涉及作爲程序執行；對目錄read偏列名稱，execute/search是穿過目錄尋找內部對象，write與search組合涉及創建/刪除目錄項。因此“文件可讀”不代表它的每一層父目錄都可遍歷。",
+        "刪除一個文件主要是修改其父目錄項，不簡單等於文件本身write；還涉及sticky等規則與其它政策。程序若先檢查權限再以另一條路徑寫入，符號連結或競爭可能讓實際對象不同，檢查/使用一致性需要適當API與規格。",
+        "容器root與主機root、服務羣組與用戶當前shell都可能不同；修改羣組後已運行程序不一定取得新的補充羣組。文件模式只是一層，若模式看似允許仍Denied，查實際程序credential、路徑、掛載/安全政策，而不是立刻chmod777。"
+      ]
+    },
+    {
+      "heading": "權限修正與對象生命週期",
+      "kind": "mechanism",
+      "paragraphs": [
+        "取得資源時請求的權限影響結果。只需讀的程式卻用ReadWrite打開，會在可讀但不可寫對象上失敗；修正可以降低請求權限，避免無理由增加對象寫權限。讀程式碼要看實際Open模式，而不只看產品說明寫“讀狀態”。",
+        "已經取得的句柄、快取與既有會話可能延續原條件，權限配置變化不必自動撤銷所有已取得能力。程序更新有效主體和資源狀態的時間依平臺與規格；撤銷需求要找實際執行點和新/舊資源生命週期。",
+        "檢查與使用之間的狀態變化是TOCTOU的一般問題。比如授權resource=A後從共享欄位讀到B去操作，身份與目標分離；或驗籤文件後用後來被換掉的路徑刷寫。安全修正要確保被檢查與實際使用同一可信對象，而不只加一個if。",
+        "臨時診斷權力應有目標、時限與復原。獲得觀察日誌的權限不意味業務服務應永久提升；爲取證短期使用合法工具後恢復，保留誰做了什麼與結果，纔是可追蹤維護，不是無限擴大系統可寫範圍。"
+      ]
+    },
+    {
+      "heading": "例題一：文件read允許卻開啟失敗",
+      "kind": "worked-example",
+      "paragraphs": [
+        "虛構Windows合約LabSvc對C:\\LabData\\status.dat有Read無Write；程式File.Open(path,Open,ReadWrite)得到AccessDenied。需求只是讀取狀態內容，路徑和文件存在已確認，沒有獨佔衝突。",
+        "實際請求包含ReadWrite而授予只有Read，所以這組條件下拒絕合理。若維護者給LabSvc整個C槽Write，雖然可能讓Open成功，卻擴大遠超讀狀態的權力。有限修正是程式用Read訪問必要文件，並確認後續未寫入。",
+        "迴歸Read打開成功、Write操作拒絕、其他敏感文件仍拒絕及文件不存在給明確錯誤。若後續確實要保存快取，應放在明確定義的可寫資料目錄，不偷偷寫回狀態來源或程序目錄。",
+        "本模型不讀取真實文件ACL，只驗證給定允許集合與實際請求的差異。真實Windows ACE順序、繼承或驅動條件需合法工具補證據；不能把簡單集合當系統權限引擎實現。"
+      ]
+    },
+    {
+      "heading": "例題二：文件r仍需父目錄search",
+      "kind": "worked-example",
+      "paragraphs": [
+        "Linux合成路徑/opt/lab/config.json，labsvc對config.json模式適用Read=true；/opt搜索允許，/opt/lab搜索不允許。請求讀文件，錯誤在路徑解析，而不是數據格式。只看到最後文件的r便稱“權限沒問題”漏了中間邊界。",
+        "路徑解析按目錄組件進入：先到/opt成功，再尋找lab需要search，條件不成立所以無法取得config。讀取json的parser尚未執行；配置失敗之後沒有網路連接屬於後果，不能先查遠端Port。",
+        "有限修正依部署政策給必要主體在該路徑所需遍歷權，或將允許配置部署到合法可遍歷位置。不能用777讓所有人寫目錄，尤其目錄可寫會增加替換文件與目標競爭風險。",
+        "迴歸完整路徑read成功、不必要寫/刪除仍拒絕、其他主體受限制。部署更改後運行實例credential是否已更新也要確認，不能以當前管理員shell可讀替原服務驗收。"
+      ]
+    },
+    {
+      "heading": "審計怎樣記錄因果卻不泄漏",
+      "kind": "mechanism",
+      "paragraphs": [
+        "審計記錄誰對什麼做什麼、何時、結果及依據的政策/設置版本，幫助追責與維護。它不是把所有輸入完整複製。Password、Bearer Token、私鑰、媒體key與PFX祕密會因log複製擴散，調高日誌等級不是忽略這條邊界的理由。",
+        "白名單輸出固定批准欄位，比在任意長字串上用一個正則遮token更可控制。本模型只序列化requestId、subjectId、resource、action、decision及policyVersion；這些ID仍需經過規格允許的字元/長度檢查，不能任意塞用戶自述或完整文件路徑。",
+        "結構化序列化會處理換行等字元，避免惡意內容僞造第二條成功log；但顯示工具仍需正確處理，而且欄位也可能含敏感資料。白名單不是保證所有字串安全，必須指定哪些識別資料可以記錄並做界線檢查。",
+        "審計保存有訪問控制、容量、完整性與時效要求。循環覆蓋或異步丟棄會改變證據範圍；重要政策拒絕與交易審計可能需不同策略。若審計寫失敗，業務是停止、降級還是繼續必須依規格，不一律吞掉也不全部無期限阻塞音訊回呼。"
+      ]
+    },
+    {
+      "heading": "讀C#：建立固定結構，不打印外部對象",
+      "kind": "code-reading",
+      "paragraphs": [
+        "JsonSerializer.Serialize將批准的LabAuditRecord變成JSON。我們不直接Serialize整個請求，因爲請求可能帶credential、任意payload或未來新增敏感欄位。類型和欄位列表就是一種可審覈輸出契約，新增欄位需考慮受衆與保存範圍。",
+        "ValidateId要求1–32字元且僅ASCII字母、數字、點、下劃線與破折號，阻止模型ID把換行或任意祕密當標識。真實系統可能有更豐富Unicode規格；本規則是明確教學範圍，不能拿它否定所有合法國際名字。",
+        "輸出decision由實際授權結果產生，不能由客戶端傳Allow。PolicyVersion讓下一次比較知道判定依據，RequestId與instance則接起同一個事件；時間欄需明確UTC/單調責任，前文時間模型可查。",
+        "實驗驗證JSON不包含已給定的token/password欄位且錯誤ID拒絕。這個通過只覆蓋模型白名單，不保證公司所有logger、轉儲或第三方SDK都沒有泄漏；實際維護還需讀真正輸出路徑。"
+      ],
+      "code": {
+        "title": "BuildAudit中擷取的片段；request/principal/decision由方法參數提供",
+        "text": "var audit = new LabAuditRecord(request.Id, principal.Id, request.Resource, request.Action, decision, \"v1\");\nValidateId(audit.RequestId); ValidateId(audit.SubjectId);\nValidateId(audit.Resource); ValidateId(audit.Action); ValidateId(audit.PolicyVersion);\nreturn JsonSerializer.Serialize(audit);\n// 不序列化整個request或credential。"
+      }
+    },
+    {
+      "heading": "故障分支：權限正常卻一直被拒",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀服務反覆AccessDenied。候選A文件請求過大、B父路徑不可遍歷、C實際身份不同、D應用權限。第一次資料配置文件可讀且Read請求一致，錯誤來自憑證私鑰操作，服務實際LabSvc但權限授給桌面LabUser。",
+        "當前主體/資源不匹配支持C，本地私鑰訪問在TLS之前，D未到。有限修正是給被批准服務身份該鑰的使用權，不給所有用戶讀取/導出所有私鑰。訪問私鑰與能導出私鑰也可能是不同能力，需按提供者規格。",
+        "另一分支文件/私鑰都成功，HTTP403且policy版本v4已撤銷tx能力。此時問題在D的需求/授權，不繼續改OS ACL。維護報告明確是哪次、哪個主體與權威政策，避免爲了消除紅燈恢復已依法撤銷的權力。",
+        "驗收合法必要操作、無權操作、審計遮蔽、保存失敗與權限撤銷邊界。成功和拒絕同時保留，才能證明修正滿足可用性與最小權限，而不只是讓全部請求變true。"
+      ]
+    },
+    {
+      "heading": "實作：唯讀權限卡與審計白名單",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- audit。輸入是合成Windows讀/讀寫與Linux父目錄search卡，程序不改任何ACL、帳號或羣組。先預測必要Read允許、ReadWrite拒絕、父路徑無search拒絕。",
+        "再給包含Password與Token的教學請求，只生成批准審計欄位，輸出中不出現那兩個值。故意改成序列化整個請求，祕密負例應FAIL；還原再執行。ID里加換行應拒絕，不讓它造一條假的Allowed。",
+        "實際只讀入口可在Windows用Get-Acl查看對象Owner與Access條目、whoami /all查看當前命令執行主體；Linux id、namei -l路徑或stat提供身份與組件信息。它們的當前shell結果不自動等於背景服務，真實服務credential需另外合法關聯。",
+        "驗收能逐個說明主體/資源/請求rights、哪個條件不足與爲何不擴大權限。真實OS ACL引擎、設備權限與公司日誌全路徑仍未驗證，模型只覆蓋合成規格。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "最小權限爲什麼不能只說把服務改普通帳號？",
+      "answer": [
+        "需要指定主體對哪些資源哪些動作、在何時可用，帳號名稱不定義實際權力。",
+        "合法必要功能應能執行，不必要寫入和其他資源仍拒絕。",
+        "驗收原部署身份的成功/拒絕邊界，避免以換名或管理員當功能證明。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "審計可以把完整請求Serialize當方便除錯嗎？",
+      "answer": [
+        "完整請求可能包含Password、Token、祕密payload和未來新增欄位。",
+        "固定批准欄位及長度/字元規格更可審查，但ID本身也需限制敏感內容。",
+        "測試含祕密請求仍不輸出祕密、換行ID拒絕，並讀所有實際日誌路徑限制。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生卡：文件允許Read，程式要求ReadWrite，業務只讀。有限修正是什麼？",
+      "answer": [
+        "實際請求超出允許權，拒絕合理，首先修成Read模式。",
+        "不因一次Open失敗擴大整個目錄Write或管理員。",
+        "Read成功、Write仍拒絕、缺文件正確分類，證明可用與邊界同時成立。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生Linux卡：文件可讀，/srv可search，/srv/lab不可search。parser在哪裏失敗？",
+      "answer": [
+        "在路徑進入lab時無法遍歷，尚未取得文件也未到JSON解析。",
+        "最後文件r不能覆蓋父組件權限，按合法路徑/身份補必要search。",
+        "保持不必要寫/刪除拒絕，原服務方式驗證，而不以root shell成功結案。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：管理員終端whoami可讀，服務LabSvcDenied，能用終端結果代表服務嗎？",
+      "answer": [
+        "不能。當前shell與服務credential不是同一主體，權限與會話可不同。",
+        "關聯服務實際身份/實例及資源請求模式，讀其有效規格。",
+        "有限修正後以原服務執行驗證，保留拒絕與審計，不永久升權。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：驗籤路徑A，稍後共享欄位變B並刷寫B。加if(SignatureValid)夠嗎？",
+      "answer": [
+        "檢查對象與使用對象不一致，if結果屬於A而不能保護B。",
+        "保留同一可信資料/對象或適當穩定句柄，並驗證版本/型號等政策。",
+        "迴歸併發替換/路徑變化仍不能執行未驗證對象，不能僅測正常A。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "程序無權讀日誌，與業務主體無權tx可以都叫同個Forbidden嗎？",
+      "answer": [
+        "可以對外摘要，但內部需要區分觀察者日誌讀取與業務動作授權。",
+        "兩種主體/資源/動作與權威不同，混合會引發錯誤權限修正。",
+        "分別迴歸合法取證可用、業務越權拒絕與祕密不泄漏。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "撤權後舊句柄/舊會話仍可用，能只憑配置文件已改宣告完成嗎？",
+      "answer": [
+        "不能，配置變化和已取得能力的有效期有自己的平臺/業務規格。",
+        "查實際撤銷/重新驗證點、舊資源生命週期與新會話政策。",
+        "迴歸舊能力應依需求結束、新非法獲取拒絕和合法功能保持，不只檢查文件時間。"
+      ]
+    }
+  ],
+  "recap": [
+    "實際主體、資源與請求權利決定有限修正。",
+    "路徑與檢查/使用一致性都是權限機制的一部分。",
+    "審計需可理解也不泄密，成功與拒絕都要回歸。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：訪問控制模型",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/secauthz/access-control"
+    },
+    {
+      "label": "Microsoft：DACL與ACE",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/secauthz/dacls-and-aces"
+    },
+    {
+      "label": "Microsoft：訪問Token",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/secauthz/access-tokens"
+    },
+    {
+      "label": "Linux man-pages：程序credential",
+      "url": "https://man7.org/linux/man-pages/man7/credentials.7.html"
+    },
+    {
+      "label": "Linux man-pages：路徑解析與權限",
+      "url": "https://man7.org/linux/man-pages/man7/path_resolution.7.html"
+    },
+    {
+      "label": "Microsoft：Get-Acl唯讀觀察",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-acl?view=powershell-7.5"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 通訊資安觀念追讀專案",
+      "path": "./assets/labs/security-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 audit，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 audit 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

@@ -94,7 +94,7 @@ def save(path, data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--finalize", action="store_true", help="all 83 must pass structure checks before any write")
+    parser.add_argument("--finalize", action="store_true", help="all ready lessons must pass structure checks before any write")
     parser.add_argument("--output", type=Path, help="save complete measurement evidence")
     args = parser.parse_args()
     catalog_path = DOCS / "content/catalog.json"

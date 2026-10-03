@@ -1,0 +1,264 @@
+{
+  "contentVersion": 2,
+  "intro": "跨層故障不是把全部協定名稱排在一起，而是解釋一層的條件怎樣限制另一層。本章給出完整的虛構PTT時序與鏈路世代契約，逐步分析開頭缺字、放開後殘留、切換完成卻仍逾時，以及強訊號但無可用內容，讓你以邊界證據推理而不猜公司拓撲。",
+  "prerequisites": [
+    "能區分一次操作的預期與實際結果；本章會從零補充證據與推理所需概念。",
+    "例題使用本文完整定義的 Lab 契約，不需要公司原始碼、SDK、Wireshark 或裝置。"
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含定義、兩個逐步例題與程式追讀；操作包含預測基準、改一個變因、反證及復原；作答需要列推理和驗收。尚待個人計時校準。"
+  },
+  "goals": [
+    "區分請求、回報、資料傳遞與實體效果，讀出層間時間與身份契約。",
+    "由PTT准入/放開與鏈路epoch完整案例，找到不同原因的鑑別觀測。",
+    "分析共同症狀和共同因素，選擇局部修正並檢查相鄰層的新故障。"
+  ],
+  "sections": [
+    {
+      "heading": "跨層首先需要把每層責任說清楚",
+      "kind": "concept",
+      "paragraphs": [
+        "一個操作同時涉及畫面、控制器、裝置控制、音訊資料與實體媒介，但它們不一定走同一條路。畫面按鍵傳遞使用者意圖，控制器判斷能否發請求，裝置回報表示某個狀態，音訊來源和輸出處理樣本，實體鏈路搬運或發射訊號。分層的目的不是背名詞，而是知道每條證據屬於哪一項責任。",
+        "邊界契約把兩層如何配合寫清楚：合法身份、資料格式、狀態前提、時間關係、錯誤含義與資源責任。例如「只有當前PTT世代收到Ready後才允許送音訊；Release後不再送」是一項跨控制與音訊的約定。控制Accepted若只表示排入，就不能充當Ready；收到Ready也不能直接證明接收端聽見。",
+        "本章模型假設全體事件使用同一Lab毫秒軸、單執行緒、測試資料和可控狀態。它沒有公司介面盒、電臺、衛星或路由器。完整虛構契約讓你練會判斷方法；真實裝置可能有不同回報、收尾時序與忙碌條件，需要依授權檔案對映，不能按型別名字推定公司規則。"
+      ]
+    },
+    {
+      "heading": "狀態、命令和資料有不同生命週期",
+      "kind": "mechanism",
+      "paragraphs": [
+        "命令是一項要求，狀態是對某時點條件的描述，資料是一批需要被處理的內容。發PTT要求不等於裝置已準備；Ready是狀態證據，不等於持續有效；音訊幀生成後可能排隊，待送時Ready已消失。跨層故障常發生在把一種東西當成另一種。",
+        "因此guard不只在最初按鍵時查一次，還要在實際行動邊界核對所需條件。初始Ready=true但Release已發生時，排隊資料不應繼續外送；重連令session改變後，舊回報不應使新世代Ready。這不是要求每層都重做全部驗證，而是把自己掌握的條件在它仍有意義的位置檢查。",
+        "狀態快照還有新鮮度。Ready在0ms取得，300ms時用來傳送，若契約只保障100ms有效，就不能視為當前。記錄版本、取得時間和世代，能區分裝置真的沒準備與軟體沿用過期資訊。只看一個最後值為true，會漏掉它是何時、對誰取得。"
+      ]
+    },
+    {
+      "heading": "PTT案例的完整契約與輸入",
+      "kind": "concept",
+      "paragraphs": [
+        "Lab使用者在0ms按下，110ms放開；當前世代裝置在80msReady，音訊來源每20ms產一幀，時間0/20/40/60/80/100/120。sender可以採保護模式，只有t>=80且t<110送；錯誤提早模式只遵守t<110，所以在Ready前也送。接收裝置模型只接受Ready後且Release前的資料。",
+        "這裡110ms是立刻停止的教學契約，沒有真實電臺的尾音或延後解除PTT政策。若真實設計需要先排完合法音訊再解除，必須明確定義上限與所有權，不能默默用本例的即停規則替代。所有時點都在共同Lab軸，沒有跨裝置時計誤差。",
+        "送出幀、裝置接受幀、非零解碼、實體TX與遠端聽見是不同觀測。本章的SendTimes只產生sender的送出時點，AcceptedTimes再按裝置視窗篩選；實際物理效果沒有模擬。這種區分讓「送了六幀」不會被誤解成裝置已有效傳了六幀。"
+      ]
+    },
+    {
+      "heading": "例題一：開頭缺字是等待量，還是來源本來沒有",
+      "kind": "worked-example",
+      "paragraphs": [
+        "保護sender只送80/100兩幀，裝置也接受這兩幀；提早sender送0/20/40/60/80/100共六幀，裝置仍只接受80/100，前四幀落在Ready前被拒絕。若來源頭四幀代表開頭內容，提早外送並沒有讓它們可用，而是浪費在裝置尚未就緒的時間窗。",
+        "再比較另一個候選：來源從80ms才開始產生樣本，sender和裝置都正常但開頭資料根本沒生成。只看裝置接受80/100會與前情境相同；新增來源Produced時點可分開兩者。若來源0/20/40/60存在且sent同時點、裝置Ready80，支持准入錯；若Produced也只有80/100，應查來源啟動與錄製。",
+        "有限修正先遵守Ready，不盲目緩衝所有資料。若需求是保留按鍵起始音訊，還需給一個有界pre-roll策略、最大延遲及Release/斷線清理；80ms等待期間四幀在8000Hz/16-bit單聲道下共4×320=1280 bytes。這只計payload，實作是否允許事前取樣與實際容量都應另訂契約。"
+      ],
+      "table": {
+        "caption": "同一Lab時間軸；只驗收sender與裝置模型視窗，未量測實體TX。",
+        "headers": [
+          "策略",
+          "sender時點ms",
+          "裝置接受ms",
+          "Ready前丟棄"
+        ],
+        "rows": [
+          [
+            "有Ready guard",
+            "80,100",
+            "80,100",
+            "0"
+          ],
+          [
+            "只檢查Release",
+            "0,20,40,60,80,100",
+            "80,100",
+            "4幀"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "例題二：鏈路切換後，舊結果為甚麼不能重新整理當前",
+      "kind": "worked-example",
+      "paragraphs": [
+        "Lab初始Active=primary、Epoch=1。Plan(R1)儲存(R1,primary,1)，隨後SwitchTo(backup)把Active改backup、Epoch加為2。舊計畫R1結果回來，Apply比較Link與Epoch，兩者都不符當前，因此不套用。這不是R1歷史一定失敗，而是它不具備更新當前鏈路觀測的資格。",
+        "新Plan(R2)儲存(R2,backup,2)，相符結果可套用。將兩份都叫「成功」會掩蓋作用範圍：舊primary可能真的成功，但當前業務已轉到backup；若把它重新整理成當前健康，下一次決策可能錯用過期鏈路資料。應保留歷史結果與當前狀態的分界。",
+        "這個Lab Apply只示範鏈路與世代兩個guard，不追蹤完整Pending表，也不證明backup實際可通。真實系統還需請求存在、目標、完成語義、路由切換與新路徑驗證。若只看到Active字串變backup，不能宣告對端可達或媒體已切換；要查有效路由及backup上同身份的實際成功。"
+      ]
+    },
+    {
+      "heading": "切換的偵測、動作和驗證要分段",
+      "kind": "mechanism",
+      "paragraphs": [
+        "鏈路不通時，偵測是觀察失敗或品質下降，決策是選擇新路徑，動作是更新路由/連線/目的地，驗證是新路徑達成具體業務結果。四者可能有不同時間；「已切換」log若寫在決策後，只證明選擇，不證明動作與驗證。",
+        "虛構時間線故障0、偵測120、決策130、動作完成170、新資料驗證210。不可用130−0=130ms當完整恢復；業務不可用到210，共210ms。若switch log在130但timeout到200，未必表示切換規則沒生效，還可能動作後資料走舊連線或等待驗證。",
+        "診斷先把時間分解，對每段取得身份與成功含義。若偵測久就查health門檻與觀測頻率；動作久查路由/資源更新；動作完成但驗證失敗查實際端點和新session。延長業務timeout可能減少報錯，但不會自動完成這些邊界，不能以錯誤文字消失作唯一恢復驗收。"
+      ]
+    },
+    {
+      "heading": "共同症狀不表示共同根因",
+      "kind": "mechanism",
+      "paragraphs": [
+        "聲音斷續可來自RF內容錯誤、網路丟失、播放晚到或本地阻塞。先定義「斷續」是源樣本缺口、序號缺口、超期丟棄還是人耳觀察。RSSI只代表某位置的接收功率量，強訊號不保證正確內容；大量packet也不保證及時使用。將不同指標對同身份與時間窗對齊，才可比較。",
+        "給定虛構資料RF輸入RSSI強、解碼錯誤率上升、source PCM有缺口、網路完整且及時，這支持缺口在網路之前；若source完整、received完整、late大量增加，就支持後段期限，而非用強RSSI排除全部射頻可能。每個結論仍限當次觀測，不能用一條指標定全系統正常。",
+        "也可能有共同因素同時造成多層症狀。CPU過載令控制回報延遲與音訊超期，兩種失敗同時上升；或鏈路中斷同時阻止控制與媒體。要查哪個資源真的共享，再設計能分開機制的比較。看到兩條時間線同步變壞，不足以判其中一個造成另一個。"
+      ]
+    },
+    {
+      "heading": "讀碼：准入與世代是不同責任的保護",
+      "kind": "code-reading",
+      "paragraphs": [
+        "SendTimes把來源時點按sender規則篩選，AcceptedTimes另外按裝置視窗篩選；兩者分開，才能量化sender提早四幀與裝置仍只接受兩幀。t<releaseAt是嚴格邊界，恰在Release時不得送；t>=readyAt令恰在Ready時可送，這些邊界不是語法細節，而是契約。",
+        "Plan儲存的是建立時快照，不是每次讀當前Active；如果把舊結果貼上新Epoch，guard會失去作用。SwitchTo改目標並增加世代，讓前後兩次觀測可以區分。此模型沒有背景執行緒，真實實現的快照取得與更新一致性需另查，不能宣稱這幾行就已解決所有競爭。"
+      ],
+      "code": {
+        "title": "取自可編譯LabPtt與LabLink，實體裝置只是視窗模型",
+        "text": "public static int[] SendTimes(int readyAt, int releaseAt, bool guard) =>\n    Enumerable.Range(0, 7).Select(i => i * 20)\n        .Where(t => t < releaseAt && (!guard || t >= readyAt)).ToArray();\npublic static int[] AcceptedTimes(int[] sent, int readyAt, int releaseAt) =>\n    sent.Where(t => t >= readyAt && t < releaseAt).ToArray();\n\npublic LabPlan Plan(string request) => new(request, Active, Epoch);\npublic void SwitchTo(string next) { Active = next; Epoch++; }\npublic bool Apply(LabPlan result) => result.Epoch == Epoch && result.Link == Active;"
+      }
+    },
+    {
+      "heading": "實作：分辨送出與接受，驗證舊結果隔離",
+      "kind": "lab",
+      "paragraphs": [
+        "用獨立.NET 10專案執行cross-layer前，先列七個來源時點、兩個sender列表、裝置接受列表與四幀拒絕數。執行後逐一對照，不把eager列表當實體輸出。再預測舊plan與新plan在SwitchTo前後是否可套用，寫明身份範圍。",
+        "在暫存副本只刪除t<releaseAt，預期120ms也可送，ptt_waits_for_ready_and_stops_on_release應失敗；另一次只刪Epoch/Link保護，舊plan應被套用、old_route_result_does_not_promote_current應失敗。每次復原後all再透過，確認兩項不同責任都有有效驗收。",
+        "最後把切換0/120/130/170/210的時間線分段，寫一項能分辨動作未完成與動作完成但新路徑未通的新增觀測。模型不改變本機路由，也不發PTT或測衛星，所以實驗產物是邏輯狀態與推理記錄，不是裝置切換效能。"
+      ]
+    },
+    {
+      "heading": "診斷分支：同樣控制成功、聲音開頭不見",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "初始PTT控制Accepted、遠端聲音頭80ms缺失。候選甲sender未等Ready、乙來源啟動晚、丙接收端播放期限太短。追加來源Produced0..120、senderSent0..100、裝置Accepted80/100、Ready80；頭四幀沒有透過裝置視窗，支持甲，不能用接收buffer掩蓋第一個偏離。",
+        "若另一資料Produced80/100、senderSent80/100、裝置Accepted80/100，頭四幀來源本來不存在，應追來源啟動而不是sender guard。若Produced/Sent/Accepted全0..100，但後段arrival超deadline，則移向播放期限。每份資料都完整定義位置，避免把裝置Accepted與網路received混成同一計數。",
+        "修正後驗收按鍵、Ready、Release、斷線及重連：合法Ready後資料可用、Release後不繼續送、舊世代不能重新開啟、目前狀態與實際視窗對應。修好開頭卻放開後仍持續送，是另一個新故障，不能因原症狀消失就接受。"
+      ]
+    },
+    {
+      "heading": "形成跨層維護交接，而不是協定清單",
+      "kind": "maintenance",
+      "paragraphs": [
+        "報告畫一條實際研究的路徑，箭頭標身份、格式與時間契約；每個觀測點標它能證實什麼，未知段標具體資料缺口。這樣後續工程師知道需要向哪個責任owner取得證據，而不是被十種名詞迫使重查整套系統。",
+        "將修正影響的鄰接邊界列入回歸。例如sender guard改動會影響來源等待、裝置視窗和Release，世代改動會影響舊結果處理與歷史查詢。回歸範圍跟著責任變化，而非無差別跑所有主題，也不能只測自己修改的那一行。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "為甚麼PTT Accepted不能直接當Ready？",
+      "answer": [
+        "Accepted可能只承諾本地或外部排入，Ready表示裝置具備後續動作條件，語義不同。",
+        "查契約與記錄位置，再以同世代回報建立Ready；不能按成功字樣猜。",
+        "資料送出、裝置接受與實體TX也分開驗收，避免一道燈號替代全部效果。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "切換log寫在決策後，是否保證backup業務正常？",
+      "answer": [
+        "不保證。決策、動作與新路徑驗證是不同階段。",
+        "核對log所在分支，以及路由/連線是否更新，最後查同身份backup成功結果。",
+        "字串Active=backup只支持當前選擇，不能升級為對端可達或聲音已恢復。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生時點0/25/50/75/100/125/150，Ready60、Release130。只檢查Release的sender送幾幀，裝置接受幾幀？Ready guard送幾幀？",
+      "answer": [
+        "提早sender送0/25/50/75/100/125共6幀。",
+        "裝置只接受75/100/125三幀，Ready前0/25/50三幀被拒。",
+        "Ready guard直接送3幀；恰到Release130後的時點不能送。這是視窗模型，不證實實體效果。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生切換時間：故障10、偵測110、決策125、動作完成190、業務驗證240。各段及總恢復多少？",
+      "answer": [
+        "偵測100、決策15、動作65、驗證50ms。",
+        "總不可用240−10=230ms，四段相加100+15+65+50=230。",
+        "決策125的log不代表115ms已恢復；先依最大責任段選具鑑別力觀測。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生current=(backup,epoch9)。結果甲(primary,8)、乙(backup,8)、丙(backup,9)，哪個可透過LabLink guard？是否代表丙業務成功？",
+      "answer": [
+        "甲Link與Epoch都錯，乙Epoch錯，只有丙兩項相符。",
+        "Lab guard只決定目前鏈路觀察的資格，沒有完整Pending、target和實際業務驗證。",
+        "仍需以實際契約確認結果含義；不能因透過兩個guard就稱公司鏈路全部恢復。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料source完整、received完整、late30/100；RSSI良好。下一檢查RF增益還是期限時段？",
+      "answer": [
+        "當前證據的第一偏離在及時使用，先比較arrival/deadline與本地處理佇列。",
+        "RSSI只說觀測位置功率，不能直接證實內容品質，但本次source完整給出更具鑑別力證據。",
+        "定位後段原因並驗收期限，保留RF未知項，不盲目改增益或把全部系統判正常。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "頭60ms缺失；Produced僅60/80/100，Sent與Accepted相同；Ready40。sender未等Ready是否已獲支持？",
+      "answer": [
+        "沒有。實際sender均在Ready後，缺失資料在source尚未生成。",
+        "下一觀測是來源啟動、繫結或取樣時序，不先改sender guard。",
+        "修正後source在需求時點產生，且Ready前仍不可亂送；若需儲存早期資料另訂有界等待政策。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "修正Ready guard後頭字恢復，但Release後仍多送兩幀。能接受修正嗎？如何驗收？",
+      "answer": [
+        "原症狀改善，但Release契約被破壞，是修復引入的新故障。",
+        "追待送佇列與實際Send邊界是否再查Release/epoch，避免只在按下時准入。",
+        "回歸Ready前不送、Ready後可送、Release後立即停止、斷線/舊回報不能重新送；只測頭字不足以接受。"
+      ]
+    }
+  ],
+  "recap": [
+    "區分請求、回報、資料傳遞與實體效果，讀出層間時間與身份契約。",
+    "由PTT准入/放開與鏈路epoch完整案例，找到不同原因的鑑別觀測。",
+    "分析共同症狀和共同因素，選擇局部修正並檢查相鄰層的新故障。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：C#事件釋出與訂閱責任",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "NASA：介面定義與跨系統契約管理",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
+    },
+    {
+      "label": "Microsoft：分散式追蹤的 trace 與 span",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/distributed-tracing-concepts"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab.zip",
+      "label": "下載完整 C# 故障分析模型",
+      "description": ".NET 10 原始碼、說明與實際預期輸出；獨立邏輯時間模型，不連網或讀音訊裝置。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/Program.cs",
+      "label": "故障分析 Program.cs",
+      "description": "本章主要追讀 cross-layer 模式；Lab 型別不是廠商 API。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/README.md",
+      "label": "環境、各模式及可驗收邊界",
+      "description": "將程式觀測、非零樣本與真人聽見分開；操作包含故障注入與復原。"
+    }
+  ]
+}

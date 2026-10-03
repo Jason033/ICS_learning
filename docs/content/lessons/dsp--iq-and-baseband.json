@@ -1,0 +1,245 @@
+{
+  "contentVersion": 2,
+  "intro": "I/Q用兩軸描述相對載波的振幅與相位，也儲存正負頻率方向。從單位圓與四點數列走到混頻、位元組格式和功率約定，才能讀懂SDR流程中的complex資料。",
+  "prerequisites": [
+    "本章自行說明j、兩軸、平方根、角度及RF符號，不需先會電路。",
+    "前面的DFT只是計算工具，complex的頻率與功率約定在此獨立講清。"
+  ],
+  "goals": [
+    "定義I、Q、j、複數長度、相位與旋轉。",
+    "推導基頻到實數RF的符號與尺度約定。",
+    "辨認複數正負頻率、共軛、IQ交換與頻移。",
+    "維護IQ檔案的型別、順序、縮放、取樣率與通道。"
+  ],
+  "sections": [
+    {
+      "kind": "concept",
+      "heading": "兩個實數座標，不是兩份神秘訊號",
+      "paragraphs": [
+        "I是in-phase的同相軸，Q是quadrature的正交軸，z=I+jQ把兩實數寫成一份複數樣本；j²=−1。複數平面橫軸I、縱軸Q，每點是相對某個基準的座標。雖然寫虛部，Q在硬體裡也可對應真實電壓或數字，不是沒有存在的量。",
+        "Magnitude或|z|是從原點到該點的長度sqrt(I²+Q²)，phase是方向角atan2(Q,I)，用弧度。atan2考慮象限，單用atan(Q/I)會把反方向點誤認為同方向且I0有除0問題。相位可加整數2π仍是同方向，比較相位跨−π/π時要依規則解包而非直接認大跳躍。",
+        "用A(cosθ+j sinθ)=Ae^(jθ)也可表示同點，A非負長度，θ角度。本章正角是逆時針、負角順時針，fs為每秒一對I/Q樣本；complex buffer一項通常包含兩份實數，因此不能拿byte長度當complex sample數量。",
+        "I/Q儲存的是相對載波基準的包絡與方向；接收端基準若頻率或相位不同，點就會轉動或偏移。它不是把實數RF的每個峰另存一對，也不自動完成同步、均衡和解碼。使用complex型別只是表示能力，正確物理意義仍需系統契約。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "固定一種基頻與RF的符號約定",
+      "paragraphs": [
+        "本章定義實數RF s(t)=Re{z(t)e^(j2πfc t)}=I(t)cos(2πfc t)−Q(t)sin(2πfc t)。Re取實部，fc為載波Hz，t秒，I/Q為本約定的電壓包絡；減號來自j相乘的展開。別的系統可能採用另一Q符號，不能只看I/Q名字就當完全相容。",
+        "若z(t)=A e^(j2πfb t)，上式得到A cos(2π(fc+fb)t)。fb是相對載波的基頻偏移，可正可負；fc100MHz而fb−25kHz對應RF99.975MHz，不是實際負頻率或向過去發射。基頻把高載波移到近0方便低率數位處理，卻保留偏移的方向。",
+        "按本峰值包絡約定，固定z=A e^(jφ)形成峰A的實數cos，RF電壓均方A²/2，若阻抗R則功率A²/(2R)。基頻|z|²是A²，不能漏掉約定直接稱同樣W。有的鏈以√2縮放包絡使均方契約不同，必須讀gain與檔案定義。",
+        "基頻變成RF仍需要真實調製、DAC或混頻硬體；C#乘complex只計算數字，不會發射。SDR把部分處理交給程式，並不取消天線、濾波、時鐘或類比前端。本章數學與樣本只做離線判讀，不接收公司現場流量。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：0.6+j0.8旋轉−90度",
+      "paragraphs": [
+        "輸入z=0.6+j0.8，|z|=sqrt(0.36+0.64)=1，phase約0.927295弧度即53.1301度。乘e^(−jπ/2)=−j代表順時針90度，z'=0.6(−j)+j0.8(−j)=0.8−j0.6。",
+        "新長度sqrt(0.64+0.36)=1，角約−36.8699度。旋轉改變方向、不改變幅度；Magnitude穩定不證明相位對齊。若用本RF約定及1Ω，僅為便於計算的固定電阻，RF均方電壓0.5、平均功率0.5W；這不是模型樣本的硬體校準值。",
+        "System.Numerics.Complex.FromPolarCoordinates的phase引數是弧度，不能填−90當−90度。−π/2是正確代表點。讀公司rotator時先確認單位、方向和乘的位置，再判斷是否變成相反頻移；編譯器不能自動替你發現角度語義錯誤。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "複數負頻與實數鏡像的差別",
+      "paragraphs": [
+        "實數cos只有一條投影，會把相反方向的旋轉配成共軛；Magnitude譜自然有正負鏡像。complex兩軸完整記錄轉向，z[n]=e^(j2πfn/fs)與e^(−j2πfn/fs)在一般非邊界情形可區分。正負頻率是這份旋轉方向，不能對complex譜預設取絕對值折到單側。",
+        "在fs下，complex頻譜仍以fs週期重複，有效無混疊區間可選−fs/2..fs/2。若目標頻帶寬度B已在該區內且留guard，complex sample rate要高於這總寬；每軸自身還是實數值，類比I/Q取得也需適當濾波。不能因two axes就不受Nyquist或所有200k輸入都可任意採。",
+        "例如fs200ksample/s、目標基頻從−80到+60kHz，總寬140k，距下界−100有20k、距上界+100有40k空間。頻帶位置、過渡與干擾抑制都要滿足，單說寬140<200並不保證前端實現合格。若平移後超邊界仍會摺疊。",
+        "DFT圖的fftshift把負頻區移到左、DC置中，是排列不改變資料；頻移則逐樣本乘旋轉改變頻率。兩者名字都可能叫shift，維護時讀具體操作，不把交換顯示半邊當實際訊號下變頻。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：四點complex旋轉只有一邊的峰",
+      "paragraphs": [
+        "給fs4complex sample/s、z=[1,j,−1,−j]，每點逆時針90度，對應+1Hz。使用正DFT負號約定，k1的基底反轉恰好抵消輸入旋轉，每項都1，總X1=4；其他k0/k2/k3合計0。complex譜不需要另一個−1Hz鏡像。",
+        "把每點共軛得到[1,−j,−1,j]，轉向改順時針，即−1Hz，DFT峰在k3，映頻(k−N)fs/N=−1Hz。原峰振幅按complex雙側約定|X1|/4=1，不乘2；若錯沿用實數單側演算法，會顯示2並憑空放大。",
+        "再僅交換I與Q，w=Q+jI=j×conjugate(z)，等於反向再旋轉90度。譜方向同樣反轉，額外相位轉90。看到上下邊帶交換不能只猜載波調錯；先查I/Q順序和Q符號，這個四點例可快速檢驗格式與顯示。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "數位混頻把目標移近零，濾波再降率",
+      "paragraphs": [
+        "輸入目標頻f0，乘e^(−j2πfshift n/fs)，其新頻為f0−fshift；fshift正讓目標向較低方向移。例如+30k目標乘正25k的負旋轉後成+5k。混頻本身不刪除其他頻道，它把所有輸入頻率一起移動。",
+        "隨後濾波選擇要保留的頻道，抽取降低samples/s來減少後段處理。若先抽取再選擇，外面頻道可能已折進目標；若僅平移顯示座標卻不乘樣本，解調資料沒有改變。GNU Radio Frequency Xlating FIR Filter將這些機制組合，但引數center frequency符號與輸入rate需按版本文件核對。",
+        "混頻數值通常需儲存每點相位，跨chunk連續。每個包都從phase0啟動會讓接頭出現相位跳；如果chunk長度恰為整數旋轉圈可能暫時不明顯，換長度後就露出。狀態包括振盪相位、FIR歷史、重取樣相位與會話世代，不只是複數陣列。",
+        "真正接收還需補償carrier offset、timing、IQ不平衡與DC。乘一個理想固定rotator不是自動鎖定所有漂移；噪聲與多徑可能影響估計。本章建立操作因果，讓你讀庫與公司流程時能查輸入條件，未實現完整接收機。"
+      ]
+    },
+    {
+      "kind": "maintenance",
+      "heading": "檔案格式先說每一份是哪兩個數",
+      "paragraphs": [
+        "常見交錯IQ檔案可為I0,Q0,I1,Q1的float32、int16或其他格式，也可能把兩通道分開、或Q先。必須記錄endianness、signed、scale、complex sample rate、RF中心、通道數與起始索引。副檔名.raw本身沒有這些資訊。",
+        "例如一通道交錯int16IQ，每complex sample有兩份2byte，共4byte。400000byte資料有100000complex samples，若fs200000名義持續0.5秒；不是200000樣本或2秒。若換float32則每樣本8byte，同位元組長度只50000樣本。把格式和率一起儲存才能維護正確時間軸。",
+        "DC offset使星座中心偏離原點，IQ gain/phase imbalance可造成鏡像；這些與整個carrier頻移不同。校正需對應最早失配來源與適用訊號，不能把所有偏斜圖都裁成圓。對已知tone檢視正負鏡像、DC與幅度，再用其他頻點回歸。",
+        "共享complex buffer若寫入I後另執行緒先讀取、Q還沒更新，會產生不曾存在的點。record或array本身不保證生產消費同步；要有完整sample／frame交接契約。資料生命週期、位元組順序和FFT符號共同決定圖與判決，不是一個Complex型別名能解決。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "Conjugate、Magnitude和FromPolar各有明確用途",
+      "paragraphs": [
+        "Iq模式以FromPolarCoordinates(1,2πn/4)造四點正轉，Dft讀正峰；Conjugate逐點把Q換負，負峰轉到k3。Magnitude測長度，Magnitude平方驗歸一化均方。它沒有將Complex*Complex當功率，也未把兩部分平均相加。",
+        "隨後z=Complex(0.6,0.8)乘負π/2旋轉，驗證Real0.8、Imaginary−0.6。這裡構造第一引數I、第二Q；FromPolar第一是長度、第二是弧度，與Cartesian構造不同。API簽名都是兩個double，很容易編譯透過卻用錯物理量。",
+        "模型固定短序列，浮點非零鏡像只驗<容忍範圍。實際要處理大資料、非有限值、格式及相位連續，需更完整輸入契約。公司回呼若同名引數叫phase，查單位與起點，不直接複製這段基準數字當補償配置。"
+      ],
+      "code": {
+        "title": "已編譯旋轉與共軛；不發射任何訊號",
+        "text": "Complex z = new(0.6, 0.8);\nComplex rotated = z * Complex.FromPolarCoordinates(1, -Math.PI / 2);\nvar reversed = pos.Select(Complex.Conjugate).ToArray();"
+      }
+    },
+    {
+      "kind": "lab",
+      "heading": "四點檢驗方向與尺度，再故意交換軸",
+      "paragraphs": [
+        "本機dotnet run -- iq前手推正轉/共軛兩串，預期DFT峰k1/k3、Magnitude4，complex幅度1，z旋轉後0.8−j0.6。執行核對四項檢查並設斷點看兩軸；不需SDR、音效卡或公司DLL。",
+        "故障變因只把負π/2改正π/2，預計結果−0.8+j0.6，原方向Check應非零失敗。還原後透過；另僅將Conjugate改不處理，原負頻檢查失敗。每次寫是相位還是方向哪份契約被改變，不刪驗收。",
+        "自己在紙上把四點交換I/Q，推j×共軛關係和峰位置，再算一個已定義IQ檔案的樣本數。驗收包含弧度、符號、歸一化及格式；真正硬體鏡像抑制、DC校正與GNU RadioGUI尚未實測。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "上邊帶變下邊帶，是調諧還是IQ格式",
+      "paragraphs": [
+        "虛構相同檔案原峰+20k，新讀取器顯示−20k且總均方一致。候選A為調諧中心改了，候選B為Q符號反轉／IQ互換，候選C為fftshift軸標錯。先取檔案metadata、四個代表sample及DFT排列，不先重調RF裝置。",
+        "新增證據中心引數沒變，讀取器將[I,Q]讀成[I,−Q]，與共軛反轉機制吻合。有限修正按真實格式恢復順序／符號，迴歸四點正負tone、DC、幅度及時間長度。僅把圖軸再反一次可能掩蓋解調仍吃錯資料。",
+        "若樣本一致只是bin排列錯，則只修顯示對映；若真的中心引數變則查調諧與基頻定義。體會三候選對應不同操作：資料變換、顯示排列和物理／數字中心不能混為一個shift。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "為什麼Q叫虛部卻不是沒有真實測量值？",
+      "answer": [
+        "複數是兩實數的數學表示，Q可對應真實電壓或數字。",
+        "虛數j幫助描述正交與旋轉，不是額外虛構能量。",
+        "物理解釋需參考載波、符號與尺度契約。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "實數單側factor2能套complex單tone嗎？",
+      "answer": [
+        "complex儲存轉向，正tone可只有一側峰。",
+        "本約定峰幅|X|/N，不合並不存在的鏡像。",
+        "實數factor2有成對且非端點條件，按輸入型別核對。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新資料：z=3+j4，Magnitude、歸一化|z|²與乘−j後結果？",
+      "answer": [
+        "Magnitude=sqrt(9+16)=5，|z|²=25。",
+        "(3+j4)(−j)=4−j3，長度仍5。",
+        "該25尚未有阻抗或RF包絡尺度，不能直接說25W。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新資料：fc150MHz，complex基頻tone−40kHz，本RF約定對應載波頻？",
+      "answer": [
+        "fc+fb=150000000−40000=149960000Hz。",
+        "即149.96MHz；負號說明相對中心在下側。",
+        "不是實際頻率負值，中心與基頻單位需同用Hz。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新資料：目標+18kHz，乘e^(−j2π12000n/fs)，新偏移？",
+      "answer": [
+        "f0−fshift=18000−12000=6000Hz。",
+        "是+6k，所有頻道一起平移，不自動濾掉其他輸入。",
+        "後續濾波與降率仍需各自規格與state。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：交錯int16 IQ檔案80000byte、一通道fs100000，samples與名義時長？",
+      "answer": [
+        "每份兩int16=4byte，80000/4=20000complex samples。",
+        "20000/100000=0.2秒。",
+        "格式若換float32或多通道不同，必須從metadata重算。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "新資料：I/Q互換後頻譜反向且相位多90度，與何式一致？",
+      "answer": [
+        "w=Q+jI=j×conjugate(I+jQ)。",
+        "共軛反轉方向，乘j再正轉90度。",
+        "驗證代表點與真實順序契約，不能只在圖上反軸掩蓋錯誤。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "Amplitude1的固定包絡按本RF峰值約定、R50Ω，平均功率是多少？",
+      "answer": [
+        "RF實數cos峰1，均方電壓1/2。",
+        "P=0.5/50=0.01W；需要I/Q代表真實電壓這額外前提。",
+        "歸一化C#樣本本身沒有校準，不可直接賦同絕對功率。"
+      ]
+    }
+  ],
+  "recap": [
+    "定義I、Q、j、複數長度、相位與旋轉。",
+    "推導基頻到實數RF的符號與尺度約定。",
+    "辨認複數正負頻率、共軛、IQ交換與頻移。",
+    "維護IQ檔案的型別、順序、縮放、取樣率與通道。"
+  ],
+  "sources": [
+    {
+      "label": "GNU Radio：I/Q Complex Tutorial的基頻表示",
+      "url": "https://wiki.gnuradio.org/index.php?title=IQ_Complex_Tutorial"
+    },
+    {
+      "label": "Microsoft：Complex的實部、虛部、振幅與相位",
+      "url": "https://learn.microsoft.com/en-us/dotnet/fundamentals/runtime-libraries/system-numerics-complex"
+    },
+    {
+      "label": "Microsoft：FromPolarCoordinates引數為弧度",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.numerics.complex.frompolarcoordinates?view=net-10.0"
+    },
+    {
+      "label": "GNU Radio：Frequency Xlating FIR的中心與抽取",
+      "url": "https://wiki.gnuradio.org/index.php/Frequency_Xlating_FIR_Filter"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/dsp-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 標準函式庫模型及預期輸出；不連裝置或公司系統。"
+    },
+    {
+      "path": "./assets/labs/dsp-maintenance-lab/Program.cs",
+      "label": "C# 模型原始碼",
+      "description": "本章追讀 iq 模式；型別與資料是自製教學模型。"
+    },
+    {
+      "path": "./assets/labs/dsp-maintenance-lab/README.md",
+      "label": "執行、變因與驗收說明",
+      "description": "先手推再跑；區分模型結果與真實裝置限制。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      11,
+      19
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包括手推本章模式、設中斷點核對、改一個變因、執行故障與復原；作答包括新資料推理與核對。尚待個人計時校準。"
+  }
+}

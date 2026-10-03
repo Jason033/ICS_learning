@@ -1,0 +1,45 @@
+MODE audio
+normal: control=True produced=3 sent=3 received=3 accepted=3 late=0 played=3 energetic=3 lastRms=1000
+PASS audio_normal
+route: control=True produced=3 sent=3 received=0 accepted=0 late=0 played=0 energetic=0 lastRms=0
+PASS audio_route
+old-session: control=True produced=3 sent=3 received=3 accepted=0 late=0 played=0 energetic=0 lastRms=0
+PASS audio_old-session
+zero: control=True produced=3 sent=3 received=3 accepted=3 late=0 played=3 energetic=0 lastRms=0
+PASS audio_zero
+late: control=True produced=3 sent=3 received=3 accepted=3 late=3 played=0 energetic=0 lastRms=0
+PASS audio_late
+mute: control=True produced=3 sent=3 received=3 accepted=3 late=0 played=0 energetic=0 lastRms=1000
+PASS audio_mute
+PASS receive_is_not_accept
+PASS play_is_not_signal
+MODE observer
+observer-off: actualReceived=3 recordedReceived=0 energetic=3
+PASS missing_record_not_missing_action
+MODE experiment
+load=1 verbose=False latency=20 late=False
+PASS factorial_1_False
+load=1 verbose=True latency=30 late=False
+PASS factorial_1_True
+load=2 verbose=False latency=35 late=False
+PASS factorial_2_False
+load=2 verbose=True latency=55 late=True
+PASS factorial_2_True
+MODE timeline
+raw=-20 corrected=[25,35]ms
+PASS offset_not_negative_transport
+PASS join_full_identity
+MODE cross-layer
+ptt guarded=[80,100] eager=[0,20,40,60,80,100]
+PASS ptt_waits_for_ready_and_stops_on_release
+ptt device-accepted=[80,100]
+PASS eager_drops_head_at_device
+PASS old_route_result_does_not_promote_current
+PASS current_route_result_applies
+MODE regression
+PASS repair_positive
+PASS repair_stale_negative
+PASS repair_mute_negative
+PASS repair_deadline_negative
+PASS repair_target_isolation
+PASS all selected scenarios

@@ -1,0 +1,250 @@
+{
+  "id": "logs-and-time",
+  "topicId": "systems",
+  "title": "事件紀錄、追蹤與時間基準",
+  "intro": "兩邊log相差20ms，不一定是網路花20ms；沒有錯誤事件，也不一定代表沒有失敗。本章由事件怎麼產生、緩衝與保存開始，建立牆鐘與單調時間的觀念，讓時間線能支援具體推理。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "不需先學分散式追蹤；事件、counter與時間窗在此定義。",
+    "會算差值、上下限和讀C#資料型別即可；所有時間為明確給定的教學數據。"
+  ],
+  "goals": [
+    "區分事件、快照、計數器與追蹤的角色。",
+    "從時鐘誤差推導跨主機延遲範圍。",
+    "查日誌來源、世代、保存與遺失條件，避免用缺記錄做過強結論。"
+  ],
+  "sections": [
+    {
+      "heading": "一條紀錄從產生到看見的路徑",
+      "kind": "concept",
+      "paragraphs": [
+        "程式執行到記錄點時，先把事件內容交給記錄機制，可能經應用緩衝、系統收集器、磁碟或網路傳輸，最後才被查詢工具顯示。業務事件發生、記錄呼叫、寫入保存與顯示時間可以不同；按檔案行順序排序不保證等於真實工作順序。",
+        "事件描述某一次變化，快照描述某時刻狀態，計數器描述累積活動，追蹤則用關聯把多個工作階段接起來。累積錯誤12不表示最近一秒出現12次；要與上一個同世代取樣相減。快照Running也不能替代先前何時Started的事件。",
+        "Windows事件記錄由提供者與通道等結構保存，Event ID通常需要提供者和版本脈絡，不能把數字1000當全系統唯一語意。ETW是事件追蹤架構，可提供更細的時序與提供者資料；不是每個應用都自動記錄全部業務事件。",
+        "Linux journal可帶unit、PID、boot與其他欄位，純文字stdout也可被收集。不同來源的保存策略與權限不一致；設備核心訊息、服務日誌與業務文件可能各在一處。先確認你查的是哪個來源、哪個開機世代和時間窗，再評估缺席。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/systems-time-observation.svg",
+        "alt": "記錄產生、保存、UTC與單調時間及跨機誤差的責任關係。",
+        "caption": "原創教學圖：逐層標示前提與可觀察範圍，不代表公司實際架構。"
+      }
+    },
+    {
+      "heading": "牆鐘、UTC與單調時間",
+      "kind": "mechanism",
+      "paragraphs": [
+        "牆鐘是人理解的日期時間，例如2030-01-01T00:00:00Z，其中Z表示UTC。時區只是人讀表示的偏移，同一時刻UTC00:00與臺北08:00可以相同；沒有時區的“08:00”則不能直接跨主機比較。記錄應帶明確偏移或統一UTC。",
+        "牆鐘可能因校時跳動或緩慢調整，適合查日期，不保證可用來限制本地耗時。單調時鐘用於本機經過時間，不能向後退成新的牆鍾日期；Windows/.NET可用Stopwatch，Linux有CLOCK_MONOTONIC等時鐘。單調值通常沒有全域日期意義。",
+        "一個程序記錄elapsed=120ms是以自己的起點計算，另一主機elapsed=150不能直接相減得30ms。必須先確認同一時間基準或通過關聯得到因果。程序重啓後自己的起點與counter可能重置，所以elapsed也要帶實例世代。",
+        "精度、解析度與準確度不同。顯示到微秒只說明格式能表示那麼細，不保證時鐘校正誤差或事件取樣真的達到微秒。計時器到期後還可能等待執行緒排程，實際處理時刻晚於設定deadline；需要分別記錄期限與處理執行時間。"
+      ]
+    },
+    {
+      "heading": "跨主機如何帶著誤差比較",
+      "kind": "mechanism",
+      "paragraphs": [
+        "定義時鐘偏差offset=本地主機讀數−真實參考時間。校正時間=讀數−offset；若offset只知道範圍[a,b]，校正時間就在[讀數−b,讀數−a]。這條式子先寫清符號，避免把已經快的時鐘再加快一次。",
+        "若A校正後的發送範圍是[98,102]ms，B接收範圍[111,117]ms，延遲範圍爲最早接收減最晚發送9ms，到最晚接收減最早發送19ms。取兩個顯示數直接相減只給表面差值；誤差範圍告訴你能否支持很小的延遲主張。",
+        "區間部分倒序不代表資料一定錯誤；例如發送[98,102]、接收[99,103]得到[-3,5]，實際因果約束延遲非負，所以可行範圍與[0,∞)相交爲[0,5]。數據只能說至多5ms，無法確認一定有正的3ms延遲。若完全負且無可行交集，需查offset、關聯或記錄點。",
+        "因果還可從同request的階段和協議順序得知：遠端解析必須發生在取得相應資料之後，而回覆屬於請求之後。序號與關聯ID能限制順序，但不自動把兩臺鍾對齊。時間與因果是互補證據，不要只按所有UTC排序後刪掉看似亂序的事件。"
+      ]
+    },
+    {
+      "heading": "保存、過濾與遺失會改變負向證據",
+      "kind": "mechanism",
+      "paragraphs": [
+        "循環保存會覆蓋較舊記錄；磁碟滿、速率限制、採樣與記錄級別會讓某些事件沒有留下。查詢只看Error自然不會看到Info級別的Send。權限也可能讓用戶無法讀取Security通道或其他帳號journal。查不到要先問資料是否被產生與保存。",
+        "記錄系統本身也有性能成本。同步寫磁碟放在音訊回呼可造成underflow；無限異步佇列則可能在故障時用盡RAM。健康設計需要有上限、重要事件策略和遺失計數，告訴維護者哪些觀測不完整。",
+        "Windows的RecordCount、日誌最大容量與模式提供保存線索，Get-WinEvent預設常按新到舊返回。journal可按unit、boot、時間及PID過濾，若PID被重用不能只用PID橫跨長時間搜尋。不同字段用AND/OR的邏輯也需讀工具契約，不靠猜測。",
+        "日誌完整性不是要求每個步驟都逐行打滿。優先保留工作ID、階段、實例、狀態、有效配置版本與錯誤類別，使用適當時間基準。密碼、Token、私鑰或完整敏感payload不該爲了對時而直接寫入；可記錄經過審查的長度或摘要與遮蔽字段。"
+      ]
+    },
+    {
+      "heading": "例題一：20ms顯示差不等於20ms網路",
+      "kind": "worked-example",
+      "paragraphs": [
+        "給定同請求R1：A牆鍾記錄Send=1000ms，offsetA在[4,8]ms；B記錄Receive=1020ms，offsetB在[-2,2]ms。兩次記錄點明確代表交給傳輸與應用收到，已經含中間傳輸、排隊和派送，不是純傳播。",
+        "A校正範圍[1000−8,1000−4]=[992,996]；B範圍[1020−2,1020−(−2)]=[1018,1022]。因此差值範圍[1018−996,1022−992]=[22,30]ms。直接1020−1000=20漏了兩個時鐘條件。",
+        "若目標是查網絡是否超過25ms，這組範圍跨過25，不能確定超限或未超限；需更小校時誤差或補同主機往返/分段計時。業務記錄點間的22–30ms仍可能含應用派送，不能把全部寫成線路傳播。",
+        "維護結論應說“同R1從A交傳輸到B應用收到的校正差範圍22–30ms”，並說明目前無法決定25ms門檻。把前提與測點寫出，讀者才知道下一份證據應該改進哪種不確定性。"
+      ]
+    },
+    {
+      "heading": "例題二：負耗時不是一定逆時傳輸",
+      "kind": "worked-example",
+      "paragraphs": [
+        "同一主機兩條牆鍾：開始12:00:01.500，結束12:00:01.200；期間校時倒退500ms。相同操作的Stopwatch從0到200ms。牆鐘差是−300ms，但單調經過200ms，符合校時改變500ms的給定輸入。",
+        "計算關係：牆鍾顯示差=實際經過200+調整(−500)=−300ms。這不是工作在開始前完成，也不是把負值取絕對值後宣佈耗時300ms。不同基準負責不同目的，負牆鐘差應觸發時鐘/基準檢查。",
+        "設超時門檻150ms，單調計時到200已超50。若程式用DateTime.Now相減，它可能誤判還沒過150；正確本地deadline依據單調經過。記錄同時保留UTC以定位日期和elapsed以算區間，可讓人從兩欄理解校時。",
+        "若操作跨睡眠或休眠，所用時鐘是否計入那段時間也需看平臺契約與業務需求；不能把所有monotonic名字當完全相同。該案例只採用明確給定的同機正常運行時間，不推導設備休眠行爲。"
+      ]
+    },
+    {
+      "heading": "讀C#：把日期與耗時分成兩欄",
+      "kind": "code-reading",
+      "paragraphs": [
+        "DateTimeOffset.UtcNow取帶明確UTC的日期；Stopwatch.StartNew啓動本地經過計時。格式O輸出可回讀的日期格式，Elapsed.TotalMilliseconds給雙精度毫秒。它們不是互相替代，而是把人查日期與程式算耗時職責分開。",
+        "真實log應傳入同一個operation和instance，不能每次在記錄函數內新建request ID。若這個方法是回呼，開始時刻也應保留在該次上下文，不從全域_lastStart取另一次工作的資料。對象關係和時間關係需要同時正確。",
+        "本模型Time模式使用固定offset區間與邏輯elapsed，避免執行速度影響答案。教學示例中實際Stopwatch只用於說明API契約，沒有承諾Console執行或磁碟寫入要花某個固定毫秒。",
+        "讀公司程式時查計時變數的型別、單位與起點，UTC Tick不等於Stopwatch Tick。Stopwatch.Frequency描述每秒刻度，DateTime的刻度定義不同。將兩個long直接相減即使編譯成功，也可能是在做沒有物理意義的運算。"
+      ],
+      "code": {
+        "title": "標準庫計時示例，不執行設備操作",
+        "text": "var utcStart = DateTimeOffset.UtcNow;\nvar elapsed = System.Diagnostics.Stopwatch.StartNew();\n// 工作與同一operation上下文關聯\nConsole.WriteLine($\"start={utcStart:O} elapsedMs={elapsed.Elapsed.TotalMilliseconds:F3}\");"
+      }
+    },
+    {
+      "heading": "只讀紀錄查詢與欄位",
+      "kind": "maintenance",
+      "paragraphs": [
+        "Windows例子以FilterHashtable限制LogName、開始時間和提供者等條件，再Select TimeCreated、ProviderName、Id、RecordId及Message。RecordId是通道中的記錄序號，不是業務請求ID；Message是給人看的描述，程序解析優先用結構化字段與版本。",
+        "Linux journalctl -u限制unit、-b指定當前boot、--since/--until指定時間窗、-o short-iso-precise提供清楚日期格式。查詢用戶權限影響可見內容；沒有記錄時保存錯誤，不能以空文字補成“沒有故障”。",
+        "下方合成記錄說明boot與實例的關係。Request=R4只在應用有記錄這個字段時才存在，journal不會自動爲你生成業務ID。若使用多個日誌源，統一對照錯誤類別、版本與時間基準，而不是要求所有內容有同一排版。",
+        "查詢完成要保存足夠上下文而非全部複製。事件起止、相關配置版本、關鍵前後階段及無法取得的字段可以支援交接；大量CSV可作證據，但人讀結論需解釋哪個區間及哪條規則支持原因，不讓一堆時間數字代替推理。"
+      ],
+      "code": {
+        "title": "唯讀篩選與合成事件",
+        "text": "Windows PowerShell:\nGet-WinEvent -FilterHashtable @{LogName=\"Application\"; StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 100 | Select-Object TimeCreated,ProviderName,Id,RecordId,Message\nLinux:\njournalctl -u lab-bridge.service -b --since \"2030-01-01 00:00:00\" --until \"2030-01-01 00:01:00\" -o short-iso-precise --no-pager\n合成：2030-01-01T00:00:01Z boot=B3 instance=I7 request=R4 stage=Received"
+      }
+    },
+    {
+      "heading": "故障分支：同樣找不到Error",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀是服務曾失敗，但當前查詢沒有Error。候選A沒有記錄調用、B保存被覆蓋或丟棄、C查詢條件/權限不涵蓋。先取得程序配置LogLevel=Warning，業務失敗記錄本來以Information寫出，說明A中的記錄政策已足以解釋缺席，不能宣佈業務從未失敗。",
+        "另一份案例配置正確，卻檢查循環日誌最舊事件已經晚於故障時間，且舊文件未歸檔。此時B支持舊證據被覆蓋；把查詢時間擴大仍不會找回已覆蓋資料，應取其他獨立證據與改善未來保存，而不是僞造當次原因。",
+        "若事件實際存在但當前用戶AccessDenied，則是C的可見性；需通過獲準的讀取身份或導出機製取得相關資料，不自動讓所有服務用管理員。區分讀取觀察的權限與運行業務的權限，避免爲了看log擴大整套系統權力。",
+        "有限修正針對記錄級別、保存容量或合法可見性，然後用已知失敗在學習環境產生一筆新記錄，確認查詢與保存閉環。歷史原因若已無證據可查，明確寫尚未確認，而把未來可診斷性的驗收與歷史解釋分開。"
+      ]
+    },
+    {
+      "heading": "實作：帶誤差的時間區間",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- time。先手算R1的校正發送[992,996]、接收[1018,1022]與差[22,30]，再對照程序。模型沒有校正系統時鐘，輸入都是固定數值，輸出是計算結果而非真實網絡測量。",
+        "把A的offset符號錯誤改成相加，差範圍斷言應FAIL；恢復後PASS。再增加發送/接收範圍部分倒序的題例，程序先計算原差[-3,5]再取因果可行[0,5]，不能先用Math.Abs把負值變正。",
+        "將重啓前後counter混在一起，模型應拒絕不同instance相減。另用給定牆鍾−300與單調200驗證兩欄不相互覆蓋。每個變因後還原並執行time與all，保存非零失敗及恢復證據。",
+        "驗收能解釋符號、時間基準、記錄點與區間判定；真實Windows Event Log、ETW和Linux journal訪問權限及設備時鐘尚未在此獨立模型驗證。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "事件、快照與累積counter有什麼不同？",
+      "answer": [
+        "事件記錄變化，快照記錄當時狀態，counter記錄自某起點累計活動。",
+        "區間活動要對同世代counter求差，不能把累計數當這秒的數量。",
+        "查證保留來源和起點，讓未來維護者能重算而不只讀一張截圖。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "爲什麼UTC與Stopwatch兩欄同時有用？",
+      "answer": [
+        "UTC供人定位日曆時間與跨資料查找，Stopwatch供本機經過時間與期限。",
+        "牆鐘校時會改變差值，單調值又沒有全域日期語意。",
+        "同一個操作上下文同時記錄兩者，避免拿跨主機elapsed直接相減。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：A讀數500 offset[2,6]，B讀數520 offset[-3,1]，算校正差範圍。",
+      "answer": [
+        "A真實範圍[494,498]；B爲[519,523]，使用讀數減offset。",
+        "差最小519−498=21，最大523−494=29，所以[21,29]。",
+        "若門檻25在範圍內，不能肯定超限，須補更準確基準或分段觀測。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：發送[40,44]接收[42,46]ms，如何處理原差[-2,6]？",
+      "answer": [
+        "區間相減得到最小42−44=−2、最大46−40=6。",
+        "已知同請求因果接收不早於發送，與非負約束相交得到[0,6]。",
+        "不能用絕對值推延遲2；若範圍完全負則查關聯、offset或測點。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：Get-WinEvent無舊Error，日誌最舊記錄比故障晚一小時，模式Circular。能說未發生嗎？",
+      "answer": [
+        "查詢可見範圍不覆蓋故障時間，循環保存可能已覆蓋舊資料。",
+        "當前缺席不證明歷史沒失敗，查備份或其他獨立資料，明確舊證據限制。",
+        "改善保存後用已知新事件驗證閉環，不能以未來記錄成功僞稱舊原因已確認。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：牆鐘差−800ms，給定校時−1200ms，同機單調差400ms。業務耗時是什麼？",
+      "answer": [
+        "400−1200=−800與牆鍾變化一致，負值不是逆時工作。",
+        "本機經過400ms；不能取牆鍾絕對值800ms作爲耗時。",
+        "期限判斷使用匹配的單調基準，保留UTC與校時背景用於人讀時間線。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "RecordId或Event ID可以當業務request ID嗎？",
+      "answer": [
+        "不能。RecordId依通道記錄，Event ID依提供者和事件定義，都是不同責任。",
+        "業務關聯需程序明確記錄的請求標識及實例，檢查字段來源與版本。",
+        "用兩個交錯請求驗證關聯不會串錯，而非以最近一條相似事件配對。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "日誌AccessDenied與業務Unauthorized是否同一權限錯誤？",
+      "answer": [
+        "不一定。前者可能是觀察者無權讀系統日誌，後者可能是業務主體無權操作資源。",
+        "先標明主體、資源、動作及失敗層，分別補獲準讀取與業務政策證據。",
+        "有限修正該項權限後重測原身份，不能爲看日誌把整個業務提升管理員。"
+      ]
+    }
+  ],
+  "recap": [
+    "日期、單調經過時間與跨主機誤差承擔不同責任。",
+    "負向日誌證據需要產生、保存、查詢與權限範圍。",
+    "區間計算要寫清offset符號、測點與因果約束。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：Get-WinEvent 查詢與保存資訊",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent?view=powershell-7.5"
+    },
+    {
+      "label": "systemd 官方：journalctl 欄位與過濾",
+      "url": "https://github.com/systemd/systemd/blob/main/man/journalctl.xml"
+    },
+    {
+      "label": "Microsoft：Stopwatch的經過時間",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch?view=net-10.0"
+    },
+    {
+      "label": "Linux man-pages：clock_gettime與時鐘類別",
+      "url": "https://man7.org/linux/man-pages/man2/clock_gettime.2.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 作業環境觀念追讀專案",
+      "path": "./assets/labs/systems-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 time，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      21
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 time 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

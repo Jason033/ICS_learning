@@ -1,0 +1,245 @@
+{
+  "id": "devices-and-audio",
+  "topicId": "systems",
+  "title": "裝置、COM埠與音訊路徑",
+  "intro": "裝置管理員看到USB、COM號碼或喇叭，不等於公司程式已經使用正確裝置。本章教裝置如何被辨識、驅動如何提供操作入口、應用如何開啟與協商格式，並把本機音訊緩衝與設備控制分開。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "不要求已讀RS-232或VoIP；介面、裝置入口、取樣與幀在本章補必要觀念。",
+    "知道程式需向OS取得資源即可；所有設備資料為虛構，模型不讀麥克風或COM。"
+  ],
+  "goals": [
+    "分清硬體、驅動、裝置實例、友善名稱及程式使用入口。",
+    "說明格式、共享與獨佔、預設角色與熱插拔。",
+    "用位元組與幀時間推導本地音訊緩衝容量及卡頓。"
+  ],
+  "sections": [
+    {
+      "heading": "從硬體到應用可開啟的入口",
+      "kind": "concept",
+      "paragraphs": [
+        "實體裝置接入後，匯流排與作業系統辨識它，建立裝置節點並選擇驅動。驅動向上提供可操作介面，例如串列Port、音訊端點或網路介面。某些USB盒同時有串列與音訊兩種功能，所以看見USB名稱不能直接知道你的程式該開哪一個入口。",
+        "裝置實例識別是系統區分當前裝置節點的資訊；友善名稱則偏向讓人閱讀，可重複，也可能被廠商或使用者改變。Windows的InstanceId與Linux的裝置/sys資訊有自己的規則；把兩個同名USBAudio視為同一條路徑，可能讓程式選錯發送或接收設備。",
+        "COM5是串列入口名稱，不是RS-232電氣規格本身。USB轉串列可以對應RS-232、TTL或RS-485，實際電氣與接線必須看裝置文件。Linux的/dev/ttyUSB0也只是入口，重插或偵測順序可能影響名稱；穩定對應需依平臺已有的裝置識別與規則確認。",
+        "裝置列出之後還有驅動健康、應用存取、格式支援與業務協定四層。PnP狀態OK可說明系統的基本辨識狀態，不保證正確音量、PCM有值或設備接受命令。當症狀是無聲，要逐步查是哪個入口收到與送出資料。"
+      ]
+    },
+    {
+      "heading": "開啟、存取與共享的責任",
+      "kind": "mechanism",
+      "paragraphs": [
+        "應用開啟裝置時提交身分、模式與格式，OS或驅動可因權限、佔用、不支援的格式或裝置消失拒絕。這些錯誤與「沒有任何裝置」不同，若程式把所有例外合成DeviceNotFound，維護者便會把已存在的裝置反覆重裝。",
+        "獨佔表示某段使用需要排除其他競爭者；共享表示多個來源可經管理機制一起使用。Windows WASAPI共享模式通常由音訊引擎混合與處理資料，獨佔模式則更直接使用設備支援的格式與時序。不同模式可用格式及等待條件不同，不能假設共享可播就一定獨佔可開。",
+        "Linux音訊可以經ALSA裝置或桌面的PulseAudio/PipeWire服務等不同路徑。服務身分可能看不見使用者會話的音訊入口；直接ALSA獨佔與桌面混音也有不同佔用行爲。本章講責任分層，不假設每臺Linux使用同一個音訊管理器。",
+        "程序正常清理應按契約停止串流、結束回呼與釋放入口。熱拔除可以先讓已開啟物件變成失效，再出現新裝置節點。重新取得時應確認新入口與設備身分，舊回呼不能繼續更新新世代狀態；只看名稱相同不足以確認生命週期連續。"
+      ]
+    },
+    {
+      "heading": "預設裝置、角色與使用者環境",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Windows音訊端點區分播放與擷取，也有console、multimedia、communications等預設角色。設定通訊預設為耳機，不一定改了多媒體預設喇叭。程式若明確選某個ID則可能完全不跟隨預設；若每次開啟都查預設，也可能在插入新設備後改路徑。",
+        "所以要記錄程式選擇政策、實際端點ID、方向與角色，而不只截使用者設定頁。通話下行送往哪個播放端點、上行從哪個擷取端點取資料，是兩個獨立選擇。畫面上一個“設備”選單若同時修改兩者，需追程式實作，不能從界面文字推內部連接。",
+        "系統音量、應用音量、靜音、音訊串流與實體接線各在不同位置。擷取緩衝有資料但全零，可能是靜音或來源本來靜默；播放Submit成功只證實提交，不證實DAC後真的發聲。量測可在資料域看幀數和非零樣本，再在獲準環境驗證實際裝置。",
+        "互動桌面可用不表示背景服務有同樣權限與會話。Windows服務與Linux系統服務的音訊入口需明確設計與部署，不能通過長期管理員運行來代替。維護驗證要沿原執行身份及原選擇政策，避免自己手動試播用了另一條成功路徑。"
+      ]
+    },
+    {
+      "heading": "PCM格式、幀與本地緩衝",
+      "kind": "mechanism",
+      "paragraphs": [
+        "PCM是把連續聲音取樣成數值的表示。取樣率每秒多少次，樣本位元深度每個通道數值有多少位，通道數代表一個時點的並列數值。音訊幀在本章指同一時點所有通道樣本；立體聲一幀有左右兩個樣本，不是一個RTP包。",
+        "若採未壓縮16-bit整數PCM且沒有額外容器欄位，每樣本2byte；雙聲道每幀4byte。資料速率=取樣率×每幀byte數。音訊API的frame數、byte數和毫秒必須轉換，不能把960frames當960bytes。24-bit打包與32-bit容器也可能不同，需要看實際格式契約。",
+        "緩衝讓產生與消耗短時間不同步仍能繼續；裝置消費固定節奏，應用若晚送，會underflow缺資料。緩衝太小能減少等待，卻更容易承受不了排程延遲；太大能吸收抖動，卻增加音訊延遲。只有CPU低不能排除應用回呼晚到、鎖等待或驅動延遲。",
+        "格式協商要區分應用原始格式、混音格式與設備實際格式。系統可能轉換取樣率或聲道，但不是所有模式都保證。若48000Hz資料當8000Hz解讀，時長與音調會改變；如果只是把欄位名稱改成8000而沒有真實重取樣，資料也不會自動成爲正確的8k聲音。"
+      ]
+    },
+    {
+      "heading": "例題一：幀、位元組與緩衝時間",
+      "kind": "worked-example",
+      "paragraphs": [
+        "給定48000Hz、16-bit、雙聲道PCM，一個回呼提供960frames，設備緩衝上限2880frames。每幀=2byte×2=4byte，回呼資料=960×4=3840byte；回呼時長960/48000=0.020秒即20ms。",
+        "上限2880/48000=60ms、11520byte。當前已排隊1920frames=40ms，再提交960恰好滿60ms。這個滿是數據容量，不是播放完成；若程序收到Submit成功馬上記錄“對端已聽到”，則把本地排隊與實體輸出混淆。",
+        "另假設阻塞開始時庫存只有1920frames，與前段提交後滿60ms是不同條件。若這次回呼被阻塞70ms，設備40ms後消耗完，之後至少30ms缺資料，忽略驅動其他緩衝的本章模型會underflow。提高容量可暫時吸收，根本仍需查回呼爲什麼晚，以及新增等待是否可接受。",
+        "算式成立的前提是固定消費率、未壓縮PCM且不考慮其他緩衝。真實管線應分別記採集、應用佇列、播放佇列與設備報告位置，不能把一個緩衝總量當全部端到端延遲。"
+      ]
+    },
+    {
+      "heading": "例題二：同名裝置與格式錯誤分支",
+      "kind": "worked-example",
+      "paragraphs": [
+        "虛構設備列表有“USB Audio”端點A playback與“USB Audio”端點B capture。程序按名字取第一個，原意開啓capture卻選A，Open回覆WrongDirection。另一版選B，但請求獨佔44100Hz，設備卡明確只支持48000Hz、16-bit、mono，回覆UnsupportedFormat。",
+        "第一版失敗在方向與身分選擇；第二版方向正確，失敗在給定模式的格式。兩者畫面都顯示“找不到麥克風”，卻需要不同修正。不能因相同友善名稱就去隨機切系統預設或重裝驅動。",
+        "有限修正第一版是依端點方向與明確ID選擇；第二版按支持格式打開，若業務需要44100則在適當層進行已定義的重取樣，而非只改標籤。給定卡是教學合同，不代表所有USB設備只支持48000。",
+        "驗證兩個相同名字同時存在、端點重插、正確/錯誤方向與正確/錯誤格式。正確選擇後仍檢查讀取幀數與資料是否有效；Open成功不是完整聲音路徑驗收。"
+      ]
+    },
+    {
+      "heading": "讀C#：byte數不是音訊時間",
+      "kind": "code-reading",
+      "paragraphs": [
+        "FramesToMilliseconds以double計算，先驗證正整數採樣率，再用frames除以sampleRate乘1000。double可保留小數；若先整數除法，960/48000會先截成0，最後0ms導致期限與排隊統計錯誤。這個概念也適用於讀取音訊佇列。",
+        "BytesPerFrame將bit深度除8並乘聲道，本模型只接受8的整數倍且採用緊密打包。代碼明確拒絕非此模型格式；真實24-bit可能置於32-bit容器，必須用API實際block alignment，不憑樣本深度猜佈局。",
+        "checked會在整數溢位時拋出例外，避免數據量環繞變負；維護讀取外部格式仍需先檢查上限。方法返回的時間是給定格式下的數據時長，不是實際播放牆鍾時間，後者還包含排隊、驅動與裝置延遲。",
+        "完整Device模式另判定Present、CanOpen、Direction、Supported四個條件。各條件來自合成設備卡，不調用麥克風。這樣錯誤注入能驗證方向、格式及數據計算，不能據此宣稱實際驅動或揚聲器正常。"
+      ],
+      "code": {
+        "title": "純數據換算，在Device模式使用",
+        "text": "static double FramesToMilliseconds(int frames, int rate) {\n    if (frames < 0 || rate <= 0) throw new ArgumentOutOfRangeException();\n    return frames / (double)rate * 1000;\n}\nstatic int BytesPerFrame(int bits, int channels) {\n    if (bits <= 0 || bits % 8 != 0 || channels <= 0) throw new ArgumentOutOfRangeException();\n    return checked(bits / 8 * channels);\n}"
+      }
+    },
+    {
+      "heading": "只讀設備資料如何解讀",
+      "kind": "maintenance",
+      "paragraphs": [
+        "Windows Get-PnpDevice -PresentOnly只列目前存在的PnP對象，Status、Class、FriendlyName和InstanceId分別是管理狀態、類別、人讀名稱和實例識別。沒有-PresentOnly時可能包含歷史已離線對象；看見舊COM入口名稱不保證當前插著那臺設備。",
+        "Linux /sys描述設備、驅動及總線關係，/dev提供可開啟入口。udevadm info可讀取入口對應屬性；/proc/asound/cards與aplay -l提供ALSA相關清單，aplay來自額外工具並非所有系統預裝。它們不是同一層，/dev/ttyUSB0存在不能說明設備命令協議已符合。",
+        "下方輸出皆人工合成，不是實體採樣。例示Present=True而Open=Denied讓讀者區分存在與可訪問。每個診斷資料需記設備識別、程序身份、模式與格式，重複同名設備時不能只用FriendlyName關聯。",
+        "教學不執行移除驅動、禁用設備、重排COM編號或修改音訊預設。真實故障中的最小修正應在確認層進行；未知硬體接線、電氣或驅動版本要查廠商文件，不把通用OS清單當兼容證明。"
+      ],
+      "code": {
+        "title": "唯讀查詢及合成裝置卡",
+        "text": "Windows:\nGet-PnpDevice -PresentOnly | Select-Object Status,Class,FriendlyName,InstanceId\n合成：OK AudioEndpoint USB Audio LAB\\A\n合成：OK AudioEndpoint USB Audio LAB\\B\nLinux:\nudevadm info --query=property --name=/dev/ttyUSB0\ncat /proc/asound/cards\n合成設備卡：id=B direction=capture rate=48000 bits=16 channels=1 Present=True Open=Denied"
+      }
+    },
+    {
+      "heading": "故障分支：有包、無聲與卡頓",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀是收到音訊資料卻無聲。候選A網絡輸入沒到，B音訊端點選錯，CPCM全零，D播放回呼過遲。第一份數據確認解碼後每20ms收到960frames且非零樣本，縮小A與C在此邊界的解釋；還不能保證播放方向正確。",
+        "第二份證據顯示Submit至playback端點C，產品要求端點D；C是沒有連接實體喇叭的虛擬輸出，D在另一界面。有限修正端點選擇，隨後確認相同輸入送到D且設備驗證正常。不是提高網絡jitter buffer就能改正確輸出位置。",
+        "另一分支選擇D正確，卻記錄緩衝只剩10ms，回呼因同步寫log阻塞35ms，underflow計數增加。此時原因在本地時序；修正將長磁碟I/O移出時間敏感路徑並使用有限佇列，避免新日誌積壓問題。",
+        "驗收至少區分正確端點、有效樣本、穩定提交節奏與實際輸出。實體聽測不在本離線模型內；公司設備與SDK路徑須依實際證據連接，不用合成“USB Audio”名字套定真實拓撲。"
+      ]
+    },
+    {
+      "heading": "實作：容量、方向與錯誤格式",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- devices。先按給定48000/16-bit/雙聲道算3840byte與20ms，再預測70ms阻塞、40ms庫存的30ms缺資料。程序用純數據運算驗證結果，沒有錄音或播放。",
+        "把計算的double除法故意改爲整數除法，20ms斷言應FAIL，恢復後PASS。再把模型音訊方向改爲playback而請求capture，觀察WrongDirection；只改變格式纔會得到UnsupportedFormat，確保錯誤分類有區分能力。",
+        "另把採樣率換32000、幀數640、單聲道16-bit，先算20ms與1280byte，再修改給定數據對照。不能只把輸出常數改成新答案；應讓方法由輸入推得數值，邊界0rate需被拒絕。",
+        "驗收講清幀/樣本/byte的單位、庫存與缺資料時間、設備選擇條件。所有數據爲合成；真實聲卡模式、服務會話與COM硬體仍未在此環境實跑。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "友善名稱、InstanceId與COM號各是什麼？",
+      "answer": [
+        "友善名稱便於人讀但可以重名；InstanceId區分系統中的設備節點；COM號是串列操作入口。",
+        "三者都不單獨說明電氣標準、業務協議或音訊方向。",
+        "驗證按實際設備識別、方向與入口對應，不以相同名稱推同一硬體。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "PnP狀態OK能證明聽得見嗎？",
+      "answer": [
+        "它只提供裝置辨識管理層的證據，不確認應用已開、樣本有效或播放端點正確。",
+        "需沿Open、格式、PCM、提交與實體輸出分別檢查。",
+        "當前模型只到合成輸入運算，實體輸出需在獲準設備另驗。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生數據：32000Hz、24-bit緊密打包、雙聲道，640frames。算byte和ms。",
+      "answer": [
+        "每樣本3byte、每幀6byte，因此640×6=3840byte。",
+        "640/32000×1000=20ms；這是假設24-bit緊密打包，不適用32-bit容器。",
+        "讀取真實API block alignment確認佈局，再按實際格式重算。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生數據：48000Hz庫存1440frames，應用40ms後才補。理想固定消費模型缺多久？",
+      "answer": [
+        "庫存1440/48000×1000=30ms，消費到第30ms用完。",
+        "補充在40ms，所以缺資料10ms，其他緩衝未納本題。",
+        "修正需查晚到原因與可接受容量，再測回呼節奏和underflow，不只提高上限。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：同名端點E playback、F capture，程序取第一個請求capture出現WrongDirection。先改哪裏？",
+      "answer": [
+        "首先是選擇政策沒有使用方向與明確身分，當前在Open的方向檢查失敗，尚未進入擷取。",
+        "按F的capture及ID選擇，再驗證支持格式；不隨機重裝驅動。",
+        "重測重名並存、熱插拔與反向請求，確保不會換成另一個同名端點。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：非零PCM按時收到，正確播放端點，回呼被WriteLog阻塞50ms，庫存20ms。先調網絡timeout嗎？",
+      "answer": [
+        "已收到有效PCM，現有關鍵延遲在本地播放回呼，固定模型將缺30ms。",
+        "把時間敏感路線的同步磁碟I/O移到有限佇列，確認不會產生無限積壓。",
+        "迴歸underflow、佇列上限與正確端點，網絡timeout不是這個分支的修正。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "將48000Hz的樣本標籤改成8000Hz等於重取樣嗎？",
+      "answer": [
+        "不等於。相同樣本按不同速率解釋會改變時長與頻率。",
+        "重取樣需要定義濾波與樣本轉換；僅改元數據不產生正確新資料。",
+        "用已知頻率與時長的輸入驗證轉換結果，設備格式與管線格式分別記。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "桌面試播成功而服務Open=Denied，能說喇叭沒問題所以服務也正常嗎？",
+      "answer": [
+        "桌面與服務身份和會話不同，成功只證明桌面那條路線。",
+        "查原服務的權限、實際端點、模式和會話可用性。",
+        "在原部署方式重測開啟、提交與釋放；不能以管理員播放作爲背景服務驗收。"
+      ]
+    }
+  ],
+  "recap": [
+    "設備存在、可開啟、格式有效與實際輸出是不同層。",
+    "按真實端點ID、方向、模式與身份追路徑。",
+    "使用幀和byte計算緩衝時間，再查生產與消費節奏。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：預設音訊裝置角色",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-roles"
+    },
+    {
+      "label": "Microsoft：獨佔模式音訊串流",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/exclusive-mode-streams"
+    },
+    {
+      "label": "Microsoft：裝置實例識別",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/install/device-instance-ids"
+    },
+    {
+      "label": "Microsoft：Get-PnpDevice的存在範圍",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/pnpdevice/get-pnpdevice?view=windowsserver2025-ps"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 作業環境觀念追讀專案",
+      "path": "./assets/labs/systems-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 devices，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 devices 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

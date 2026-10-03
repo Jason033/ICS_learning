@@ -1,0 +1,200 @@
+{
+  "date": "2026-10-03",
+  "reviewer": "remaining_satellite_dsp",
+  "sdk": "10.0.401",
+  "numericalChecks": [
+    {
+      "case": "evidence Q3 conservation",
+      "expected": [
+        12,
+        7
+      ],
+      "independent": [
+        12,
+        7
+      ]
+    },
+    {
+      "case": "evidence Q3 ratios",
+      "expected": [
+        58.333333,
+        28.571429
+      ],
+      "independent": [
+        58.333333,
+        28.571429
+      ]
+    },
+    {
+      "case": "audio Q3 stereo bytes/misread time",
+      "expected": [
+        1280,
+        40.0
+      ],
+      "independent": [
+        1280,
+        40.0
+      ]
+    },
+    {
+      "case": "audio Q4 deadlines/lateness",
+      "expected": [
+        [
+          35,
+          55,
+          75
+        ],
+        [
+          -5,
+          5,
+          7
+        ]
+      ],
+      "independent": [
+        [
+          35.0,
+          55.0,
+          75.0
+        ],
+        [
+          -5.0,
+          5.0,
+          7.0
+        ]
+      ]
+    },
+    {
+      "case": "timeline Q3 corrected and delay intervals",
+      "expected": [
+        266,
+        280,
+        16,
+        30
+      ],
+      "independent": [
+        266,
+        280,
+        16,
+        30
+      ]
+    },
+    {
+      "case": "cross-layer Q3 eager/accepted/guarded",
+      "expected": [
+        6,
+        3,
+        3
+      ],
+      "independent": [
+        6,
+        3,
+        3
+      ]
+    },
+    {
+      "case": "reproduce Q5 independent success chance",
+      "expected": 0.32768,
+      "independent": 0.32768
+    },
+    {
+      "case": "contracts Q4 scaled round",
+      "expected": 75,
+      "independent": 75
+    },
+    {
+      "case": "control Q4 RMS",
+      "expected": 300.0,
+      "independent": 300.0
+    },
+    {
+      "case": "trace Q3 callback before pending",
+      "expected": [
+        "Pending",
+        0
+      ],
+      "independent": [
+        "Pending",
+        0
+      ]
+    },
+    {
+      "case": "trace Q4 callbacks/applies",
+      "expected": [
+        3,
+        1
+      ],
+      "independent": [
+        3,
+        1
+      ]
+    },
+    {
+      "case": "map Q3 subscriber stages",
+      "expected": [
+        3,
+        2,
+        2,
+        1
+      ],
+      "independent": [
+        3,
+        2,
+        2,
+        1
+      ]
+    },
+    {
+      "case": "map Q5 handler and apply",
+      "expected": [
+        2,
+        1
+      ],
+      "independent": [
+        2,
+        1
+      ]
+    }
+  ],
+  "models": {
+    "troubleshooting": {
+      "baselineExit": 0,
+      "expectedMatch": true,
+      "assertions": 24,
+      "sourceSha256": "6ecc52ed28b9da1a1e6d596dec9585e12eb749c21676e574dedae129c2870811",
+      "mutation": {
+        "change": "if (frame.Session != currentSession) continue; → // deliberate mutation: missing session guard",
+        "mode": "regression",
+        "exit": 134,
+        "caught": "FAIL repair_stale_negative",
+        "stdout": "MODE regression\nPASS repair_positive\n",
+        "stderr": "Unhandled exception. System.InvalidOperationException: FAIL repair_stale_negative\n   at Program.<<Main>$>g__Check|0_0(Boolean value, String name) in /tmp/ics-peer-diagnosis-map/troubleshooting-mutation/Program.cs:line 74\n   at Program.<Main>$(String[] args) in /tmp/ics-peer-diagnosis-map/troubleshooting-mutation/Program.cs:line 62\n"
+      },
+      "limits": "標準庫、記憶體資料與邏輯時點；未驗SDK、真實網路、音訊裝置或多執行緒。"
+    },
+    "big-picture": {
+      "baselineExit": 0,
+      "expectedMatch": true,
+      "assertions": 19,
+      "sourceSha256": "43d982ab4303bd4ad7b51a3e9d7033cd7581d11ffb127d37ad3a60e1cea18192",
+      "mutation": {
+        "change": "|| state!=\"Pending\" → || false",
+        "mode": "trace",
+        "exit": 134,
+        "caught": "FAIL duplicate_result_once",
+        "stdout": "MODE trace\nsynchronous-event state=Completed applied=1\nPASS pending_before_callback\n",
+        "stderr": "Unhandled exception. System.InvalidOperationException: FAIL duplicate_result_once\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-peer-diagnosis-map/big-picture-mutation/Program.cs:line 93\n   at Program.<Main>$(String[] args) in /tmp/ics-peer-diagnosis-map/big-picture-mutation/Program.cs:line 60\n"
+      },
+      "limits": "標準庫、記憶體資料與邏輯時點；未驗SDK、真實網路、音訊裝置或多執行緒。",
+      "sessionGuardReviewClosure": {
+        "originalCaseMasked": true,
+        "originalContractsMutationExit": 0,
+        "newExistingHistoricalKeyCase": "(R1,1,B) remains Pending after reconnect to session2",
+        "baselinePass": true,
+        "mutationExit": 134,
+        "caught": "FAIL historical_pending_session_guard",
+        "stdout": "MODE contracts\nui=75 percent deviceLevel=75 state=Pending\nPASS accepted_not_completed\nPASS invalid_input_not_sent\nPASS wrong_target_ignored\nPASS unknown_result_not_applied\nPASS old_session_current_request_ignored\n",
+        "stderr": "Unhandled exception. System.InvalidOperationException: FAIL historical_pending_session_guard\n   at Program.<<Main>$>g__Check|0_0(Boolean ok, String name) in /tmp/ics-peer-diagnosis-map/big-picture-session-final/Program.cs:line 97\n   at Program.<Main>$(String[] args) in /tmp/ics-peer-diagnosis-map/big-picture-session-final/Program.cs:line 49\n"
+      }
+    }
+  }
+}

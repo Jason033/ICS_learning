@@ -1,0 +1,26 @@
+[
+  {
+    "name": "cleanup",
+    "mode": "ownership",
+    "exitCode": 1,
+    "output": "MODE ownership\nPASS normal_acquired\nDATA normal_cleanup actual=0 expected=0\nPASS normal_cleanup\nDATA exception_cleanup actual=1 expected=0\nFAIL InvalidOperationException: exception_cleanup\n"
+  },
+  {
+    "name": "integer-division",
+    "mode": "devices",
+    "exitCode": 1,
+    "output": "MODE devices\nDATA bytes_per_frame actual=4 expected=4\nPASS bytes_per_frame\nDATA callback_bytes actual=3840 expected=3840\nPASS callback_bytes\nDATA callback_ms actual=0 expected=20\nFAIL InvalidOperationException: callback_ms\n"
+  },
+  {
+    "name": "route-order",
+    "mode": "endpoints",
+    "exitCode": 1,
+    "output": "MODE endpoints\nDATA longest_prefix_140 actual=WAN expected=LAB\nFAIL InvalidOperationException: longest_prefix_140\n"
+  },
+  {
+    "name": "offset-sign",
+    "mode": "time",
+    "exitCode": 1,
+    "output": "MODE time\nDATA corrected_send_low actual=1004 expected=992\nFAIL InvalidOperationException: corrected_send_low\n"
+  }
+]

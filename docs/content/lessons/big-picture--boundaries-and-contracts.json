@@ -1,0 +1,278 @@
+{
+  "contentVersion": 2,
+  "intro": "維護者常遇到同一個數值穿過好幾層，編譯正確而效果錯誤。理解邊界契約，就是知道每層接受甚麼、保證甚麼、如何回報，以及哪條責任沒有被承諾。這篇給出完整Lab介面卡，從單位、身份、時序與所有權解釋軟體、網路和硬體為什麼不能被一個success蓋過。",
+  "prerequisites": [
+    "本章從零解釋邊界、單位與API/協定，不要求讀過公司SDK。",
+    "能辨認輸入和回報即可；LabControl1.0介面卡提供本章全部判斷規則。"
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      21
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含必要名詞定義、完整虛構契約及兩個逐步例題；操作需預測、跑基準、修改一項、反證並復原；作答需整理資料與驗收範圍。尚待個人計時校準。"
+  },
+  "goals": [
+    "分清程式API、SDK、協定、資料格式與實體介面，知道各種檔案回答甚麼。",
+    "閱讀完整契約中的型別、單位、範圍、身份、回報階段、事件時序和所有權。",
+    "逐段追出單位與身份錯誤，用前後置、錯誤與負面測試驗收有限修正。"
+  ],
+  "sections": [
+    {
+      "heading": "邊界為甚麼需要契約，而不只是連線線",
+      "kind": "concept",
+      "paragraphs": [
+        "邊界是責任從一個角色交給另一個角色的位置。使用者百分比交給controller、controller請求交給adapter、外部結果回給controller，各段都可能改變資料含義。兩邊知道函式名稱，卻對成功階段、時間或單位理解不同，系統仍會出錯。契約就是把需要一致的約定說清楚。",
+        "API是程式提供給其他程式呼叫的成員與行為，SDK是幫助使用產品的一組庫、檔案、例子或工具；協定定義參與者交換資訊及回應的規則，資料格式定義資訊怎樣表示。實體介面則還有電壓、方向、時序與連線條件。C#方法能呼叫不等於網路協定匹配，更不等於電氣線可以直接相接。",
+        "adapter把一種介面約定翻成另一種約定，例如UI百分比變裝置level或SDK事件變工作結果。它不是可以藏所有未知的萬能盒；轉換的單位、身份、錯誤與資源責任都應明確。讀程式碼時在這種語義改變位置停下來，比只沿方法名向下看更容易發現編譯器不會抓到的錯誤。"
+      ]
+    },
+    {
+      "heading": "型別相同，不代表單位與意義相同",
+      "kind": "mechanism",
+      "paragraphs": [
+        "int只表示某範圍整數，不能說明這是ms、百分比、裝置編號或樣本數。75可以是75%、75ms、裝置75，甚至某個enum程式碼。跨層值必須連同單位與合法範圍閱讀；同型別直接傳參只證明語法接受，不證明解釋正確。",
+        "本Lab UI百分比double必須有限且0–100；NaN不是一般數字，正負無窮也不是合法level。PercentToLevel採用AwayFromZero中點規則，75.5→76、0.5→1、0.49→0；controller進一步確認整數0–100。這裡deviceLevel仍是百分比刻度0–100，不是0–1歸一比例，也不是裝置已設定的回讀值。",
+        "如果外部裝置改成0–255，75%應按新契約換算75/100×255=191.25，再依規定取整；不能沿用75或任意乘100。取整規則、飽和/拒絕策略與版本都需寫出。這裡0–255只是陌生檔案判讀練習，不是Lab實際裝置或公司引數。"
+      ]
+    },
+    {
+      "heading": "一張完整Lab介面卡：前後置與階段",
+      "kind": "mechanism",
+      "paragraphs": [
+        "介面卡版本LabControl1.0，執行環境為單執行緒.NET10 Console。SubmitLevel(level)前置：controller未關閉、整數0–100；操作：建立LabKey並先記Pending，呼叫借用adapter.Send；回傳LabKey只給關聯標籤。非法level拋ArgumentOutOfRangeException且不呼叫adapter，關閉後拋ObjectDisposedException。",
+        "adapter.Send(LabRequest)記錄本地API嘗試並回true，true只表示Lab接受；外部完成由Completed事件提供。事件可能在Send尚未回傳時同步觸發，也可能稍後由測試者Emit。結果只允許Completed或Rejected；未知結果字串忽略，Pending工作才可進入終態，重複終態不再應用。",
+        "完整身份包含Request、Session、Target；只接受當前session、該controller目標且字典中存在的key。Reconnect增加session，沒有真實網路動作，也未刪除歷史States；舊狀態可供歷史查閱但不能更新當前。controller借adapter，Dispose僅退訂；最外層測試者擁有adapter並在所有借用者結束後釋放。"
+      ],
+      "table": {
+        "caption": "這份本地介面契約，完整標明本例的保證；未定義網路封包或硬體pin。",
+        "headers": [
+          "專案",
+          "LabControl1.0約定",
+          "不能擴張成"
+        ],
+        "rows": [
+          [
+            "輸入",
+            "有限百分比→整數0–100",
+            "所有裝置相同刻度"
+          ],
+          [
+            "Send true",
+            "本地接受嘗試",
+            "對端已設定完成"
+          ],
+          [
+            "Completed",
+            "合法同身份工作終態",
+            "音訊/實體效果已正常"
+          ],
+          [
+            "事件時序",
+            "允許Send內同步觸發",
+            "一定在回傳後或新執行緒"
+          ],
+          [
+            "Dispose",
+            "controller退訂借用adapter",
+            "借用者可釋放共用資源"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "軟體契約之外：網路與實體仍有自己的前置",
+      "kind": "concept",
+      "paragraphs": [
+        "程式內LabRequest是record物件，不自動成為網路packet。若要跨程式或跨機器，還需要序列化：把欄位轉換成可交換bytes，並規定長度、編碼、端序、框架邊界與版本。對端反向解析後才能恢復有意義的請求；不能因為雙方都用C#就省掉協定定義。",
+        "運輸又有端點、連線與返回證據。API Send接受、作業系統排入、bytes離開本地、對端收到、對端解析與業務完成各是階段；成功的名字要貼在實際階段。TCP保證的是其範圍內的位元組流機制，不能替你定義業務訊息和裝置副作用；串列bytes也需要上層命令契約。",
+        "實體控制另外需要方向、電氣與時序；high可能表示某個邏輯狀態，卻不保證每裝置的電壓/極性相同。維護者要知道該向哪份ICD或硬體規格查條件，不能從一個bool推定通用接線。本文只教把邊界分開，未知公司型號時不提出pin或電氣連線方案。"
+      ]
+    },
+    {
+      "heading": "例題一：75.5%如何穿過介面，而不是只看最後值",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入UI75.5，有限/範圍檢查通過；PercentToLevel按中點遠離零取76。SubmitLevel再檢查76在0–100，建立(R1,1,B)、States Pending，然後adapter記錄Level76並回true。若未Emit，狀態仍Pending，不能把回true顯示成裝置Completed。",
+        "對照輸入150：在轉換入口已經超過範圍，拋異常，controller不建立新key也不呼叫adapter，Requests仍只有原來一條。比較這兩組能證明驗證發生在本地外送前，而不是誤說裝置拒絕150。實際模型Requests是本地嘗試數量，不是網路發出數量。",
+        "再對照裝置0–255檔案：同75.5%乘255得192.525，若該檔案明確同樣中點規則則193。此時把Lab的76直接送給新裝置代表不同強度。修正應在負責單位轉換的邊界，並保留0/100和非法輸入驗收；不能在通用adapter無條件乘常數而破壞其它呼叫者。"
+      ]
+    },
+    {
+      "heading": "例題二：同R1不代表同一個可套用結果",
+      "kind": "worked-example",
+      "paragraphs": [
+        "初始controller目標B、session1、R1 Pending。Emit(R1,1,C,Completed)目標不符，被忽略；Emit(R1,1,B,InventedState)雖然身份相符，結果不在允許集合，也被忽略。兩種拒絕的責任不同：前者隔離目標，後者驗證回報語義。",
+        "Reconnect令session2，建立新R2 Pending；Emit(R2,1,B,Completed)雖保留當前request文字，但完整key(R2,1,B)不在States，session檢查與完整key查找都能擋下。因此仍Pending只驗證整條舊結果隔離路徑，不能單獨證明session guard；移除該guard後，字典仍會拒絕。兩條保護在此輸入互補，測試要說清能區分哪個機制。",
+        "專門驗session guard時，改送重連前已存在且仍Pending的完整key(R1,1,B)。Reconnect沒有刪歷史States，所以TryGetValue會成功，Result=Completed與目標B也合法；只有當前session2的檢查會拒絕。應見歷史R1仍Pending、新R2仍Pending、Applied仍0。若只移除session guard，歷史R1會被套用、Applied變1，historical_pending_session_guard斷言就失敗；恢復後新(R2,2,B)合法完成。這證明指定保護能被本例識別，也不假裝公司系統必然保留歷史key。",
+        "修正本地關聯不要把所有結果補標當前session，否則會讓舊資料獲得假身份。若真實SDK沒有session欄位，可由訂閱上下文或通道世代建立可信對映，但必須保留事件產生時的關係。介面卡解釋的不是欄位越多越好，而是每欄位在何處建立、怎樣成為可信證據。"
+      ]
+    },
+    {
+      "heading": "錯誤是在哪一層產生，也是一項契約",
+      "kind": "concept",
+      "paragraphs": [
+        "本地非法輸入、adapter未接受、外部拒絕、等待超時和結果未知不能寫成同一個Failed。非法輸入說明尚未外送；外部拒絕說明某個參與者給了明確結果；timeout說明指定期限內未得到目標結果，不證明外部沒有做事。不同階段決定能否安全重試和下一觀測在哪裡。",
+        "例外是程式呼叫異常返回的一種機制，但不自動說明遠端效果不存在。SDK呼叫拋異常前也可能已送出或對端已執行，必須看該API的階段承諾與可查詢身份。不能因為C#catch捕獲就把狀態一律恢復為「未執行」，更不能隨意重試有副作用的動作。",
+        "文件不完整時，把缺口寫成具體問題，例如「Send拋例外後是否可能已外送」「事件在哪個執行緒」「誰釋放共用物件」。這些問題有可查原始碼、廠商檔案或實驗的方向；只寫「版本未知」沒有指出如何推進，也不能代替已知通用機制的講解。"
+      ]
+    },
+    {
+      "heading": "讀碼：語法上的interface不能代替完整語意",
+      "kind": "code-reading",
+      "paragraphs": [
+        "C#interface能讓編譯器檢查必要成員形狀，不能僅靠method簽名保證執行緒、單位、回報階段或生命週期。即使兩個class都實現同一個interface，一個可能同步發事件，另一個稍後回報；呼叫者若只在Send後建Pending，就可能依具體實現不同而失敗。",
+        "下列實際Lab程式碼顯式把Pending放Send前。把介面卡的單位/階段/時序寫在這條路徑旁，讀者能解釋為什麼順序重要。改變契約時要檢查呼叫者是否依賴舊順序，不能只確認編譯通過。"
+      ],
+      "code": {
+        "title": "實際SubmitLevel節錄；型別與時序的保證不同",
+        "text": "if(level<0 || level>100) throw new ArgumentOutOfRangeException(nameof(level));\nvar key=new LabKey($\"R{++next}\",Session,target);\nStates[key]=\"Pending\";\nbool accepted=adapter.Send(new LabRequest(key,level));\nif(!accepted && States[key]==\"Pending\")States[key]=\"Rejected\";\nreturn key;\n\n// OnCompleted also checks current session, target, known key,\n// allowed result (Completed/Rejected) and Pending state."
+      }
+    },
+    {
+      "heading": "實作：每欄契約至少找一個對應觀測",
+      "kind": "lab",
+      "paragraphs": [
+        "在獨立.NET10專案執行contracts前，列UI75→75、非法150不送、錯target忽略、未知Result忽略、舊session當前R2忽略、歷史完整R1 Pending不可更新、新session合法完成七項預期。把每項對映介面卡欄位，執行後對照States、Requests與Applied；區分整條隔離效果和專門guard可被識別。",
+        "在暫存副本只刪OnCompleted的value.Key.Session!=Session。舊R2錯session案例可能仍透過，因完整key不存在；但historical_pending_session_guard必須失敗，因歷史完整key仍存在。還原後contracts與all均通過。這樣不是只根據一個PASS宣稱專用保護存在，而是實際讓指定缺陷產生不同結果。",
+        "暫存副本只把PercentToLevel換成錯誤0–1比例取整，ui75將不再輸出裝置75，accepted_not_completed應失敗；另一次刪未知Result guard，unknown_result_not_applied應失敗。每次保留原碼、故意錯一次、復原all，確認測試能區分單位和回報語義。",
+        "再用紙上0–255卡手算0%、50%、75.5%、100%與越界，明確取整和拒絕。它不是改公司引數，產物是可讀介面卡與驗證依據。舊.NET Framework或廠商DLL可能需要不同API，能遷移的是契約閱讀方法而非直接複製Lab程式碼。"
+      ]
+    },
+    {
+      "heading": "診斷分支：成功字樣後畫面值仍不對",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "初始使用者要75%，Send回true，畫面仍舊。候選甲尚未收到Completed、乙Completed目標錯、丙輸入已被錯誤換成0–1刻度。先看實際adapter記錄Level和當前key，以及回報入口，不反覆點選或重新部署全部軟體。",
+        "新增Level75、當前(R1,1,B)、回報(R1,1,C,Completed)，支持目標關聯問題，不能拿true證明B已設定。若新增Level1、正確同身份Completed，則控制流程可能完整但單位轉換已先偏離，下一查PercentToLevel；若Level75但沒有回報證據，則保留外部未完成與觀測缺漏候選。",
+        "有限修正按分支進行：補完整target對映或修轉換，而不關閉全部guard。驗收同target正確完成、另target不串、合法/非法範圍、同步事件和重連舊結果拒絕。修正位置和回歸來自具體契約，不是選程式碼最短的地方。"
+      ]
+    },
+    {
+      "heading": "從文件缺口形成可維護問題清單",
+      "kind": "maintenance",
+      "paragraphs": [
+        "一張介面卡至少說明輸入/單位、身份、成功階段、錯誤、事件時序、資源owner與版本；每欄附一個來源或可重建測試。已有證據填入，缺項標具體查證任務與影響。例如時序未知會影響Pending順序，Dispose責任未知會影響共享使用者；讀者能看懂為何必須查。",
+        "當取得公司資料，先確認文件與實際DLL/配置版本，再將Lab概念對映到對應成員。RCSCall或iCallAPI名稱只是搜尋線索，不能自動稱SDK、協定或音訊模組。長期維護需要把概念和證據連線起來，不把公開教學當成非公開系統事實。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "API、SDK、協定與實體介面是不是同一件事？C#可呼叫證明到哪層？",
+      "answer": [
+        "API定義程式成員與行為，SDK是使用產品的庫/工具/檔案；協定定義互動規則，實體介面定義物理條件。",
+        "可編譯呼叫只證明部分形狀與型別相容，不證明協定、業務或電氣條件正確。",
+        "維護按邊界取對應文件和證據，不用一個成功字樣覆蓋全部層。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "Send true而State Pending合理嗎？為什麼需要寫事件時序？",
+      "answer": [
+        "依Lab契約true僅本地接受，Completed事件才結束工作，所以Pending合理。",
+        "事件可在Send內同步觸發，Pending必須先建，否則handler可能找不到工作。",
+        "簽名不表達全部時序，介面卡和測試需共同說明，不能假定一定非同步或新執行緒。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生UI值62.5%、0.49%、101%；依Lab有限0–100、中點AwayFromZero，結果與外送情況？",
+      "answer": [
+        "62.5取63，0.49取0，均合法，可進入controller。",
+        "101越界在轉換前拒絕，不應增加Requests或建立有效工作。",
+        "分別驗邊界、取整與外送前拒絕；同int型別不免除單位約定。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生裝置刻度0–200，UI37.25%，檔案規定同中點取整。應送多少？直接送37是否正確？",
+      "answer": [
+        "37.25/100×200=74.5，AwayFromZero取75。",
+        "直接37不是相同百分比對應裝置刻度，編譯通過也語義錯誤。",
+        "在負責轉換的邊界修，驗0/100與非法值，不在所有呼叫者共用adapter盲乘。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生current=(R6,4,B)Pending。回報甲(R6,4,C,Completed)、乙(R6,3,B,Completed)、丙(R6,4,B,UnknownWord)。哪個可應用？",
+      "answer": [
+        "甲錯target，乙舊session，丙結果不在Completed/Rejected集合，均不可套用。",
+        "每個拒絕由不同規則解釋，不能統一稱網路失敗。",
+        "補正確同身份且合法Result的回報，再測各類不合法仍拒絕。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生位元組記錄來源與對端都是120 bytes，能說業務命令合法且完成嗎？",
+      "answer": [
+        "長度相等只支持某個範圍的byte數量相符，不保證內容、編碼、框架、版本或語義合法。",
+        "比較具體欄位和解析結果，再查同身份業務完成。",
+        "API嘗試、運輸收到、解析合法與業務完成分階段驗收，不能把計數升層。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "UI75，adapter記錄1，正確身份Completed。維護者想重試三次，正確下一步是什麼？",
+      "answer": [
+        "第一偏離是輸入單位/刻度轉換，重試只會重複錯誤值，不能修語義。",
+        "追UI到PercentToLevel及adapter引數，核對0–100或0–1檔案。",
+        "有限修轉換並測試取整、範圍、其他呼叫者；確認真實效果還需裝置回讀。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "共用adapter被一個controller Dispose後釋放，另一controller失敗。該如何修契約與回歸？",
+      "answer": [
+        "借用者退訂是自己的責任，釋放共用adapter應由最外層owner在所有使用者結束後做。",
+        "改借用者只解除自己的事件/任務，不關共有物件；介面卡標誰建立和釋放。",
+        "回歸關閉B後C仍可完成、B不再回呼、全部結束後owner釋放，避免只測單一使用者。"
+      ]
+    }
+  ],
+  "recap": [
+    "分清程式API、SDK、協定、資料格式與實體介面，知道各種檔案回答甚麼。",
+    "閱讀完整契約中的型別、單位、範圍、身份、回報階段、事件時序和所有權。",
+    "逐段追出單位與身份錯誤，用前後置、錯誤與負面測試驗收有限修正。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：C# interface的行為契約",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/types/interfaces"
+    },
+    {
+      "label": "NASA：介面定義、檔案與變更管理",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
+    },
+    {
+      "label": "Microsoft：C#事件、釋出者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab.zip",
+      "label": "下載完整概念地圖 C# 專案",
+      "description": ".NET 10 標準庫模型、操作說明與實際輸出；不連公司SDK、網路或實體裝置。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/Program.cs",
+      "label": "概念地圖 Program.cs",
+      "description": "本章追讀 contracts 模式；Lab型別自行建立，不是廠商API。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/README.md",
+      "label": "模型環境、機制與驗收限制",
+      "description": "各模式輸入、預期、故障注入與復原；模型輸出不等於實體效果。"
+    }
+  ]
+}

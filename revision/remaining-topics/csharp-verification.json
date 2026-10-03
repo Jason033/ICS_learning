@@ -1,0 +1,629 @@
+[
+  {
+    "topic": "big-picture",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/big-picture-maintenance-lab/BigPictureMaintenanceLab.csproj (in 62 ms).\n  BigPictureMaintenanceLab -> <temporary>/big-picture-maintenance-lab/bin/Debug/net10.0/BigPictureMaintenanceLab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:02.31\n",
+    "source_sha256": {
+      "Program.cs": "b2f9d691410487c4197e8040985eb9fa079b91e6ea5cd5bc2d9958df9631739a"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "MODE paths\ncontrol=Completed mediaAttached=0 current=1 output=False\nPASS control_complete_media_stale\nPASS current_media_nonzero\nPASS media_requires_ready\nPASS output_call_not_nonzero\nMODE contracts\nui=75 percent deviceLevel=75 state=Pending\nPASS accepted_not_completed\nPASS invalid_input_not_sent\nPASS wrong_target_ignored\nPASS unknown_result_not_applied\nPASS old_session_current_request_ignored\nhistorical=Pending current=Pending applied=0\nPASS historical_pending_session_guard\nPASS current_completion_applied\nMODE trace\nsynchronous-event state=Completed applied=1\nPASS pending_before_callback\nPASS duplicate_result_once\nSubmit target=B session=1 request=R1 level=30\nCallback publisher=A target=B session=1 request=R1\nApply result=Completed applied=1\nSend returned accepted=True state=Completed\nCallback publisher=A target=B session=1 request=R1\nMODE ownership\nPASS publisher_instance_matters\nPASS shared_target_isolation\nafter-B-close adapterDisposed=False subscribers=1\nPASS borrower_unsubscribes_not_disposes_shared\nPASS other_borrower_still_works\nPASS closed_controller_no_callback\nPASS all_borrowers_detached\nPASS all selected scenarios\n",
+        "stderr": "",
+        "published_expected_output_matched": true
+      }
+    ]
+  },
+  {
+    "topic": "dsp",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/dsp-maintenance-lab/Lab.csproj (in 68 ms).\n  Lab -> <temporary>/dsp-maintenance-lab/bin/Debug/net10.0/Lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.08\n",
+    "source_sha256": {
+      "Program.cs": "34d2321636cda6effead9887ffd89225ae6015eb40a2311fcdde5c50a0a0ab70"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "MODE spectrum\nX1=(2.000,0.000) X3=(2.000,0.000)\nPASS real cosine splits amplitude between positive and negative bins\nPASS forward unscaled inverse divided by N reconstructs samples\nPASS interior single sided amplitude has factor two\nPASS bin spacing and acquisition duration share N and fs\nMODE sampling\nPASS 1kHz and 7kHz cosines alias at 8ksps\nPASS sine at exactly Nyquist may produce zeros\nPASS rational rate change tracks interpolation and decimation\nPASS filtered decimation metadata must use output fs\nMODE filter\nfir=0.250,1.000,2.000,3.000 resetChunk=0.750\nPASS stream state survives block boundaries\nPASS reset causes a repeatable boundary transient\nPASS symmetric FIR group delay converted from samples to ms\nPASS example filter rejects alternating Nyquist component\nMODE snr\nsignalPower=1.000000 noisePower=0.062500 snrDb=12.041200\nPASS power uses mean square not mean amplitude\nPASS doubling signal amplitude adds 6dB if noise stays fixed\nPASS clipping error is distortion even without random noise\nMODE coding\ncodedBER=2/12 decodedBER=0/4 codeRate=0.333333\nPASS single error in each repetition word is corrected\nPASS two errors in same word exceed majority correction\nPASS QPSK symbol rate and code fraction determine information rate\nMODE iq\nPASS complex rotation separates signed frequency\nPASS conjugating IQ reverses frequency sign\nPASS IQ magnitude power is I squared plus Q squared\nPASS negative phase rotation has an explicit sign convention\nMODE pipeline\nPASS decimation changes count and declared rate together\nPASS duration preserved when count and rate change together\nPASS calibrated spectrum preserves tone frequency through rate change\nPASS CPU processing throughput does not redefine physical sample rate\nMODE diagnose\nPASS half amplitude display can be scaling not attenuation\nPASS wrong rate label doubles reported frequency without changing data\nPASS periodic boundary error is discriminated by state continuity\nPASS all requested checks\n",
+        "stderr": "",
+        "published_expected_output_matched": true
+      }
+    ]
+  },
+  {
+    "topic": "integration",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/integration-maintenance-lab/integration-maintenance-lab.csproj (in 68 ms).\n  integration-maintenance-lab -> <temporary>/integration-maintenance-lab/bin/Debug/net10.0/integration-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.13\n",
+    "source_sha256": {
+      "Program.cs": "bb1a818dfc1bce14ab2a054d3ce278f6261417c5550954e9c452dc7e6e61f2a2"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "=== trace ===\nSEND req=C1-S1-R1 session=1 action=SetLevel target=D1 value=60\nPASS same_request_crosses_call_chain\nPASS return_is_not_completion\nAPPLY req=C1-S1-R1 session=1 result=Completed\nPASS completion_returns_by_event\n=== layers ===\nPASS interface_reference_same_object\nSEND req=C2-S1-R1 session=1 action=QueryState target=D1 value=0\nSEND req=C3-S1-R1 session=1 action=QueryState target=D1 value=0\nAPPLY req=C2-S1-R1 session=1 result=Completed\nIGNORE req=C2-S1-R1 session=1 result=Completed\nPASS shared_request_ids_are_isolated\nPASS borrower_does_not_dispose_shared_adapter\nSEND req=C3-S1-R2 session=1 action=QueryState target=D1 value=0\nAPPLY req=C3-S1-R2 session=1 result=Completed\nPASS other_borrower_keeps_working\n=== icd ===\nPASS reject_out_of_range\nPASS action_is_case_sensitive\nSEND req=R3 session=1 action=SetLevel target=D1 value=0\nPASS lower_boundary_valid\nSEND req=R4 session=1 action=SetLevel target=D1 value=100\nPASS upper_boundary_valid\n=== commands ===\nSEND req=C4-S1-R1 session=1 action=SetLevel target=D1 value=40\nSEND req=C4-S1-R2 session=1 action=SetLevel target=D1 value=80\nAPPLY req=C4-S1-R2 session=1 result=Completed\nAPPLY req=C4-S1-R1 session=1 result=Completed\nIGNORE req=C4-S1-R1 session=1 result=Completed\nPASS out_of_order_matched_by_id\nPASS duplicate_completion_is_ignored\n=== sessions ===\nSEND req=C5-S1-R1 session=1 action=QueryState target=D1 value=0\nPASS reconnect_does_not_restore_readiness\nSEND req=C5-S2-R2 session=2 action=QueryState target=D1 value=0\nIGNORE req=C5-S1-R1 session=1 result=Completed\nIGNORE req=C5-S2-R2 session=1 result=Completed\nPASS current_id_old_session_is_rejected\nAPPLY req=C5-S2-R2 session=2 result=Completed\nPASS old_session_is_not_applied\n=== boundaries ===\nSEND req=C6-S1-R1 session=1 action=QueryState target=D1 value=0\nAPPLY req=C6-S1-R1 session=1 result=Completed\nPASS control_success_audio_one_way\nPASS capture_fix_preserves_control\n=== evidence ===\nPASS correlation_identity_matches\ninput req=R9 session=3 target=D2 value=75 return=Accepted event=Completed\nPASS same_request_text_not_same_session\n=== recovery ===\nSEND req=C7-S1-R1 session=1 action=SetLevel target=D1 value=50\nPASS timeout_does_not_resend\nAPPLY req=C7-S1-R1 session=1 result=Completed\nPASS current_late_result_can_resolve_unknown\nPASS local_exception_is_visible\n=== troubleshooting ===\nIGNORE req=C8-S1-R1 session=1 result=Completed\nPASS rejected_command_cannot_be_completed\nSEND req=C8-S1-R2 session=1 action=SetLevel target=D1 value=70\nPASS closed_controller_does_not_receive\nPASS root_still_owns_adapter\nPASS all assertions (Lab model only)\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "networking",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/networking-maintenance-lab/networking-maintenance-lab.csproj (in 67 ms).\n  networking-maintenance-lab -> <temporary>/networking-maintenance-lab/bin/Debug/net10.0/networking-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.13\n",
+    "source_sha256": {
+      "Program.cs": "5323f82b3f1e36a7f41b63b37ea6ad39a61100eab98e89f1c311eb9adfcee5b5"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "flow"
+        ],
+        "exit_code": 0,
+        "stdout": "id=Q17 connect-complete=20ms bytes=8 hex=5354415455533F0A\nid=Q17 TCP-ack=35ms\nid=Q17 parse-complete=40ms reply=OK,READY at=65ms\nPASS newline-framed request\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "flow",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "id=Q17 connect-complete=20ms bytes=7 hex=5354415455533F\nid=Q17 TCP-ack=35ms\nid=Q17 parser-waiting-for-LF deadline=500ms result=UNKNOWN\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "endpoints"
+        ],
+        "exit_code": 0,
+        "stdout": "TCP local=127.0.0.1:7000 remote=* state=Listen pid=4100\nTCP local=192.0.2.10:54000 remote=198.51.100.20:7000 state=Established pid=4200\nTCP local=192.0.2.10:54001 remote=198.51.100.20:7000 state=Established pid=4200\nIPv6 endpoint=[2001:db8::10]:7000\nPASS two separate connections\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "ethernet"
+        ],
+        "exit_code": 0,
+        "stdout": "A 192.0.2.10/24 access-vlan=10 ARP who-has 192.0.2.1\nGateway 192.0.2.1 access-vlan=10\nARP reply mac=02:00:00:00:10:01; frame A-MAC->GW-MAC; IP A->B\nRouter output: frame GW2-MAC->B-MAC; IP A->B; TTL 64->63\nPASS IPv4+TCP+payload=48 bytes\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "ethernet",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "A 192.0.2.10/24 access-vlan=20 ARP who-has 192.0.2.1\nGateway 192.0.2.1 access-vlan=10\nARP no reply: different broadcast domains\nPASS IPv4+TCP+payload=48 bytes\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "routes",
+          "10.24.6.77"
+        ],
+        "exit_code": 0,
+        "stdout": "MATCH 0.0.0.0/0 via=192.0.2.1 metric=10\nMATCH 10.24.0.0/16 via=192.0.2.2 metric=5\nMATCH 10.24.6.0/24 via=192.0.2.3 metric=50\nMATCH 10.24.6.64/26 via=192.0.2.4 metric=100\nSELECT 10.24.6.64/26 via=192.0.2.4\n/26 network=10.24.6.64 broadcast=10.24.6.127\nPASS /26 includes .77\nPASS /26 excludes .130\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "routes",
+          "10.24.6.130"
+        ],
+        "exit_code": 0,
+        "stdout": "MATCH 0.0.0.0/0 via=192.0.2.1 metric=10\nMATCH 10.24.0.0/16 via=192.0.2.2 metric=5\nMATCH 10.24.6.0/24 via=192.0.2.3 metric=50\nSELECT 10.24.6.0/24 via=192.0.2.3\n/26 network=10.24.6.128 broadcast=10.24.6.191\nPASS /26 includes .77\nPASS /26 excludes .130\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "routes",
+          "8.8.8.8"
+        ],
+        "exit_code": 0,
+        "stdout": "MATCH 0.0.0.0/0 via=192.0.2.1 metric=10\nSELECT 0.0.0.0/0 via=192.0.2.1\n/26 network=8.8.8.0 broadcast=8.8.8.63\nPASS /26 includes .77\nPASS /26 excludes .130\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "tcp"
+        ],
+        "exit_code": 0,
+        "stdout": "SYN seq=1000; first-data=1001; bytes=8; expected-ack=1009\nack=1009 window=4096 in-flight=1000 may-send=3096\nread=3; buffered=3; message-complete=False\nread=5; buffered=8; message-complete=True\nPASS SYN consumes one sequence number\nPASS stream reassembly\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "services"
+        ],
+        "exit_code": 0,
+        "stdout": "DNS name=lab.example A=198.51.100.20 ttl=120 obtained=0s\nelapsed=30s cache-valid=True\nelapsed=120s cache-valid=False\nelapsed=150s cache-valid=False\nINSIDE Flow { Protocol = TCP, Src = 10.0.0.10, SrcPort = 54000, Dst = 198.51.100.20, DstPort = 7000 }\nOUTSIDE Flow { Protocol = TCP, Src = 203.0.113.5, SrcPort = 61000, Dst = 198.51.100.20, DstPort = 7000 }\nREPLY dst=203.0.113.5:61000 -> translated dst=10.0.0.10:54000\nPASS source NAT keeps destination in this model\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "multicast"
+        ],
+        "exit_code": 0,
+        "stdout": "group=239.1.2.3 ethernet=01:00:5e:01:02:03\nmembership iface=12 group=239.1.2.3 receiver-port=5004\nincoming iface=12; app received=50 datagrams/s\nPASS two groups share MAC mapping\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "multicast",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "group=239.1.2.3 ethernet=01:00:5e:01:02:03\nmembership iface=12 group=239.1.2.3 receiver-port=5004\nincoming iface=18; membership mismatch; app received=0\nPASS two groups share MAC mapping\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "mtu",
+          "1500"
+        ],
+        "exit_code": 0,
+        "stdout": "IPv4-no-options mtu=1500 TCP-payload-max=1460 UDP-payload-max=1472 ping-data-max=1472\nfragment offset-units=0 data=1480 ip-total=1500 MF=True\nfragment offset-units=185 data=520 ip-total=540 MF=False\nserialization 1500 bytes at 10Mbit/s = 1.2ms (IP length only)\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "mtu",
+          "1400"
+        ],
+        "exit_code": 0,
+        "stdout": "IPv4-no-options mtu=1400 TCP-payload-max=1360 UDP-payload-max=1372 ping-data-max=1372\nfragment offset-units=0 data=1376 ip-total=1396 MF=True\nfragment offset-units=172 data=624 ip-total=644 MF=False\nserialization 1500 bytes at 10Mbit/s = 1.2ms (IP length only)\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "metrics"
+        ],
+        "exit_code": 0,
+        "stdout": "rtt-mean=56.4ms median=21ms maximum=200ms\nreceived=980 of sent=1000; loss=2.00% (matching IDs assumed)\ngoodput=6.40Mbit/s (8MB completed in 10 seconds)\nBDP=20Mbit/s*0.05s/8=125000 bytes\nwindow-limit=65536*8/0.05=10.48576Mbit/s\nPASS mean includes tail event\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "diagnose"
+        ],
+        "exit_code": 0,
+        "stdout": "Q31 connect=OK TX=8 bytes peer-ACK=YES application=TIMEOUT\nSERVER read=3+5 parser=STATUS? LF reply=OK,READY\nVERIFY: request-id matched, application result READY, repeated 20 times\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "diagnose",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "Q31 connect=OK TX=8 bytes peer-ACK=YES application=TIMEOUT\nSERVER read=3 parser-rejected-before-message-complete\nNEXT: repair incremental parser; recheck both fragmented and joined input\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "ozeki",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/ozeki-maintenance-lab/ozeki-maintenance-lab.csproj (in 66 ms).\n  ozeki-maintenance-lab -> <temporary>/ozeki-maintenance-lab/bin/Debug/net10.0/ozeki-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:02.30\n",
+    "source_sha256": {
+      "Program.cs": "385453363f012a0415951e3f022dd60f4ccd1800eac704e7463679bbe8a9dc78"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "=== graph ===\nC1=Active C2=Created sharedLine=True\nPASS alias_same_object\nPASS calls_are_distinct\nPASS second_state_unchanged\n=== registration ===\nlate-subscription observed=0 actual=Registered\nPASS reproduce_missed_event\nREG line=L-new sip=403 state=Failed\nPASS failure_is_observed\nREG line=L-new sip=200 state=Registered\nPASS success_is_observed\n=== calls ===\nPASS reproduce_old_event_clears_new_call\nPASS old_event_does_not_clear_C2\nAPPLY call=C2 state=Dialing\nAPPLY call=C2 state=Active\nPASS current_call_bidirectional\n=== media ===\nwrong-direction tx=False rx=True\nPASS reproduce_one_way_audio\nPASS missing_receiver_attachment\nPASS both_paths_pass_after_fix\nPASS attachment_belongs_to_one_call\n=== lifecycle ===\nAPPLY call=C1 state=Dialing\nAPPLY call=C1 state=Active\nPASS C1_media_active\nAPPLY call=C1 state=Ended\nPASS C1_cleanup_once\nAPPLY call=C2 state=Dialing\nAPPLY call=C2 state=Active\nPASS C2_media_active\nAPPLY call=C2 state=Ended\nPASS C2_cleanup_once\nAPPLY call=C3 state=Dialing\nAPPLY call=C3 state=Active\nPASS C3_media_active\nAPPLY call=C3 state=Ended\nPASS C3_cleanup_once\nPASS duplicate_subscription_calls_twice\nPASS one_remove_leaves_one_subscription\nPASS all_subscriptions_removed\n=== version ===\nexpected=C:/app/VoIPSDK.dll observed=C:/temp/VoIPSDK.dll version=11.2.4.290\nPASS same_version_different_path\nPASS manifest_identity_matches\nValues are fictional; no Ozeki DLL was loaded.\n=== evidence ===\ncase=A active=True capture=True attached=False rx=True next=sender attachment or RTP path\ncase=B active=True capture=False attached=True rx=True next=device or capture path\nPASS same_symptom_active_and_receive_only\nPASS A_attachment_fault\nPASS B_capture_fault\nPASS all assertions (local model only)\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "ptt",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/ptt-maintenance-lab/ptt-maintenance-lab.csproj (in 63 ms).\n  ptt-maintenance-lab -> <temporary>/ptt-maintenance-lab/bin/Debug/net10.0/ptt-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.06\n",
+    "source_sha256": {
+      "Program.cs": "576107b1472e97a8d808c5d0f5b62bfda38dbf14123e9976420af63a10a1f47f"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "=== press ===\nPASS ptt_is_not_audio_readiness\nPASS readiness_gates_audio\n=== interface ===\nPASS active_low_mapping\nPASS stable_window_removes_bounce\n=== state ===\nPASS ready_before_grant_ignored\nPASS legal_transition_reaches_tx\nPASS release_invalidates_old_ready\n=== grant ===\nPASS busy_denies_new_press\nPASS old_grant_cannot_key_new_press\nPASS grant_is_not_radio_ready\n=== timing ===\nPASS audio_only_in_valid_window\n=== release ===\nPASS timeout_cuts_model_outputs\nPASS repeated_timeout_does_not_create_new_fault_epoch\nPASS held_timeout_cannot_auto_rearm\nPASS release_then_new_press_rearms\n=== evidence ===\nPASS stage_delays_separate\nPASS identity_links_same_press\n=== troubleshooting ===\nPASS keyed_but_not_ready_has_no_audio\nPASS readiness_fix_allows_audio\nPASS late_ready_does_not_restart_tx\nPASS all assertions (Lab only; no device control)\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "radio",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/radio-maintenance-lab/radio-maintenance-lab.csproj (in 63 ms).\n  radio-maintenance-lab -> <temporary>/radio-maintenance-lab/bin/Debug/net10.0/radio-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.25\n",
+    "source_sha256": {
+      "Program.cs": "9ce75c400fe06e72ff5e30e77739f1df3910f55521ceb91b137edf8f8bd93b91"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "path"
+        ],
+        "exit_code": 0,
+        "stdout": "control=TX-reported audioSamples=800 audioRms=0.353553 durationMs=100\nRF-carrier-power observation does not prove modulation or remote audio.\nPASS known audio RMS\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "parameters"
+        ],
+        "exit_code": 0,
+        "stdout": "fMHz=150 periodNs=6.666667 wavelengthM=1.998616 error2ppmHz=300.000\nAM message max=3000Hz -> DSB ideal bandwidth=6000Hz\nFM deviation=5000Hz message max=3000Hz -> Carson estimate=16000Hz\nPASS frequency domain inputs\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "modulation"
+        ],
+        "exit_code": 0,
+        "stdout": "PASS power-of-two constellation model\nPASS rate and rolloff ranges\nM=16 bitsPerSymbol=4 symbolsPerSecond=4800 rawBps=19200 informationBps=14400 netPayloadBps=12960 rfSpanHz=6000\nAM depth=0.800\n16QAM I/Q levels=-3,-1,1,3\nPASS 16 symbol states encode 4 bits\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "budget"
+        ],
+        "exit_code": 0,
+        "stdout": "txDbm=30 txW=1.000 EIRPdbm=31.000 rxDbm=-67.000\nVSWR=1.5 rho=0.200000 reflectedPercent=4.000000 returnLossDb=13.979400\nVSWR=2 rho=0.333333 reflectedPercent=11.111111 returnLossDb=9.542425\nVSWR=3 rho=0.500000 reflectedPercent=25.000000 returnLossDb=6.020600\nPASS link budget signs\nPASS 5W dBm\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "quality"
+        ],
+        "exit_code": 0,
+        "stdout": "noiseDbm=-124.989700 wantedDbm=-100.000 snrDb=24.989700\nbitErrors=25 totalBits=100000 BER=0.000250; badPackets=20 packets=1000 PER=0.020000\nindependent-bit PER=0.632305\nPASS noise model units\nPASS separate error denominators\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "duplex"
+        ],
+        "exit_code": 0,
+        "stdout": "PTT=0 TX-ready=50 audio-start=10 audio-end=210 earlyAudioMs=40 effectiveAudioMs=160\nPASS no-buffer interval partition\nREPEATER receive=U transmit=D; mobile transmit=U receive=D; labels are symbolic\nTX-RX isolation reduces local transmitter leakage; duplex alone is not a quality guarantee.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "measurements"
+        ],
+        "exit_code": 0,
+        "stdout": "meterDbm=-45 externalAttenuatorDb=30 cableDb=2 referencePlaneDbm=-13.000\nwhiteNoise RBW 1kHz->10kHz expectedDeltaDb=10.000\nChange one setting at a time; input protection and device limits are outside this calculation.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "diagnose"
+        ],
+        "exit_code": 0,
+        "stdout": "control TX-reported; audioRMS=0.354; modulation-checked; remote recovered known tone\nCheck independent control, baseband, RF, demodulation and playback boundaries.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "path",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "control=TX-reported audioSamples=800 audioRms=0.000000 durationMs=100\nRF-carrier-power observation does not prove modulation or remote audio.\nPASS known audio RMS\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "diagnose",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "control TX-reported; audioRMS=0; RF-power-present; remote-RSSI=-70; remote-audio=silence\nCheck independent control, baseband, RF, demodulation and playback boundaries.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "reliability",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/reliability-maintenance-lab/reliability-maintenance-lab.csproj (in 62 ms).\n  reliability-maintenance-lab -> <temporary>/reliability-maintenance-lab/bin/Debug/net10.0/reliability-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.01\n",
+    "source_sha256": {
+      "Program.cs": "3ee9b5975234344bd14bdcacf6bc13ad73168155e0c82ee98e372c49ff630ef2"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "\n[deadline]\nattempt=1 start=0 allowed=100\nattempt=2 start=130 allowed=100\nlocal waiting expired at 250; remote outcome is not inferred.\n\n[retry]\nsame ID: effects=1, result=applied-1\nsame ID / different payload: conflict\nretry=1 window=100 selected=38\nretry=2 window=200 selected=175\nretry=3 window=400 selected=265\nretry=4 window=400 selected=20\n\n[health]\ntransport=true businessReady=False\nall verified businessReady=True\nsubscription lost: businessReady=false; cached state must be labelled stale.\n\n[queue]\nsecond=1 depth=3 dropped=0\nsecond=2 depth=6 dropped=0\nsecond=3 depth=9 dropped=0\nsecond=4 depth=12 dropped=0\nsecond=5 depth=12 dropped=3\nsecond=6 depth=12 dropped=3\nChannel capacity=2 / Wait: TryWrite(3)=false\n\n[ordering]\nsession=B version=2 value=Busy\n\n[race]\nforced interleaving: count=1\nlock protected: count=2\nwait graph: A holds X -> waits Y; B holds Y -> waits X (cycle)\n\n[async]\nlong-handler: ready=0 starts=0 queueWait=0\nstatus-callback: ready=20 starts=500 queueWait=480\nheartbeat: ready=100 starts=502 queueWait=402\nlogical UI model only: .NET Console has no WPF Dispatcher.\n\n[evidence]\nop-7,1,B,enqueue,0\nop-7,1,B,dequeue,80\nop-7,1,B,send,82\nop-7,1,B,accepted,90\nop-7,1,B,completed,110\nop-7,1,B,display,150\nqueue=80, send-to-complete=28, completed-to-display=40\nPASS: fictional invariants checked; no network/device access.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "satellite",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/satellite-maintenance-lab/Lab.csproj (in 69 ms).\n  Lab -> <temporary>/satellite-maintenance-lab/bin/Debug/net10.0/Lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.12\n",
+    "source_sha256": {
+      "Program.cs": "c61df47ea72258ee5dbb82dd95ff11b71faef661d85db48bc7a4a2035309c93f"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "MODE latency\noneWayMs=273.000 roundTripWithWorkMs=576.000\nPASS distance serialization queue work have separate units\nPASS 500ms wait times out while 650ms admits baseline\nPASS lower geometric path does not remove queues\nMODE budget\nfsplDb=206.074825 receivedDbm=-93.074825 marginDb=6.925175\nPASS km GHz free space formula\nPASS 8dB extra loss crosses required receive power\nPASS doubling distance adds roughly 6dB loss\nMODE capacity\nnormalPayloadBps=240000 robustPayloadBps=160000\nPASS code rate is a fraction not bits per second\nPASS quality recovery may still overload payload service\nPASS quality and delay variation need separate observations\nMODE queues\nbdpBytes=150000 windowBoundBps=426666.667 queueBytes=12500 waitMs=625\nPASS flight window and link capacity are distinct\nPASS persistent offered excess accumulates delay\nPASS admission reduction creates drain capacity\nMODE health\nPASS working destination beats low RTT without service reachability\nPASS stale success cannot prove current health\nPASS fresh verified backup is eligible\nPASS success resets consecutive misses\nPASS three consecutive misses enter failed decision\nMODE failover\nPASS candidate does not immediately become active\nPASS old epoch cannot commit new switch\nPASS route without new session is insufficient\nPASS route and session evidence complete activation\nPASS sustained recovery avoids immediate flapping\nactive=B epoch=2 sessionReady=True\nMODE diagnose\nPASS same geometry plus traffic suggests queue delay not orbit change\nPASS carrier up is not application recovery\nPASS tunnel overhead can cross an example MTU\nPASS all requested checks\n",
+        "stderr": "",
+        "published_expected_output_matched": true
+      }
+    ]
+  },
+  {
+    "topic": "security",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/security-maintenance-lab/SecurityMaintenanceLab.csproj (in 64 ms).\n  SecurityMaintenanceLab -> <temporary>/security-maintenance-lab/bin/Debug/net10.0/SecurityMaintenanceLab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.11\n",
+    "source_sha256": {
+      "Program.cs": "33048e03c02a48dae7e2a1431ded7f5fbd828fbae7a483e7d8a733952b268baa"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "MODE auth\nDATA unverified_principal_rejected actual=Unauthenticated expected=Unauthenticated\nPASS unverified_principal_rejected\nDATA legal_read actual=Allowed expected=Allowed\nPASS legal_read\nDATA write_rejected actual=MissingAction expected=MissingAction\nPASS write_rejected\nDATA other_resource_rejected actual=WrongResource expected=WrongResource\nPASS other_resource_rejected\nPASS wrong_audience_rejected\nPASS expired_context_rejected\nPASS matching_context\nMODE tls\nPASS trusted_chain_at_fixed_2030_time\nPASS san_name_matches\nPASS wrong_host_rejected\nPASS server_usage_matches\nPASS client_only_usage_rejected\nPASS expired_leaf_rejected\nPASS untrusted_root_rejected\nPASS chain_does_not_imply_correct_host\nLIMIT revocation_not_tested no_real_TLS_handshake no_OS_store_changes\nMODE boundaries\nPASS partial_tunnel_not_entire_path\nPASS all_segments_protected\nPASS empty_path_not_verified\nDATA model_payload_budget actual=1380 expected=1380\nPASS model_payload_budget\nDATA large_outer_bytes actual=1580 expected=1580\nPASS large_outer_bytes\nDATA small_voice_outer_bytes actual=280 expected=280\nPASS small_voice_outer_bytes\nPASS direction_A_B_context_mismatch\nPASS direction_B_A_context_matches\nMODE rotation\nPASS old_before_overlap\nPASS new_before_start_rejected\nPASS both_at_start\nPASS old_before_cutoff\nPASS old_at_cutoff_rejected\nPASS new_at_old_cutoff\nPASS mac_with_local_key\nDATA known_id_uses_trusted_key actual=Accepted expected=Accepted\nPASS known_id_uses_trusted_key\nDATA unknown_key_id_rejected actual=UnknownKey expected=UnknownKey\nPASS unknown_key_id_rejected\nDATA known_key_before_start_rejected actual=KeyOutsideWindow expected=KeyOutsideWindow\nPASS known_key_before_start_rejected\nDATA known_key_at_cutoff_rejected actual=KeyOutsideWindow expected=KeyOutsideWindow\nPASS known_key_at_cutoff_rejected\nPASS changed_bytes_rejected\nPASS signed_new_manifest\nPASS signed_old_version_rejected\nPASS unsigned_version_change_rejected\nPASS changed_payload_rejected\nLIMIT no_password_database no_firmware_flash no_Secure_Boot_changes\nMODE replay\nDATA short_header actual=NeedHeader expected=NeedHeader\nPASS short_header\nDATA length_before_allocation actual=TooLong expected=TooLong\nPASS length_before_allocation\nDATA partial_body actual=NeedBody expected=NeedBody\nPASS partial_body\nDATA complete_frame actual=Complete expected=Complete\nPASS complete_frame\nPASS sequence_100\nPASS sequence_102\nPASS out_of_order_101\nPASS duplicate_102_rejected\nPASS old_70_rejected\nDATA bad_high_sequence actual=BadMac expected=BadMac\nPASS bad_high_sequence\nDATA highest_not_poisoned actual=102 expected=102\nPASS highest_not_poisoned\nDATA next_valid_packet actual=Accepted expected=Accepted\nPASS next_valid_packet\nDATA valid_mac_replay actual=ReplayOrOld expected=ReplayOrOld\nPASS valid_mac_replay\nDATA changed_resource_rejected actual=BadMac expected=BadMac\nPASS changed_resource_rejected\nDATA wrong_session_rejected actual=WrongSession expected=WrongSession\nPASS wrong_session_rejected\nDATA expired_envelope_rejected actual=ExpiredOrFuture expected=ExpiredOrFuture\nPASS expired_envelope_rejected\nPASS invalid_utf8_rejected\nMODE audit\nPASS necessary_read_allowed\nPASS unnecessary_write_rejected\nPASS parent_search_required\nPASS audit_no_password\nPASS audit_no_token\nPASS audit_fields_are_whitelisted\nDATA audit={\"RequestId\":\"R1\",\"SubjectId\":\"LabReader\",\"Resource\":\"channel-A\",\"Action\":\"status.read\",\"Decision\":\"Allowed\",\"PolicyVersion\":\"v1\"}\nPASS newline_identifier_rejected\nMODE diagnose\nDATA case_A_identity_boundary actual=NameMismatch expected=NameMismatch\nPASS case_A_identity_boundary\nDATA case_A_authorization_boundary actual=MissingAction expected=MissingAction\nPASS case_A_authorization_boundary\nDATA case_A_legal_read actual=Allowed expected=Allowed\nPASS case_A_legal_read\nDATA missing_security_observation actual=NeedEvidence expected=NeedEvidence\nPASS missing_security_observation\nPASS case_B_context_mismatch\nPASS case_C_overlap\nPASS case_C_old_key_cutoff\nDATA original_message actual=Accepted expected=Accepted\nPASS original_message\nDATA same_message_rejected actual=ReplayOrOld expected=ReplayOrOld\nPASS same_message_rejected\nDATA new_authenticated_attempt actual=Accepted expected=Accepted\nPASS new_authenticated_attempt\nDATA same_business_intent_once_in_this_process actual=1 expected=1\nPASS same_business_intent_once_in_this_process\nPASS restart_loses_in_memory_deduplication\nLIMIT single_process_memory_only no_global_exactly_once no_real_security_deployment\nPASS end\n",
+        "stderr": "",
+        "published_expected_output_matched": true
+      }
+    ]
+  },
+  {
+    "topic": "serial",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/serial-maintenance-lab/serial-maintenance-lab.csproj (in 61 ms).\n  serial-maintenance-lab -> <temporary>/serial-maintenance-lab/bin/Debug/net10.0/serial-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.00\n",
+    "source_sha256": {
+      "Program.cs": "4b132d73c26ab0e799518f2c073d85693577280e1edab9ed03a4531d15696eb6"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "layers"
+        ],
+        "exit_code": 0,
+        "stdout": "COM-open=OK write=9 HEX=5354415455533F0D0A\nLab message complete; response=OK,READY\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "wiring"
+        ],
+        "exit_code": 0,
+        "stdout": "RS232 data voltage=-6.0V => mark=1\nRS232 data voltage=0.0V => undefined region\nRS232 data voltage=6.0V => space=0\nsingle-ended signal relative to receiver=3V\ndifferential before=3V after=3V\nNo pin numbers or construction instructions are implied.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "uart"
+        ],
+        "exit_code": 0,
+        "stdout": "8N1 bitsPerChar=10 bitTimeUs=104.166667 charTimeMs=1.041667\nrequest9BytesMs=9.375000 response10BytesMs=10.416667\nbyte=53 lsbFirst=11001010 evenParity=0\nreceiver3percentSlow driftAt9.5bits=0.285bit; receiver6percentSlow=0.57bit (idealized)\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "frames"
+        ],
+        "exit_code": 0,
+        "stdout": "RX AA0290\nRX 0193AA011011\nFRAME AA02900193\nFRAME AA011011\ncomplete=2 buffered=0\nPASS expected valid frame count\nPASS bounded parser drains known input\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "timeout"
+        ],
+        "exit_code": 0,
+        "stdout": "t=10 RX=AA0290 withinDeadline=True\nt=210 RX=0193 withinDeadline=False\nt=200 result=INCOMPLETE 3/5; t=210 late bytes are not a new transaction success\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "events"
+        ],
+        "exit_code": 0,
+        "stdout": "DataAvailable chunk=3 total=3 complete=False\nDataAvailable chunk=0 total=3 complete=False\nDataAvailable chunk=2 total=5 complete=True\nPASS callback count is not byte or message count\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "interfaces"
+        ],
+        "exit_code": 0,
+        "stdout": "halfduplex txMs=10.417 rxMs=6.250 workMs=5 turnaroundMs=2 totalMs=23.667\none driver at a time; UART framing does not arbitrate bus ownership\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "diagnose"
+        ],
+        "exit_code": 0,
+        "stdout": "Lab device: 9600,8,N,1; ASCII CR LF; no flow control\nAPP TX=5354415455533F0D0A; reply=4F4B2C52454144590D0A\nNext validation includes split bytes, two frames, corrupt checksum and deadline.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "layers",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "COM-open=OK write=7 HEX=5354415455533F\nUART bytes available; message missing CR LF\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "frames",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "RX 00AAFFAA02900192\nskip noise 00\ninvalid LEN=255\nskip noise FF\nchecksum reject\nskip noise 02\nskip noise 90\nskip noise 01\nskip noise 92\nRX AA02900193\nFRAME AA02900193\ncomplete=1 buffered=0\nPASS expected valid frame count\nPASS bounded parser drains known input\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      },
+      {
+        "arguments": [
+          "diagnose",
+          "--fault"
+        ],
+        "exit_code": 0,
+        "stdout": "Lab device: 9600,8,N,1; ASCII CR LF; no flow control\nAPP TX=5354415455533F; device parser waiting for CR LF\nNext validation includes split bytes, two frames, corrupt checksum and deadline.\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "sockets",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/sockets-maintenance-lab/sockets-maintenance-lab.csproj (in 65 ms).\n  sockets-maintenance-lab -> <temporary>/sockets-maintenance-lab/bin/Debug/net10.0/sockets-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.05\n",
+    "source_sha256": {
+      "Program.cs": "3077cd2528d82a37e201a5ea22a52832e21923e77bf15ed8af42eaecaad976c1"
+    },
+    "runs": [
+      {
+        "arguments": [],
+        "exit_code": 0,
+        "stdout": "feed=1 outputs=0 retained=1\nfeed=2 outputs=1 retained=0\nfeed=3 outputs=0 retained=3\nfeed=5 outputs=1 retained=0\nPASS fragmented and coalesced UTF-8 frames\nPASS 2 characters = 6 UTF-8 bytes + 2 header\nPASS 1025-byte length rejected before body allocation: InvalidDataException\nPASS EOF inside header: EndOfStreamException\nPASS EOF inside body: EndOfStreamException\nPASS invalid UTF-8 rejected: DecoderFallbackException\nLISTEN local=127.0.0.1:45715 role=listener\nACCEPT local=127.0.0.1:45715 remote=127.0.0.1:55032 role=connected\nCONNECT local=127.0.0.1:55032 remote=127.0.0.1:45715 generation=1\nSEND accepted=16 cumulative=16/16\nREAD count=2 cumulative=2/2\nREAD count=14 cumulative=14/14\nPASS server parsed request\nREAD count=0 cumulative=0/2\nPASS client half-close observed after request\nPARSE request=r41 status=accepted\nSEND accepted=15 cumulative=15/15\nCOMPLETE request=r41 result=READY\nREAD count=2 cumulative=2/2\nREAD count=13 cumulative=13/13\nPASS application response after client half-close\nREAD count=0 cumulative=0/2\nPASS EOF exactly between frames\nPASS zero-length UDP datagram retains sender endpoint\nPASS next UDP datagram independently delivered\nPASS pre-cancelled pending UDP receive\nPASS all deterministic parser and loopback transport checks\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  },
+  {
+    "topic": "systems",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/systems-maintenance-lab/SystemsMaintenanceLab.csproj (in 60 ms).\n  SystemsMaintenanceLab -> <temporary>/systems-maintenance-lab/bin/Debug/net10.0/SystemsMaintenanceLab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.03\n",
+    "source_sha256": {
+      "Program.cs": "c9912c66ed9077e12fb13e97691cee3ea8b6a3a41a7368033044897e2604b431"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "MODE evidence\nDATA missing_observation actual=NeedEvidence expected=NeedEvidence\nPASS missing_observation\nDATA no_process_with_unknown_later_stages actual=NoProcess expected=NoProcess\nPASS no_process_with_unknown_later_stages\nDATA endpoint_mismatch actual=EndpointMismatch expected=EndpointMismatch\nPASS endpoint_mismatch\nDATA not_ready actual=NotReady expected=NotReady\nPASS not_ready\nDATA ready actual=Ready expected=Ready\nPASS ready\nMODE ownership\nPASS normal_acquired\nDATA normal_cleanup actual=0 expected=0\nPASS normal_cleanup\nDATA exception_cleanup actual=0 expected=0\nPASS exception_cleanup\nDATA opened_matches_closed actual=2 expected=2\nPASS opened_matches_closed\nDATA fd_after_five_minutes actual=350 expected=350\nPASS fd_after_five_minutes\nDATA operations_to_limit actual=674 expected=674\nPASS operations_to_limit\nDATA minutes_to_limit=22.466667\nPASS standard_stream_example\nMODE startup\nDATA config_missing actual=MissingConfig expected=MissingConfig\nPASS config_missing\nDATA resource_denied actual=AccessDenied expected=AccessDenied\nPASS resource_denied\nDATA device_pending actual=DevicePending expected=DevicePending\nPASS device_pending\nDATA business_ready actual=Ready expected=Ready\nPASS business_ready\nDATA ready_observed_ms actual=930 expected=930\nPASS ready_observed_ms\nPASS deadline_stops_pending\nDATA ordering_does_not_imply_ready actual=DevicePending expected=DevicePending\nPASS ordering_does_not_imply_ready\nPASS working_directory_changes_relative_source\nMODE endpoints\nDATA longest_prefix_140 actual=LAB expected=LAB\nPASS longest_prefix_140\nDATA prefix_70 actual=VPN expected=VPN\nPASS prefix_70\nDATA default_route actual=WAN expected=WAN\nPASS default_route\nPASS loopback_does_not_match_lan\nPASS protocol_matters\nPASS loopback_match\nMODE devices\nDATA bytes_per_frame actual=4 expected=4\nPASS bytes_per_frame\nDATA callback_bytes actual=3840 expected=3840\nPASS callback_bytes\nDATA callback_ms actual=20 expected=20\nPASS callback_ms\nDATA capacity_ms actual=60 expected=60\nPASS capacity_ms\nDATA underflow_ms actual=30 expected=30\nPASS underflow_ms\nDATA wrong_direction actual=WrongDirection expected=WrongDirection\nPASS wrong_direction\nDATA unsupported_format actual=UnsupportedFormat expected=UnsupportedFormat\nPASS unsupported_format\nPASS invalid_rate_rejected\nMODE time\nDATA corrected_send_low actual=992 expected=992\nPASS corrected_send_low\nDATA corrected_send_high actual=996 expected=996\nPASS corrected_send_high\nDATA delay_low_ms actual=22 expected=22\nPASS delay_low_ms\nDATA delay_high_ms actual=30 expected=30\nPASS delay_high_ms\nDATA raw_delay_low actual=-3 expected=-3\nPASS raw_delay_low\nDATA causal_feasible_low actual=0 expected=0\nPASS causal_feasible_low\nDATA causal_feasible_high actual=5 expected=5\nPASS causal_feasible_high\nDATA wall_clock_adjustment actual=-300 expected=-300\nPASS wall_clock_adjustment\nPASS different_instance_rejected\nMODE pressure\nDATA core_equivalents actual=1 expected=1\nPASS core_equivalents\nDATA machine_cpu_percent actual=25 expected=25\nPASS machine_cpu_percent\nDATA queue_full_seconds actual=20 expected=20\nPASS queue_full_seconds\nDATA expanded_queue_seconds actual=120 expected=120\nPASS expanded_queue_seconds\nDATA drain_seconds actual=10 expected=10\nPASS drain_seconds\nDATA balanced_queue_stays actual=300 expected=300\nPASS balanced_queue_stays\nPASS cpu_generation_guard\nMODE diagnose\nDATA case_A_first_boundary actual=EndpointMismatch expected=EndpointMismatch\nPASS case_A_first_boundary\nDATA case_B_resource_boundary actual=ResourceDenied expected=ResourceDenied\nPASS case_B_resource_boundary\nDATA early_negative_evidence actual=NoProcess expected=NoProcess\nPASS early_negative_evidence\nDATA case_C_underflow_ms actual=15 expected=15\nPASS case_C_underflow_ms\nDATA case_C_queue_full actual=20 expected=20\nPASS case_C_queue_full\nDATA case_C_expanded_queue actual=70 expected=70\nPASS case_C_expanded_queue\nDATA remote_completed_low actual=425 expected=425\nPASS remote_completed_low\nDATA remote_completed_high actual=435 expected=435\nPASS remote_completed_high\nDATA receive_after_completion_low actual=15 expected=15\nPASS receive_after_completion_low\nDATA receive_after_completion_high actual=25 expected=25\nPASS receive_after_completion_high\nPASS end\n",
+        "stderr": "",
+        "published_expected_output_matched": true
+      }
+    ]
+  },
+  {
+    "topic": "troubleshooting",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/troubleshooting-maintenance-lab/TroubleshootingMaintenanceLab.csproj (in 62 ms).\n  TroubleshootingMaintenanceLab -> <temporary>/troubleshooting-maintenance-lab/bin/Debug/net10.0/TroubleshootingMaintenanceLab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.03\n",
+    "source_sha256": {
+      "Program.cs": "6ecc52ed28b9da1a1e6d596dec9585e12eb749c21676e574dedae129c2870811"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "all"
+        ],
+        "exit_code": 0,
+        "stdout": "MODE audio\nnormal: control=True produced=3 sent=3 received=3 accepted=3 late=0 played=3 energetic=3 lastRms=1000\nPASS audio_normal\nroute: control=True produced=3 sent=3 received=0 accepted=0 late=0 played=0 energetic=0 lastRms=0\nPASS audio_route\nold-session: control=True produced=3 sent=3 received=3 accepted=0 late=0 played=0 energetic=0 lastRms=0\nPASS audio_old-session\nzero: control=True produced=3 sent=3 received=3 accepted=3 late=0 played=3 energetic=0 lastRms=0\nPASS audio_zero\nlate: control=True produced=3 sent=3 received=3 accepted=3 late=3 played=0 energetic=0 lastRms=0\nPASS audio_late\nmute: control=True produced=3 sent=3 received=3 accepted=3 late=0 played=0 energetic=0 lastRms=1000\nPASS audio_mute\nPASS receive_is_not_accept\nPASS play_is_not_signal\nMODE observer\nobserver-off: actualReceived=3 recordedReceived=0 energetic=3\nPASS missing_record_not_missing_action\nMODE experiment\nload=1 verbose=False latency=20 late=False\nPASS factorial_1_False\nload=1 verbose=True latency=30 late=False\nPASS factorial_1_True\nload=2 verbose=False latency=35 late=False\nPASS factorial_2_False\nload=2 verbose=True latency=55 late=True\nPASS factorial_2_True\nMODE timeline\nraw=-20 corrected=[25,35]ms\nPASS offset_not_negative_transport\nPASS join_full_identity\nMODE cross-layer\nptt guarded=[80,100] eager=[0,20,40,60,80,100]\nPASS ptt_waits_for_ready_and_stops_on_release\nptt device-accepted=[80,100]\nPASS eager_drops_head_at_device\nPASS old_route_result_does_not_promote_current\nPASS current_route_result_applies\nMODE regression\nPASS repair_positive\nPASS repair_stale_negative\nPASS repair_mute_negative\nPASS repair_deadline_negative\nPASS repair_target_isolation\nPASS all selected scenarios\n",
+        "stderr": "",
+        "published_expected_output_matched": true
+      }
+    ]
+  },
+  {
+    "topic": "voip",
+    "sdk": "10.0.401",
+    "build_exit_code": 0,
+    "build_output": "  Determining projects to restore...\n  Restored <temporary>/voip-maintenance-lab/voip-maintenance-lab.csproj (in 62 ms).\n  voip-maintenance-lab -> <temporary>/voip-maintenance-lab/bin/Debug/net10.0/voip-maintenance-lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.00\n",
+    "source_sha256": {
+      "Program.cs": "fdca3a28a9dfc245a6690498d92085b91a9046d13ccd6670c6009f8f54ec87b3"
+    },
+    "runs": [
+      {
+        "arguments": [
+          "<temporary-output>"
+        ],
+        "exit_code": 0,
+        "stdout": "PCM: rate=8000, channels=1, bits=16, blockAlign=2, byteRate=16000\n20ms: 160 frames, 320 PCM bytes; PCMU would be 160 bytes\nPCMU ptime=10ms payload=80 packets/s=100 IPv4bit/s=96000\nPCMU ptime=20ms payload=160 packets/s=50 IPv4bit/s=80000\nPCMU ptime=40ms payload=320 packets/s=25 IPv4bit/s=72000\nJ after example = 15.439453125 RTP units = 1.929931640625 ms\nPASS: PCM lengths, WAV structure, clipping, packetization and playout deadlines. output=<temporary>/audio-output\n",
+        "stderr": "",
+        "published_expected_output_matched": null
+      }
+    ]
+  }
+]

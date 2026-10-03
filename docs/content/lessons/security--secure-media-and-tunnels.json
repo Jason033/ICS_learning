@@ -1,0 +1,254 @@
+{
+  "id": "secure-media-and-tunnels",
+  "topicId": "security",
+  "title": "安全媒體、VPN與保護邊界",
+  "intro": "通話使用TLS，不代表聲音一定加密；VPN已連上，也不代表所有路段與所有程式都被保護。本章分開信令、媒體、金鑰協商與隧道，讓你能畫出哪段受到什麼保護以及解密後誰仍可讀資料。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "本章補SIP控制與RTP聲音的分工，不要求完整VoIP先修。",
+    "知道保密與完整性不同即可；本實驗只驗邊界模型和資料量，不實作或部署SRTP/VPN。"
+  ],
+  "goals": [
+    "區分SIP TLS、SRTP、DTLS-SRTP與VPN的保護位置。",
+    "推導金鑰/上下文/防重放爲何影響媒體可用性。",
+    "由區段、MTU和計數器辨識無聲而不先停安全驗證。"
+  ],
+  "sections": [
+    {
+      "heading": "信令與媒體的兩條資料路徑",
+      "kind": "concept",
+      "paragraphs": [
+        "SIP常用來建立、修改與結束通話，SDP描述媒體條件；RTP承載即時媒體取樣的封裝資料。它們可以經不同主機與位址。SIP走TCP/TLS與RTP走UDP並不矛盾，因為控制與聲音的責任和即時需求不同。",
+        "TLS保護那條TLS連線的資料，不自動保護另一組UDP RTP包。若從客戶端到SIP代理用TLS，代理可讀到它終止的明文信令；代理到下一跳是否再次加密需要另一份有效設定與觀測。說“整通電話TLS”會隱藏這些分段。",
+        "SRTP是RTP的安全處理，依實際profile提供媒體保密、訊息驗證與重放防護；SRTCP對RTCP控制資料提供對應保護。SRTP本身不完整定義如何取得雙方共享主金鑰，需其他金鑰管理方案。RTP Port存在或包看起來不像PCM，不足以證明安全協商完成。",
+        "保護邊界要從端點畫起，不從營銷名稱畫起。接收端解密後PCM可被應用、錄音模塊或設備處理，若這些地方日誌泄漏，網路加密無法替代。是否允許錄音或解密觀察由業務與授權決定，教材不取得公司通信金鑰或真人音訊。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/security-media-boundaries.svg",
+        "alt": "A到B三段路徑逐段檢查保護；信令TLS與媒體SRTP有不同上下文。",
+        "caption": "原創教學圖：每個框列出因果條件及可觀察位置，路徑不代表公司實際部署。"
+      }
+    },
+    {
+      "heading": "SRTP處理需要一致的安全上下文",
+      "kind": "mechanism",
+      "paragraphs": [
+        "安全上下文包含協定選定的金鑰、salt、演算法/profile、來源與序號相關狀態等。送出端按這些條件保護包；接收端必須選中匹配上下文才可驗證並還原資料。僅僅雙方都有“某一把key”不保證同方向、同會話或同profile匹配。",
+        "認證標籤讓接收端發現被改過或使用錯誤上下文的數據，驗證失敗不能把未可信內容當有效聲音。包在網卡被抓到，只說明抵達測點；若authFailed增加，應用的有效PCM仍可能爲零。不要爲了讓聲音出現直接關閉完整性檢查。",
+        "防重放會拒絕已經接受過的包或太舊的序號範圍，同時保留一定窗口允許合理亂序。序號擴展與rollover狀態需按協定處理，不能在重連時隨意重置成舊值並繼續用原鑰；不同會話、SSRC與方向的關聯各有規格。",
+        "媒體保護不提供業務發話權。某個端點持有會話鑰而能產生合法SRTP，仍未表示公司系統允許它TX、取得特定通道或改變設備參數。控制授權與媒體驗證各自需要檢查，不能拿authPassed媒體counter當PTT grant。"
+      ]
+    },
+    {
+      "heading": "金鑰協商與信令信任如何接起來",
+      "kind": "mechanism",
+      "paragraphs": [
+        "DTLS是在資料報傳輸上提供握手及安全機制的一類協議，DTLS-SRTP利用握手建立SRTP需要的金鑰與參數。實時媒體仍依SRTP格式處理，不是把所有RTP原封裝進普通DTLS application_data。協商失敗、角色衝突或profile不共通都可能使有效媒體未開始。",
+        "握手證書或指紋必須和可信對端身份關聯。若信令裏傳一個fingerprint，卻允許攻擊者改那條信令，就不能僅憑與改後的fingerprint匹配證明正確對端。具體身份綁定與信令保護要按實現規格覈對，不把“有fingerprint欄位”當完成認證。",
+        "另一方案可在SDP中描述安全金鑰，如SDES。這意味着信令內容可能含可用媒體鑰，所有能讀該部分的中間節點與日誌都成爲敏感範圍；信令TLS每跳解密處仍可看到。完整SDP直接公開會泄漏，不應作爲一般除錯分享格式。",
+        "實際SDK可能用不同方案與版本。文件裏的SecureMedia=true只是配置意圖，維護需查最終協商結果、實際profile、有效上下文世代和雙方錯誤。換成普通RTP後暫時能聽到，只支持安全路徑存在差異，不構成停止安全保護的完整修正。"
+      ]
+    },
+    {
+      "heading": "VPN/IPsec隧道保護哪一段",
+      "kind": "mechanism",
+      "paragraphs": [
+        "VPN建立一個受管理的虛擬連結或通道，把特定流量送入保護區段。IPsec架構用安全政策決定哪些包保護、繞過或丟棄，並以安全關聯SA描述金鑰與方向等狀態。隧道模式可將原IP包封在另一個外層包中；保護區段的端點可能是兩臺網關，未必是業務程式。",
+        "如果A到Gateway1是明文RTP，Gateway1到Gateway2保護，Gateway2到B又是明文，則只有中間傳輸段在該隧道內。Gateway看到內層明文，外部觀察者還能看到外層網關/長度/時序。VPN連線成功不表示A到第一網關或最後一段也保密。",
+        "哪些目標進VPN由路由與安全選擇條件決定。Split tunnel可只保護某些前綴；SIP目標在隧道中而RTP目的在另一前綴，可能只保護控制。實際源地址、目的、協議與方向需要同流觀察，不只看桌面VPN綠色圖標。",
+        "隧道帶來封裝額外byte與新的MTU條件，也可能影響來源、回程、NAT和延遲。保護與效能可以同時成立或出問題：加密不是包丟失的唯一原因，網關容量、路徑MTU或選路錯配都需獨立證據。教材不改真實VPN或拿生產網路做壓力測試。"
+      ]
+    },
+    {
+      "heading": "例題一：哪段信令與聲音仍可見",
+      "kind": "worked-example",
+      "paragraphs": [
+        "虛構通話路徑：信令A→Proxy→B，A到Proxy爲TLS，Proxy到B爲未加密TCP；媒體A→GW1→GW2→B爲普通RTP，中間GW1/GW2有IPsec隧道，其他區段未保護。沒有端到端SRTP，假設網關正常解密再轉送。",
+        "信令內容在A到Proxy鏈路受TLS保護，Proxy是終止端可讀；Proxy到B無相應保護。媒體內容在隧道中間段受其保護，A到GW1與GW2到B仍可被該路段能看明文的人讀取。必須逐段標保護者與解密點。",
+        "如果要求從A媒體產生到B接收都保密，該配置不足。選擇合法端到端媒體保護或讓所有必要區段滿足部署需求，仍需考慮網關是否必須轉換、錄音或橋接。不能只把SIP到B也改TLS就宣佈另一UDP聲音全部加密。",
+        "驗收在授權學習環境查有效配置/協商和各測點資料，確認期望邊界。普通Wireshark看到未知payload不能單獨證明SRTP：codec本來也不是人讀文字，抓取處或解碼支持也影響顯示。"
+      ]
+    },
+    {
+      "heading": "例題二：隧道額外長度與MTU",
+      "kind": "worked-example",
+      "paragraphs": [
+        "教學模型鏈路MTU1500byte，外層封裝固定增加80byte，內層已有IPv4/UDP/RTP總頭40byte，音訊payload1460byte。因此內層總1500，再封裝1580超過外層MTU80。這裏80爲給定模型，不是所有IPsec實際開銷。",
+        "若這條模型策略不允許外層分片且路徑不能傳1580，會需要降低內層有效長度或依真實PMTU機制處理。可用內層最大1500−80=1420，扣40頭後payload至多1380。這從各層byte相加得出，而不是隨意把Port換一個。",
+        "正常20ms G.711 payload160byte，內層200加封裝80共280，遠低1500；因此本條件下不能用MTU解釋所有小語音包失敗。若僅大設置訊息或其他流失敗，要對比實際包長與協定差異，不拿一個最大包例套小媒體。",
+        "修正依據實際封裝、profile、網路版本與路徑MTU，驗大小包與必要錯誤提示，保留安全保護。不以教材1380作爲公司固定推薦，真實ESP還涉及padding/tag/外IP/NAT封裝等可變條件。"
+      ]
+    },
+    {
+      "heading": "讀C#：逐段保護結果不能用any替代all",
+      "kind": "code-reading",
+      "paragraphs": [
+        "LabSegment記錄名稱和Confidential欄位，AllRequiredSegmentsProtected檢查所有要求保護的區段。All是在給定集合每項都true才成立；Any只要某段保護便返回true，會把“中間VPN”誤當“全部受保護”。真正保護資料來源必須來自核對後的有效配置，不能客戶端自己填true。",
+        "空集合對All可返回true是一般集合邏輯，但不表示沒有路徑就算安全；本模型先要求Count>0。這能教你讀隱藏邊界：一個只寫segments.All的檢查如果沒先確認實際路徑資料，可能在收集失敗時誤報完整。",
+        "模型也給兩個通信方向獨立安全上下文ID。A→B與B→A不自動共用同一鑰/序號狀態，具體協議由棧處理。純模型只比較給定profile/contextVersion是否一致，不實現密碼演算法與SRTP的序號/rollover細節。",
+        "讀公司代碼時追SecureMedia設定進入何處、協商事件何時建立context、authFailed如何報告、重連何時釋放舊context。把“配置已啓用”與“合法包被驗證”分開，可定位爲何SIP已接通但有效媒體爲零。"
+      ],
+      "code": {
+        "title": "邊界檢查，純Lab數據",
+        "text": "static bool AllRequiredSegmentsProtected(IReadOnlyList<LabSegment> path) {\n    return path.Count > 0 && path.All(segment => segment.Confidential);\n}\n// 不能以path.Any(...)或VPNConnected一個bool替代全路徑。"
+      }
+    },
+    {
+      "heading": "觀測安全媒體的有效狀態",
+      "kind": "maintenance",
+      "paragraphs": [
+        "維護資料可包含協商完成、profile、context版本、包接收數、驗證成功/失敗數與解碼成功數，避免記錄金鑰本體。Counters要同實例/同上下文差分；重連後累計重置不是突然沒有壞包。雙方profile名稱相同也需確認方向與實際鑰世代。",
+        "抓包先標位置：外隧道看外IP、隧道內看原流、端點解密之後看應用數據。所能觀察的欄位有別，RTP一些頭或流量metadata可能仍可見，保護profile亦有條件。不能聲稱SRTP把每個頭欄位一律完全隱藏。",
+        "若文件表示DTLS handshake completed但媒體authFailed持續增長，查SDK如何派生/安裝上下文與會話切換，不把錯誤歸爲codec不能播放。反之authPassed與decodedFrames正常而輸出無聲，則查PCM端點與設備，這已經跨過媒體安全邊界。",
+        "診斷可能需要合法解密key，但此教材不收集公司會話鑰或個人通話。先用摘要計數與合成數據建立機制，實際授權觀測依工作政策；公開資料不含SDES鑰、PFX密碼或完整Token。"
+      ]
+    },
+    {
+      "heading": "故障分支：收到SRTP但一邊無聲",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "病例A到B媒體無聲，B到A正常。候選A方向包沒到、B安全context不符、C解碼/播放問題。B網卡接收1000個A包，應用authPassed=0、authFailed=1000，方向A→B協商profile與B安裝版本不一致。",
+        "這把主要斷點定位驗證前/過程中，C的有效解碼輸入尚未建立。補證據發現重連後A用contextV2而B保留V1；B→A有自己的新上下文所以正常。雙向不對稱可由不同方向生命週期解釋，不用先怪麥克風。",
+        "有限修正接收端同會話的context安裝與舊版本釋放，並確保晚到V1包不會更新V2統計或接受。實際鑰派生交給SDK/協議棧，不在應用自行拼nonce或強行跳過auth tag。",
+        "迴歸新會話合法包通過、舊包/重複包按規格拒絕、兩個方向都有效解碼，最後再驗播放。模型只教版本/邊界邏輯，真正SRTP加密、序號拓展與SDK事件需實機覈對。"
+      ]
+    },
+    {
+      "heading": "實作：保護區段、方向與開銷",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- boundaries。模型先給[unprotected,protected,unprotected]三段，應判整體false；全true才true，空路徑仍false。它不搭建VPN、不產生SRTP或請求網路金鑰。",
+        "把All錯改Any，部分保護反例應FAIL；還原再執行。另在給定MTU1500/封裝80/內頭40計算payload1380與實際280byte小語音，確認長度由輸入推得，不把固定常數當所有協議規格。",
+        "把A→B context從V2改V1而B期望V2，模型應拒絕，同時B→A匹配仍可接受。每方向只有改動一條，觀察無聲不必對稱；只改codec名字不會修context不符。",
+        "驗收能畫出每段起止、保護方式、解密點與下一份證據。真實VPN/SRTP演算法協商、安全profile或公司SDK未被這個邊界模型驗證；完整部署要按實際版本和安全政策。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "SIP使用TLS能證明RTP聲音也加密嗎？",
+      "answer": [
+        "不能。信令連接與RTP媒體可以是兩條不同路徑和協定。",
+        "查媒體協商、安全profile和有效上下文，逐段標解密點；SIP TLS只覆蓋相應連接。",
+        "驗收媒體與信令分別成立，不用TLS綠色狀態替所有數據做結論。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "SRTP爲什麼還需要金鑰管理？",
+      "answer": [
+        "SRTP負責媒體保護，但雙方如何取得合適共享祕密與身份關聯需要其他機制。",
+        "DTLS-SRTP等方案把握手和媒體上下文連起來，不能單寫一個key字串就保證正確。",
+        "檢查實際方案、方向、profile與版本，模型不代替密碼協議棧。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生路徑四段僅第2/3在VPN，普通RTP無SRTP。第1/4可以宣稱保密嗎？",
+      "answer": [
+        "給定保護只覆蓋中間隧道，入口與出口段沒有相應媒體保護。",
+        "網關解密/封裝點及外部元數據仍有可見性，VPN成立不延伸到所有端點。",
+        "按需求配置必要邊界並驗證有效狀態，不只檢查VPNConnected。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生MTU1400，固定封裝96，內頭44，payload1300。總長與可用payload？",
+      "answer": [
+        "內層1344，外層1440，比1400超40。",
+        "最大內層1304，扣44頭後最大payload1260；數字只適用給定開銷模型。",
+        "確認真實profile與PMTU/分片政策，再驗大小包，不復制1260作爲公司固定值。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：收500包、authFail500、decoded0、A→B contextV3接收V2。先換喇叭嗎？",
+      "answer": [
+        "有效媒體在驗證處尚未建立，給定context版本不符足以解釋auth失敗。",
+        "查重連安裝與會話關聯，正常更新並釋放舊context；不關閉tag驗證。",
+        "合法新包通過，舊/重複包拒絕後再驗解碼與播放，換喇叭不修這層。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：authPass和decodedFrames穩定，錯誤是playback WrongDirection。先查哪層？",
+      "answer": [
+        "安全驗證與解碼已在給定測點成立，當前失敗在本地播放端點/方向。",
+        "查實際端點ID、方向與模式，不以profile切換修聲卡選擇。",
+        "原安全條件不變重測開啟/提交與實體輸出，保留錯方向拒絕。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "收到fingerprint欄位並匹配是否自動可信？",
+      "answer": [
+        "匹配只把握手鑰/證書與那個欄位關聯，欄位自身必須來自可信且受保護身份流程。",
+        "攻擊者若能改信令可同時換自己的fingerprint，單純匹配不足確認正確對端。",
+        "覈對實際身份綁定與信令信任，不把存在欄位當全部認證通過。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "看到UDP payload不像文字可以說SRTP生效嗎？",
+      "answer": [
+        "不能。codec、二進位格式和抓取/解碼位置也會呈現不可讀內容。",
+        "用協商結果、實際profile、context與驗證計數補證據，不靠外觀。",
+        "在獲准環境驗證保護邊界與合法包處理，公開報告不含金鑰或真人音訊。"
+      ]
+    }
+  ],
+  "recap": [
+    "每段起止和解密位置決定保護範圍。",
+    "金鑰、profile、方向與會話狀態共同形成安全上下文。",
+    "驗證成功、解碼、播放和業務授權需不同證據。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3711：SRTP完整性及重放保護",
+      "url": "https://www.rfc-editor.org/rfc/rfc3711.html"
+    },
+    {
+      "label": "IETF RFC 8446：TLS 1.3 握手及保護範圍",
+      "url": "https://www.rfc-editor.org/rfc/rfc8446.html"
+    },
+    {
+      "label": "IETF RFC 5764：DTLS-SRTP與金鑰/媒體分工",
+      "url": "https://www.rfc-editor.org/rfc/rfc5764.html"
+    },
+    {
+      "label": "IETF RFC 4301：IPsec政策與保護範圍",
+      "url": "https://www.rfc-editor.org/rfc/rfc4301.html"
+    },
+    {
+      "label": "IETF RFC 4303：ESP封裝及安全關聯",
+      "url": "https://www.rfc-editor.org/rfc/rfc4303.html"
+    },
+    {
+      "label": "IETF RFC 4568：SDP安全描述及祕密範圍",
+      "url": "https://www.rfc-editor.org/rfc/rfc4568.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 通訊資安觀念追讀專案",
+      "path": "./assets/labs/security-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 boundaries，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 boundaries 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

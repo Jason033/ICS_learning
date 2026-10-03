@@ -1,0 +1,55 @@
+{
+  "method": "Actual temporary source copies compiled independently; official source preserved. Negative cases must exit nonzero with FAIL.",
+  "sdk": "10.0.401",
+  "cases": [
+    {
+      "mutation": "hostname-bypass",
+      "mode": "tls",
+      "exitCode": 1,
+      "stdout": "MODE tls\nPASS trusted_chain_at_fixed_2030_time\nPASS san_name_matches\n",
+      "stderr": "FAIL InvalidOperationException: wrong_host_rejected\n"
+    },
+    {
+      "mutation": "eku-bypass",
+      "mode": "tls",
+      "exitCode": 1,
+      "stdout": "MODE tls\nPASS trusted_chain_at_fixed_2030_time\nPASS san_name_matches\nPASS wrong_host_rejected\nPASS server_usage_matches\n",
+      "stderr": "FAIL InvalidOperationException: client_only_usage_rejected\n"
+    },
+    {
+      "mutation": "partial-path-accepted",
+      "mode": "boundaries",
+      "exitCode": 1,
+      "stdout": "MODE boundaries\n",
+      "stderr": "FAIL InvalidOperationException: partial_tunnel_not_entire_path\n"
+    },
+    {
+      "mutation": "inclusive-cutoff",
+      "mode": "rotation",
+      "exitCode": 1,
+      "stdout": "MODE rotation\nPASS old_before_overlap\nPASS new_before_start_rejected\nPASS both_at_start\nPASS old_before_cutoff\n",
+      "stderr": "FAIL InvalidOperationException: old_at_cutoff_rejected\n"
+    },
+    {
+      "mutation": "signed-old-version-accepted",
+      "mode": "rotation",
+      "exitCode": 1,
+      "stdout": "MODE rotation\nPASS old_before_overlap\nPASS new_before_start_rejected\nPASS both_at_start\nPASS old_before_cutoff\nPASS old_at_cutoff_rejected\nPASS new_at_old_cutoff\nPASS mac_with_local_key\nDATA known_id_uses_trusted_key actual=Accepted expected=Accepted\nPASS known_id_uses_trusted_key\nDATA unknown_key_id_rejected actual=UnknownKey expected=UnknownKey\nPASS unknown_key_id_rejected\nDATA known_key_before_start_rejected actual=KeyOutsideWindow expected=KeyOutsideWindow\nPASS known_key_before_start_rejected\nDATA known_key_at_cutoff_rejected actual=KeyOutsideWindow expected=KeyOutsideWindow\nPASS known_key_at_cutoff_rejected\nPASS changed_bytes_rejected\nPASS signed_new_manifest\n",
+      "stderr": "FAIL InvalidOperationException: signed_old_version_rejected\n"
+    },
+    {
+      "mutation": "replay-state-poisoning",
+      "mode": "replay",
+      "exitCode": 1,
+      "stdout": "MODE replay\nDATA short_header actual=NeedHeader expected=NeedHeader\nPASS short_header\nDATA length_before_allocation actual=TooLong expected=TooLong\nPASS length_before_allocation\nDATA partial_body actual=NeedBody expected=NeedBody\nPASS partial_body\nDATA complete_frame actual=Complete expected=Complete\nPASS complete_frame\nPASS sequence_100\nPASS sequence_102\nPASS out_of_order_101\nPASS duplicate_102_rejected\nPASS old_70_rejected\nDATA bad_high_sequence actual=BadMac expected=BadMac\nPASS bad_high_sequence\nDATA highest_not_poisoned actual=10000 expected=102\n",
+      "stderr": "FAIL InvalidOperationException: highest_not_poisoned\n"
+    },
+    {
+      "mutation": "whole-request-audit",
+      "mode": "audit",
+      "exitCode": 1,
+      "stdout": "MODE audit\nPASS necessary_read_allowed\nPASS unnecessary_write_rejected\nPASS parent_search_required\n",
+      "stderr": "FAIL InvalidOperationException: audit_no_password\n"
+    }
+  ]
+}

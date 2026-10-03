@@ -1,0 +1,275 @@
+{
+  "contentVersion": 2,
+  "intro": "概念地圖的目的，是知道一次操作有哪些不同工作，以及每個觀察能證明哪一段。這篇從程式、物件、呼叫、事件、狀態與聲音資料的基本定義開始，建立一份可完整追讀的虛構模型；你不需要先學完其他主題，也不會被要求把未知公司架構硬拼成同一套系統。",
+  "prerequisites": [
+    "不需先完成其他主題；本章會補程式、物件、事件、狀態與樣本等必要定義。",
+    "知道使用者操作有預期結果即可；Lab角色與資料完整提供，與公司實際架構分開。"
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含必要名詞定義、完整虛構契約及兩個逐步例題；操作需預測、跑基準、修改一項、反證並復原；作答需整理資料與驗收範圍。尚待個人計時校準。"
+  },
+  "goals": [
+    "區分程式、處理程序、物件、方法、事件和狀態，解釋一次操作的正向與反向路徑。",
+    "將控制請求、媒體數值與實體效果分開，從方向與身份對齊觀測。",
+    "用完整Lab輸入追出控制完成但聲音不可用的不同原因，選擇下一個證據。"
+  ],
+  "sections": [
+    {
+      "heading": "程式不是一條線：先分清執行中的東西",
+      "kind": "concept",
+      "paragraphs": [
+        "程式（program）是描述行為的指令與資料定義；作業系統執行它時，建立處理程序（process，也稱行程）。同一個程式可以執行成多個處理程序，每個有自己的記憶體與執行資源。執行緒（thread）則是處理程序中實際執行指令的路徑。畫面、背景收送與事件處理可能共處一個處理程序，也可能分到多個；不能因畫面看起來是同一套軟體，就認定全部工作在同一條執行緒。",
+        "類別是物件的型別定義，物件是執行時的一個實例。兩個LabAdapter都用同一類別，但a與wrong是兩個獨立實例，擁有不同事件訂閱與資料。變數儲存數值或參照；參照讓另一段程式能找到同一個物件，不等於複製一份新裝置。看公司程式時，類別名稱回答可做甚麼，實例關係回答這次到底由誰做。",
+        "方法是一段可被呼叫的工作；參數是方法宣告的輸入位置，引數是呼叫時傳入的實際值，回傳值給本次呼叫結果。事件是物件向已訂閱者發出的通知，它不一定發生在方法回傳以後，也不自動建立新執行緒。狀態是程式記住的條件或工作進度，如Pending、Completed、session或Ready；狀態名需要契約解釋，不能看到字樣就自動想像物理裝置行為。"
+      ]
+    },
+    {
+      "heading": "控制、資料、狀態與實體效果回答不同問題",
+      "kind": "concept",
+      "paragraphs": [
+        "控制描述要做甚麼，例如設音量40或建立通話；資料是需要處理的內容，例如PCM樣本、命令位元組或封包payload；狀態描述目前認為工作到了哪裡；實體效果則是裝置真的輸出、發射或被人聽見。這些事互相關聯，但不是同一份事實。",
+        "按下按鈕先形成使用者意圖，程式驗證輸入、建立請求、經adapter傳送並等待完成，狀態和畫面再更新。聲音可能從另一個來源物件經編碼、傳輸、解碼與播放，不經過原按鈕呼叫堆疊。Completed控制可以是聲音路徑的前提，卻不是樣本已存在、方向正確或裝置可用的保證。",
+        "一個可理解架構圖應為每條箭頭寫動作及內容。例如controller→adapter是Send(LabRequest)，adapter→controller是Completed事件，media→output是short[]樣本。只畫「A連B」會把方法呼叫、事件訂閱和音訊流混在一起，讀者仍不知道該去哪裡查沒有聲音。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/big-picture-control-media.svg",
+        "alt": "controller對adapter正向Send，adapter反向Completed；媒體另外核對附著session、Ready與樣本，實體效果仍未測。",
+        "caption": "完整Lab角色與數值管線；控制完成、媒體接受、實體效果各有不同證據。圖中控制與媒體並非公司既有拓撲。"
+      }
+    },
+    {
+      "heading": "方向與身份把同一次工作連起來",
+      "kind": "mechanism",
+      "paragraphs": [
+        "控制的正向路徑是要求向外傳，反向路徑是結果回來；媒體又有A→B及B→A兩個方向。按鍵所在端不一定是故障傳送端：A聽不到B，首先研究B→A，不是A→B。對控制與資料各畫一條有方向的路徑，才可選對觀測點。",
+        "身份是將事件連回工作的方法。本Lab用LabKey(Request,Session,Target)：Request區分操作，Session區分觀察世代，Target區分裝置B/C。R1/session1/B和R1/session1/C不同；重連後R1/session2/B也不能套成舊R1的同一件事。實際系統可能用不同欄位，但必須查其作用範圍，不能拿一個文字名稱串起全部紀錄。",
+        "控制器的session與媒體繫結在本例刻意使用同一個當前值，方便對齊；這是我們定義的Lab契約，並非所有SDK都如此。真實系統可能有通話ID、transport session和媒體SSRC等不同身份，需明確對映而不是強令數字相等。地圖的作用是顯示這些關係與缺口。"
+      ]
+    },
+    {
+      "heading": "完整Lab角色卡：每個人擁有哪種責任",
+      "kind": "mechanism",
+      "paragraphs": [
+        "本章只有三個實際物件：LabController c管理B的工作與Session1；LabAdapter a儲存本地Send嘗試並發Completed通知；LabMedia media儲存附著session和計算樣本RMS。Console取代畫面入口與顯示，所有工作在一個處理程序、單執行緒，不連外部網路。B是目標標籤，不是接上的真裝置。",
+        "SubmitLevel合法值0–100；先建Pending再Send，Send回傳true只表示本Lab接受請求。a.Emit同LabKey的Completed後，c把該工作改Completed。media.Output要求附著session等於current、ready=true且至少有一個樣本，才計算均方根並回傳true。回傳true只是模型輸出呼叫成功，沒有喇叭或真人驗收。",
+        "RMS均方根是把樣本平方、平均再開根號。例如+600/−600平方都360000，平均360000，開根號600；全零則0。非零雜訊也可能RMS很高，所以RMS不是語意清晰度。此模型用兩個代表樣本演示數值關係，不包RTP、不定義實際取樣率或20ms幀，不能拿兩樣本長度算真實通話頻寬。"
+      ],
+      "table": {
+        "caption": "全表都是本文Lab角色；責任與物件並非公司既有分層。",
+        "headers": [
+          "角色",
+          "持有資訊",
+          "正向行動",
+          "反向/結果"
+        ],
+        "rows": [
+          [
+            "Controller c",
+            "B、Session1、States",
+            "建立LabRequest",
+            "訂閱a.Completed並套用"
+          ],
+          [
+            "Adapter a",
+            "Requests、Subscribers",
+            "接受Send嘗試",
+            "Emit LabCompletion"
+          ],
+          [
+            "Media media",
+            "AttachedSession、LastRms",
+            "接受short[]數值",
+            "模型輸出bool及RMS"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "例題一：控制已完成，舊媒體仍不能使用",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入SubmitLevel(40)得到(R1,1,B)，States先Pending，a.Send接受後仍Pending；a.Emit同身份Completed後States改Completed、Applied1。再令media.Attach(0)，Output(current=1,ready=true,samples=[600,−600])，附著0不符當前1，所以回傳false，並未進入RMS計算。",
+        "這不是控制回報說謊，而是控制完成與媒體繫結不同責任。已知控制當前工作完成，卻沒有當前媒體可用的證據。下一觀察應查media持有哪個session、何時建立及重連後是否重綁，而不是先改控制timeout或把Completed改成其他名字。",
+        "改media.Attach(1)後，相同Output條件成立、RMS600、回傳true。再測Attached0仍應被拒，Ready=false仍應被拒。這是有限修正：恢復當前媒體繫結而保留隔離。實體聲音是否可用仍需要裝置與聽感證據，不能把這個Console結果報成公司通話恢復。"
+      ]
+    },
+    {
+      "heading": "例題二：三種沒有可用聲音的數值結果",
+      "kind": "worked-example",
+      "paragraphs": [
+        "使用同一當前session1與樣本[600,−600]。情境甲Attached0/Readytrue，Outputfalse；情境乙Attached1/Readyfalse，Outputfalse；情境丙Attached1/Readytrue但samples=[0,0]，Outputtrue/RMS0。三者都沒有可用非零內容，但甲是繫結世代、乙是狀態前提、丙是資料內容。",
+        "先觀測AttachedSession與ready，可把甲乙分開；看Outputbool與實際RMS，可把丙與被guard拒絕的案例分開。LastRms只在Output通過guard時更新，拒絕時保留之前值，所以拒絕後看到舊RMS600不能說本次已輸出600。觀察數值前必須理解探針的更新條件。",
+        "若另有情境丁Outputtrue/RMS600但實體無聲，模型只證實已接受非零樣本；接下來研究作業系統裝置、播放回傳與實體路徑。資料來源不同，應繼續對應邊界取證，不把示範的三個答案當窮盡全部公司故障。"
+      ]
+    },
+    {
+      "heading": "圖如何幫助理解，而非只讓檔案看起來完整",
+      "kind": "concept",
+      "paragraphs": [
+        "先用角色圖表示誰持有誰，再用動態順序說一次操作如何發生。角色圖上controller借adapter參照並訂閱事件，動態圖上Submit→Pending→Send→Emit→OnCompleted→Apply。二者回答不同問題；畫了訂閱線不代表這次事件已發生，畫了呼叫線也不代表被呼叫的實例是目前訂閱的那個。",
+        "媒體圖則標來源數字、附著session、Ready guard與模型輸出，另畫後續實體層為未測。把控制成功和媒體成功分開，不是說它們永不相關，而是讓關聯以有定義的前提、身份與操作表達。若真實系統有橋接或混音，新增該處責任與資料格式，而非把所有箭頭塞進一個「通訊模組」。",
+        "地圖是可選整合入口，不是其他主題的必修先修。你可以只學RS-232或無線電，再在需要理解某個跨層責任時查這張圖。沒有關聯的主題不必硬連；新增主題先明確它自己要解決甚麼問題，必要時才增加有意義的介面關係。"
+      ]
+    },
+    {
+      "heading": "讀碼：一個結果不是全套系統的成功",
+      "kind": "code-reading",
+      "paragraphs": [
+        "先沿SubmitLevel與Completed事件跟完控制結果，再獨立追media。控制器States字典的key必須是同request/session/target；媒體Output只檢查本模型定義的附著與Ready，不自動查控制States。兩條路由呼叫者在例題中協調，這個關係不藏在方法名字裡。",
+        "片段使用專案已定義Lab型別，並非廠商SDK。a.Emit是測試者注入完整結果，不是網路收包；media.Output是數值處理，不是Windows播放。讀者應標記每一步真正在驗收哪個層，再決定company mapping需要補哪份契約。"
+      ],
+      "code": {
+        "title": "paths模式的核心，取自可編譯獨立專案",
+        "text": "var key = c.SubmitLevel(40);\na.Emit(key, \"Completed\");\nvar media = new LabMedia();\nmedia.Attach(0);\nbool old = media.Output(c.Session, true, new short[] { 600,-600 });\n// c.States[key] is Completed; old is false.\nmedia.Attach(c.Session);\nbool current = media.Output(c.Session, true, new short[] {600,-600});\n// current is true; RMS is 600.\n// Physical playback is outside this Lab."
+      }
+    },
+    {
+      "heading": "實作：把每條箭頭寫成可以查證的工作",
+      "kind": "lab",
+      "paragraphs": [
+        "使用自己的.NET 10獨立專案，先預測paths四項斷言，再執行dotnet run -- paths。畫角色圖和一張本次操作順序，寫出key、States、AttachedSession、Ready、Output及LastRms。不要只貼PASS；每項欄位都說明更新的位置與條件。",
+        "在暫存副本只移除AttachedSession guard，預期control_complete_media_stale失敗；另一次只移除Ready，預期media_requires_ready失敗。故障注入驗證測試會識別兩種不同保護，修改前保留source，復原後all再通過。",
+        "變因改samples為[300,−300]，預期非零輸入RMS300，數量/身份不變；再改全零，Outputtrue但RMS0。最後寫可驗收層與尚缺的實體現象證據。沒有連線公司裝置，這份產物是理解與追碼地圖，不是正式拓撲或故障修復報告。"
+      ]
+    },
+    {
+      "heading": "診斷分支：畫面成功但遠端無聲",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "給定畫面Completed、(R3,1,B)、media.Outputfalse。候選甲控制是另一target的完成、乙當前控制完成但媒體舊世代、丙media未Ready。先查完整key與States來源，而不是把畫面文字當真實控制結果；得到current身份(R3,1,B)確實已Apply，才排除甲。",
+        "新增media Attached0/current1/Readytrue，支持乙。修正當前繫結1後Outputtrue/RMS600；驗收舊0拒絕、未Ready拒絕、零樣本與非零樣本可區分。若新增資料反而Attached1/Readyfalse，應追Ready的狀態來源，不照同一答案固定改繫結。",
+        "若Company日誌只說「success」而沒有身份、階段與探針，先補能分開候選的最小觀測。不憑RCSCall或iCallAPI名字推定它們究竟處理控制還是音訊；查實際引數、建構、呼叫與回報，再將證據填入地圖。"
+      ]
+    },
+    {
+      "heading": "把所學帶回公司程式的正確方式",
+      "kind": "maintenance",
+      "paragraphs": [
+        "對一項小功能先保留入口、資料轉換、請求身份、外部邊界、結果處理、媒體方向和資源責任。每一段寫一條從原始碼或執行取得的證據，不需要一次弄懂全部程式。已確認的關係用實線、待確認的關係寫具體問題，不用猜想補成漂亮架構。",
+        "下一步依你手上的故障位置查相應主題：端點查網路、串流邊界查Socket、通話語義查VoIP/Ozeki、裝置控制查PTT/串列。這是按問題選工具，不是強制把全部內容串成公司必備系統。共同能力是說清楚工作、證據和邊界，讓另一個人能重新檢查你的結論。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "同一個LabAdapter類別建出a和wrong，為甚麼wrong.Emit不等於a.Emit？",
+      "answer": [
+        "類別定義相同不代表實例相同。每個物件有自己的事件訂閱與資料。",
+        "controller建構時借a並訂閱a，wrong的事件列表沒有該handler。",
+        "追實際建構與持有參照，不能靠class名字把兩物件畫成同一個節點。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "控制Completed、Outputtrue、RMS非零分別能說明甚麼？是否保證真人聽見？",
+      "answer": [
+        "Completed代表該控制契約的工作完成；Outputtrue代表Lab媒體前置成立並接受樣本。",
+        "RMS非零說數值有能量，不證明內容可懂；都未驗收真實裝置或人耳。",
+        "下一證據要沿對應輸出裝置與實體路徑取得，不能升級觀測層。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生current=6；甲Attached5/Readytrue/samples[400,−400]，乙Attached6/Readyfalse同樣本，丙Attached6/Readytrue/樣本全零。各Output和可觀察差別？",
+      "answer": [
+        "甲false因世代，乙false因Ready；兩者都不更新本次RMS，舊值不能當本次輸出證據。",
+        "丙true但RMS0，表明已接受全零數值。",
+        "觀測Attached與Ready先分甲乙，再用更新位置和樣本內容分丙；沒測真人聽感。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生樣本[300,−300,300,−300]，RMS是多少？若guard拒絕而LastRms仍600，可說本次內容幅度600嗎？",
+      "answer": [
+        "各平方90000，平均90000，開根號300。",
+        "guard拒絕時LastRms不更新，600可能是前次值，不屬本次樣本。",
+        "將probe值關聯身份與更新時點，報本次未到RMS計算，而不是非零輸出。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生身份(R8,3,B)、(R8,3,C)、(R8,4,B)。為甚麼不能按R8合併成一通工作？",
+      "answer": [
+        "目標B/C不同，session3/4不同，完整身份分三件事。",
+        "Request文字只在其定義作用範圍有意義，重連或多目標可復用。",
+        "先用完整身份分組，再談時間和成功；公司欄位不同需建立對映，不能直接貼Lab格式。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生條件：B能聽見A，A聽不到B；A來源計數100、B輸出100。這兩個數直接定位了故障方向嗎？",
+      "answer": [
+        "它們是A→B正常方向，並非B→A故障方向。",
+        "先取得B來源、B傳送、A接收/解碼/輸出的同身份資料。",
+        "正常方向只可縮小確實共享的段，不能代替故障方向驗收。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "畫面成功、媒體false；新增控制key=(R4,2,C)，使用者操作目標B。你先改media還是查控制關聯？",
+      "answer": [
+        "控制顯示與目標不符，先查畫面狀態更新的身份規則。",
+        "不能用C的完成作B控制已完成的前提；media結果需另按B身份取得。",
+        "修完整target關聯，回歸同request不同target不串，再沿媒體方向檢查，避免兩錯混修。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "媒體false，Attached與current都9、Readyfalse；另一人想取消全部guard。如何有限處理？",
+      "answer": [
+        "已排除本次世代不符，尚未Ready是已知未滿足前置，取消guard會繞過安全/狀態契約。",
+        "查Ready由哪個回報與條件建立，使用同身份證據分本地未更新或外部未準備。",
+        "恢復合法Ready後輸出可用，保留未Ready與舊世代拒絕，別以有輸出取代契約。"
+      ]
+    }
+  ],
+  "recap": [
+    "區分程式、處理程序、物件、方法、事件和狀態，解釋一次操作的正向與反向路徑。",
+    "將控制請求、媒體數值與實體效果分開，從方向與身份對齊觀測。",
+    "用完整Lab輸入追出控制完成但聲音不可用的不同原因，選擇下一個證據。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：C#事件、釋出者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "C4官方：不同範圍的結構與支持圖",
+      "url": "https://c4model.com/diagrams"
+    },
+    {
+      "label": "Microsoft：分散式追蹤的工作關聯",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/distributed-tracing-concepts"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab.zip",
+      "label": "下載完整概念地圖 C# 專案",
+      "description": ".NET 10 標準庫模型、操作說明與實際輸出；不連公司SDK、網路或實體裝置。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/Program.cs",
+      "label": "概念地圖 Program.cs",
+      "description": "本章追讀 paths 模式；Lab型別自行建立，不是廠商API。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/README.md",
+      "label": "模型環境、機制與驗收限制",
+      "description": "各模式輸入、預期、故障注入與復原；模型輸出不等於實體效果。"
+    }
+  ]
+}

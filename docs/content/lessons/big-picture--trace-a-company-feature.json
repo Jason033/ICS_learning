@@ -1,0 +1,301 @@
+{
+  "contentVersion": 2,
+  "intro": "讀陌生公司程式，不需要先記住所有類別。先選一項有明確輸入與結果的小功能，追出引數、實例、事件和狀態的實際路徑。這篇以完整Lab原始碼示範靜態搜尋與動態驗證各能證明甚麼，尤其處理事件在方法回傳前發生時，為何只看呼叫圖仍會漏掉問題。",
+  "prerequisites": [
+    "能辨識輸入與結果即可；本章會解釋欄位、局部變數、建構、參照與Dictionary等必要C#語法。",
+    "使用獨立Lab原始碼完成一次完整追讀，不要求先取得或編譯公司專案。"
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含必要名詞定義、完整虛構契約及兩個逐步例題；操作需預測、跑基準、修改一項、反證並復原；作答需整理資料與驗收範圍。尚待個人計時校準。"
+  },
+  "goals": [
+    "用定義、參照、建構與訂閱建立一項功能的原始碼索引，分清型別和實際物件。",
+    "沿引數、返回、事件與狀態逐步追碼，解釋同步回呼及Pending建立順序。",
+    "選擇能驗證實際分支的觀察與反例，交付有證據的功能說明而不是猜公司模組關係。"
+  ],
+  "sections": [
+    {
+      "heading": "先選一件能說清楚的工作",
+      "kind": "concept",
+      "paragraphs": [
+        "「讀懂整個系統」太寬，很難判斷自己真的理解到哪裡。先挑一項小功能，例如使用者輸入音量30，按下確認，期望目標B完成該設定。寫出入口、輸入、目標、預期、實際結果與觀測位置，讓後續搜尋有方向；目標不能只寫「找success」。",
+        "本Lab沒有畫面，Console呼叫c.SubmitLevel(30)作入口，a.CompleteDuringSend=true讓事件在Send內同步完成。你會從入口追到adapter和反向handler，再看States與Applied結果。所有名字、型別和契約都在Program.cs，讓讀者不靠公司上下文也能完成一次完整追讀。",
+        "對映公司程式時，畫面click handler可能只是入口，實際工作經過controller、service、wrapper或SDK；它們不一定按這些名字分層。把名稱當搜尋起點，依引數、呼叫與建構證據建立關係，才知道哪段真的負責驗證、外送、狀態與顯示。不要從RCSCall或iCallAPI字面自動推定依賴方向。"
+      ]
+    },
+    {
+      "heading": "讀C#所需的最小語法與資料生命週期",
+      "kind": "concept",
+      "paragraphs": [
+        "class中的欄位通常屬於每個實例，方法裡的局部變數只在該次呼叫上下文使用。readonly欄位表示建構後不能換成另一參照，但所指物件內部狀態仍可變化。建構函式中的this.adapter=adapter，左邊是當前物件欄位，右邊是呼叫者傳入的引數；它儲存同一個實例參照，不是new一份副本。",
+        "var讓編譯器依右側推斷型別，不表示執行時任意變成別的型別。States是Dictionary<LabKey,string>，方括號按完整key查或寫狀態；它不是按照第幾個元素取值的陣列。LabKey是record，因此預設比較它各欄位的值，兩個內容相同的key可關聯同一工作，不要求同一物件參照。",
+        "TryGetValue(key,out state)在找到時回true並給state，沒有時回false。||採用短路求值，前項已true就不再計算後項；所以沒有工作時可直接return，找到後再判斷是否Pending。++next先把計數加一併產生R1/R2文字。理解這些語法，才能解釋狀態為何更新或為何被忽略，而不是只背流程箭頭。"
+      ]
+    },
+    {
+      "heading": "建立原始碼索引：定義、參照與建構分開",
+      "kind": "mechanism",
+      "paragraphs": [
+        "查定義回答成員的程式碼在哪裡；查參照回答哪些地方可能使用它；查建構回答哪個執行實例得到哪些依賴；查訂閱回答反向通知交給誰。四種搜尋互補。看到Send有十個引用不代表這次都執行，看到某handler存在也不代表當前publisher已訂閱它。",
+        "對Lab索引：入口在trace模式；SubmitLevel定義在LabController；adapter.Send定義在LabAdapter；建構LabController(a,\"B\")儲存a/targetB；建構內a.Completed+=OnCompleted；a.Emit建立LabCompletion並Invoke；OnCompleted驗證身份和Pending後Apply。每項標檔案、成員和條件，比把全部原碼貼進報告更能支持維護。",
+        "如果公司欄位是interface，先查當次建構實際傳入哪個具體class，必要時在斷點看執行型別和參照。靜態函式簽名可能相同，具體實現的時序/錯誤不同。依賴注入是由外部給需要的物件，目的是可選擇與組織依賴；它不自動保證owner、版本、回呼執行緒或生命週期。"
+      ],
+      "table": {
+        "caption": "本Lab可在同一Program.cs定位，不把搜尋結果當已執行證據。",
+        "headers": [
+          "要回答的問題",
+          "查哪個位置",
+          "本例答案"
+        ],
+        "rows": [
+          [
+            "哪裡開始",
+            "trace模式SubmitLevel呼叫",
+            "level30、targetB"
+          ],
+          [
+            "用哪個adapter",
+            "LabController建構/readonly欄位",
+            "實際a物件"
+          ],
+          [
+            "結果交給誰",
+            "Completed+=與Emit Invoke",
+            "c.OnCompleted"
+          ],
+          [
+            "何時改狀態",
+            "handlerguard與States寫入",
+            "同身份Pending→Completed"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "同步方法、事件回呼與呼叫堆疊",
+      "kind": "mechanism",
+      "paragraphs": [
+        "呼叫堆疊是目前尚未返回的方法鏈。SubmitLevel呼叫Send，Send呼叫Emit，Emit同步Invoke OnCompleted時，堆疊裡同時保留這幾個方法。handler完成後回到Emit，再回Send，再回SubmitLevel。事件在這個模型沒有自動背景執行緒，也沒有強制等到最初方法回傳。",
+        "呼叫圖列可能呼叫哪些方法，不能單獨說明執行順序、具體實例或分支。事件訂閱是建立稍後可呼叫的關係，不是當下執行handler。動態時間/順序圖則描述這一次執行的先後，能顯示Callback出現在Send returned前；靜態圖和動態證據不能互相替代。",
+        "真實SDK可能在另一執行緒或任務派送通知，需查該版本契約與執行證據。同步/非同步是工作與呼叫者何時返回的關係，不能簡單等同單執行緒/多執行緒。本文只驗證單執行緒同步回呼，但把Pending先建立仍是理解並保護重入的重要順序。"
+      ]
+    },
+    {
+      "heading": "例題一：事件先完成，Send後回傳",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入目標B、Session1、level30、CompleteDuringSend=true。SubmitLevel先建立(R1,1,B)與Pending，再記錄Submit；Send儲存LabRequest並立即Emit。OnCompleted看到合法同身份Pending，改Completed、Applied從0到1，記錄Apply；最後Send回true，SubmitLevel記錄state=Completed。",
+        "實際Trace順序是Submit、Callback、Apply、Send returned。狀態在方法尚未返回前已經完成，符合契約。若維護者假定回傳之後才會有事件，就可能在Send後無條件改Pending，覆蓋真實終態；或者在Send後才建立條目，handler看不到工作而丟結果。",
+        "有限修正是先建立待處理記錄，並在回傳路徑只修改仍Pending且有明確需要轉移的工作，不能重置已完成狀態。回歸同時測同步與稍後Emit、重複結果、非法身份和關閉；只測手動稍後回報會漏掉這次時序條件。"
+      ],
+      "table": {
+        "caption": "邏輯順序，不量測真實時間；全部同一實例a與key(R1,1,B)。",
+        "headers": [
+          "順序",
+          "執行位置",
+          "狀態/計數"
+        ],
+        "rows": [
+          [
+            "1",
+            "Submit建Pending",
+            "Pending/Applied0"
+          ],
+          [
+            "2",
+            "Send→Emit→Callback",
+            "handler查到Pending"
+          ],
+          [
+            "3",
+            "handler Apply",
+            "Completed/Applied1"
+          ],
+          [
+            "4",
+            "Send回true",
+            "仍Completed/Applied1"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "例題二：同結果又到一次，為甚麼不重做",
+      "kind": "worked-example",
+      "paragraphs": [
+        "接續例題一，a.Emit相同(R1,1,B,Completed)再一次。handler入口仍會記錄Callback，但States已Completed，state!=\"Pending\"令它return，Applied仍1。回撥次數和應用次數不同；log出現兩行Callback不直接證明業務副作用執行兩次。",
+        "候選甲外部重複傳送，乙handler被重複訂閱，都可能產生多行入口；本模型這次是測試者Emit兩次，不是網路重傳。若真實系統要分甲乙，比較publisher接收訊息身份數、Invoke次數與handler進入數，再查訂閱生命週期。不能只刪重複log，因它還提供原因線索。",
+        "保護工作終態不重複應用是本Lab的約定，不保證外部裝置從未重複執行。如果Send被呼叫兩次，每次外部有副作用，本地Applied1仍不能證明外部只做一次。報告分別界定本地handler與遠端效果，必要時用外部冪等身份和查詢證據擴充套件。"
+      ]
+    },
+    {
+      "heading": "動態觀察怎樣補靜態閱讀的缺口",
+      "kind": "mechanism",
+      "paragraphs": [
+        "在入口斷點看level、target、session，在Send斷點看adapter實際實例，在OnCompleted看傳入key與States，能驗證本次走了哪條分支。條件斷點可只停某request或目標，減少無關資料；觀察最好圍繞具體候選，而不是在每行都暫停。",
+        "斷點暫停會影響外部時序，詳細log也可能增加耗時，所以動態觀察不是零成本真相。若問題與超期有關，可以用合適低侵入記錄或獨立計數，並記錄觀察開啟條件。本文邏輯順序沒有真實裝置期限，不能用它量SDK執行緒延遲。",
+        "只有一次執行仍不能覆蓋全部分支。例如這次同步Completed成立，不證明未知Result、錯target、重連或Dispose正確；這些需要不同輸入。靜態閱讀讓你找到候選保護和風險，動態用例讓你檢驗具體條件，兩者相互驗證而不各自成為保證。"
+      ]
+    },
+    {
+      "heading": "讀碼：先記Pending是由回呼契約推導",
+      "kind": "code-reading",
+      "paragraphs": [
+        "下面是原始碼中的關鍵順序；Trace只輔助呈現，不決定狀態。Pending在Send前，所以CompleteDuringSend能夠找到條目。Send返回後不把true寫成Completed，而讓事件終態決定業務進度；false路徑也僅在仍Pending時寫Rejected，不覆蓋可能已經完成的狀態。",
+        "讀handler時先圈身份/結果准入，再圈TryGetValue/Pending，最後圈真正寫狀態與Applied++。如果只搜「Completed」你可能看見十處文字卻漏掉守護條件；如果只看最後一行States=Result，就不懂哪些回報會被忽略。"
+      ],
+      "code": {
+        "title": "實際SubmitLevel與OnCompleted的核心順序",
+        "text": "States[key]=\"Pending\";\nTrace.Add($\"Submit target={target} session={Session} request={key.Request} level={level}\");\nbool accepted=adapter.Send(new LabRequest(key,level));\nTrace.Add($\"Send returned accepted={accepted} state={States[key]}\");\nif(!accepted && States[key]==\"Pending\")States[key]=\"Rejected\";\n\n// Inside OnCompleted:\nif(closed || value.Key.Session!=Session || value.Key.Target!=target) return;\nif(value.Result != \"Completed\" && value.Result != \"Rejected\") return;\nif(!States.TryGetValue(value.Key,out string? state) || state!=\"Pending\")return;\nStates[value.Key]=value.Result; Applied++;"
+      }
+    },
+    {
+      "heading": "實作：自己還原一次功能，而不是照答案畫圖",
+      "kind": "lab",
+      "paragraphs": [
+        "在獨立.NET10專案只看入口和型別宣告，先預測trace模式四個關鍵順序及Applied。再逐層跳到Submit、Send、Emit、handler，寫每層輸入/返回/狀態；執行dotnet run -- trace後對照真實Trace。最後畫角色關係圖與動態序列，兩張圖上的箭頭含義應各自明確。",
+        "暫存副本把States[key]=\"Pending\"移到Send之後。預期pending_before_callback失敗：同步handler進來時找不到工作，回傳後才Pending。另一次移除state!=\"Pending\"檢查，重複結果使Applied2，duplicate_result_once應失敗。分別復原並all透過，確認測試能抓兩種不同機制。",
+        "將CompleteDuringSend設false，先呼叫Submit會Pending，再手動Emit後完成，比較兩種時序共同需要的保護。不要在公司程式隨便新增暫停或注入完成；本文實驗僅在自行模型進行，產物是一份能解釋變因與因果的追碼記錄。"
+      ]
+    },
+    {
+      "heading": "診斷分支：Completed紀錄有了，工作仍Pending",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "初始同(R1,1,B)Completed已由a.Emit，c.States仍Pending。候選甲訂閱錯實例，乙Pending建立太晚，丙完整身份不符。第一觀察取handler是否進入和傳入身份：若沒進入，先查訂閱publisher；若進入且身份相同卻查不到States，檢查記錄建立時點。",
+        "追加原始碼顯示States在Send後、CompleteDuringSend=true，Trace為Callback先於Pending建立，支持乙。把Pending提前後合法同身份完成；再確認wrongpublisher仍不能影響c，舊session仍拒絕。若追加顯示其實Emit來自wrong實例，修應是建構/訂閱實際adapter關係，而不是移動記錄順序。",
+        "報告寫哪一條箭頭未證實或先偏離，以及新增證據為何分開候選。未取得SDK真實回呼契約時只報告Lab機制與要核對的位置，不把同步事件案例當成公司既定執行行為。"
+      ]
+    },
+    {
+      "heading": "可交付的追碼筆記需要足夠上下文",
+      "kind": "maintenance",
+      "paragraphs": [
+        "最終筆記寫使用者意圖、入口引數、執行實例、正向呼叫、反向事件、身份guard、狀態寫入與資源owner；附最小原始碼索引與一次動態證據。不要只交十個檔名或一張沒有箭頭說明的圖，讓讀者自行猜你為什麼認為它們有關。",
+        "每項關係標來自定義/參照/建構/執行哪一種證據，指出測試覆蓋條件與缺口。如果未來版本替換adapter，下一位知道需重核事件時序與錯誤而不是重學全部名字。維護知識是可複查的行為模型，能幫助你閱讀公司程式碼，卻不依賴猜全系統。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "查參照找到十處Send呼叫，是否證明本次十處都執行？建構與動態證據還要查什麼？",
+      "answer": [
+        "參照給可能使用位置，不是實際執行記錄。",
+        "查本次入口、分支與建構傳入實例，再用執行觀察驗證這次走哪個呼叫。",
+        "靜態範圍與動態一次執行各有限，報告區別二者，不把可能圖當真實全流程。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "readonly adapter為什麼仍可增加Requests或發事件？var是不是動態任意型別？",
+      "answer": [
+        "readonly保護欄位參照不再替換，不凍結所指物件內部。",
+        "var是編譯期推斷型別，變數仍具有確定型別。",
+        "理解這些語義後才能追實例和狀態，不因關鍵字看似保護就宣告物件不可變。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生順序：入口→Send→Callback→States建Pending→方法返回。handler只處理存在Pending。最終會怎樣？",
+      "answer": [
+        "Callback發生時尚無條目，TryGetValue失敗而忽略結果。",
+        "返回後才建立Pending，若沒有再次回報會持續等待，儘管完成通知確實曾發生。",
+        "修Pending前置並回歸同步/稍後回報與重複，不單純加timeout。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生狀態初Pending，回報Completed三次，handler只處理Pending；Callback與Applied各是多少？能證明遠端只執行一次嗎？",
+      "answer": [
+        "handler入口三次，第一次把Pending改Completed並Applied1，後兩次終態忽略。",
+        "本地Applied1不證明遠端執行次數，重複回報與重複副作用不同。",
+        "若需遠端唯一性，補外部操作身份與效果查詢/冪等契約，不擴大本地結論。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生當前(R7,4,B)；handler收到(R7,4,B,InventedState)。為什麼即使TryGetValue找到仍不能套用？",
+      "answer": [
+        "回報語義不在允許Completed/Rejected集合，結果准入應先拒絕。",
+        "找到工作只是必要條件，還需身份、合法Result與Pending狀態。",
+        "負面回歸給完整正確身份而只改Result，避免其他guard掩蓋這一項。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生建構：field old=a；c=new Controller(old)；隨後old=b。c現在自動用b嗎？",
+      "answer": [
+        "若建構儲存的是a參照，給呼叫者變數old換成b不會自動改變c內部欄位。",
+        "追建構賦值和實際c欄位，不從外部變數的新值猜內部依賴。",
+        "修正應依生命週期重建/顯式切換，並處理訂閱與所有權；單改名字無效。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "publisher接收兩訊息、Invoke兩次，handler進入四次；Applied一次。候選外部重複與訂閱重複如何區分？",
+      "answer": [
+        "外部有兩次訊息，可能已重複；每Invoke平均進入兩次又支持同handler多次訂閱或兩個合法訂閱者。",
+        "查訂閱列表和實例，區分預期兩個消費者與同消費者重複註冊，不能只刪Callback日誌。",
+        "修對應生命週期，回歸一次訂閱、第二通、Dispose，保留終態一次應用；遠端效果另查。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "沒有handler入口，States已Pending，Emit身份正確但由wrong adapter實例。下一修正是什麼？",
+      "answer": [
+        "Pending順序和文字身份都不是已發現偏離，事件未從已訂閱a發出。",
+        "核對實際建構與publisher，把操作與回報繫結同一個正確實例/通道。",
+        "回歸正確a完成、wrong不影響、多使用者隔離，避免訂閱所有實例廣播來繞過關係。"
+      ]
+    }
+  ],
+  "recap": [
+    "用定義、參照、建構與訂閱建立一項功能的原始碼索引，分清型別和實際物件。",
+    "沿引數、返回、事件與狀態逐步追碼，解釋同步回呼及Pending建立順序。",
+    "選擇能驗證實際分支的觀察與反例，交付有證據的功能說明而不是猜公司模組關係。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：C#事件、釋出者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "Microsoft Visual Studio：查定義與Peek",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/ide/go-to-and-peek-definition?view=visualstudio"
+    },
+    {
+      "label": "Microsoft Visual Studio：呼叫堆疊判讀",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab.zip",
+      "label": "下載完整概念地圖 C# 專案",
+      "description": ".NET 10 標準庫模型、操作說明與實際輸出；不連公司SDK、網路或實體裝置。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/Program.cs",
+      "label": "概念地圖 Program.cs",
+      "description": "本章追讀 trace 模式；Lab型別自行建立，不是廠商API。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/README.md",
+      "label": "模型環境、機制與驗收限制",
+      "description": "各模式輸入、預期、故障注入與復原；模型輸出不等於實體效果。"
+    }
+  ]
+}

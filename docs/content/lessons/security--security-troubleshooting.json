@@ -1,0 +1,259 @@
+{
+  "id": "security-troubleshooting",
+  "topicId": "security",
+  "title": "通訊資安綜合除錯",
+  "intro": "安全錯誤不等於遭到攻擊，恢復可用也不等於保護仍完整。本章用憑證、權限、媒體、輪替與重放的綜合案例，建立可審查的維護流程：解釋失敗機制、指出有效證據、做有限修正，同時檢驗成功與拒絕兩種邊界。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "本章先複習各層責任；需要數學或API細節可查本主題對應章節。",
+    "所有案例、憑證與賬號爲Lab合成；不訪問真實安全系統、不掃公司服務或繞過驗證。"
+  ],
+  "goals": [
+    "由具體安全需求與信任界線提出可被反駁的原因。",
+    "按實際失敗階段分開本地權限、TLS、認證、授權與媒體上下文。",
+    "用負例、時效/版本邊界與清楚審計交付有限修正。"
+  ],
+  "sections": [
+    {
+      "heading": "先把需要保護的東西與失敗終點說清楚",
+      "kind": "concept",
+      "paragraphs": [
+        "安全問題分析先寫資產與允許行爲：聲音內容不得在指定傳輸段暴露，只有LabOperator可對channel-A發話，舊會話命令不得影響新設備狀態。這樣的描述比“系統必須安全”更可檢驗，也讓維護知道哪個觀察能證明要求成立。",
+        "再寫參與者與信任邊界：客戶端、代理、服務、OS和設備各持有什麼權力，哪些資料來自外部，在哪裏被驗證與執行。威脅模型是在明確能力條件下問什麼可能失敗，不是宣稱某人已經入侵。公司架構未知時只標已證據確認的對象，其餘是待查假設。",
+        "失敗可來自配置、時鐘、版本、格式或惡意行爲，同一個BadMac不獨立證明攻擊。正確維護先根據輸入與證據定位機制，若出現異常重複或大量拒絕，再按程序處理事件；不爲了展示資安能力憑空給風險概率或攻擊歸因。",
+        "安全與可用的驗收包括合法功能成功、非法/不適用條件拒絕、證據不泄漏及資源有限。刪除證書驗證、放所有權限或記錄全部祕密能讓某些症狀消失，卻可能違背需求。改動要能解釋爲什麼仍守住原邊界。"
+      ]
+    },
+    {
+      "heading": "統一分層流程但不冒充公司架構",
+      "kind": "mechanism",
+      "paragraphs": [
+        "一般查證可從本地資源取得、傳輸可達、TLS身份/通道、應用認證、資源動作授權、業務執行及結果開始。媒體還有自己的協商/上下文/解碼/播放路徑，可能不經過同一串步驟；按真實代碼調整路徑，不強把所有主題綁成一個系統。",
+        "某層失敗時後層結果通常還沒建立，不能把它們填成“正常”。比如私鑰OpenDenied意味着尚未進入握手；NameMismatch意味着不能信任預期服務；MissingScope則表示當前政策動作不允許。若有獨立後層觀察可以保留，但不能把另一請求的成功拼到這次失敗。",
+        "狀態與證據應帶實例、請求、會話、配置/政策/鑰版本與時間範圍。重連後的安全上下文改變，舊authFailed累計和新decodedFrames不可不分世代相減。多個節點也不能被一條“伺服器”名稱合併成同一權威。",
+        "修正選擇緊貼已確認斷點，別同時改目標、CA、權限和timeout。若確需分多步，逐步保存合法與拒絕結果，讓下一位知道第一個修復後看見第二個錯誤是正常推進還是新增破壞。"
+      ]
+    },
+    {
+      "heading": "案例A輸入：鏈成功卻連接被拒",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "虛構客戶端R1參考名radio.lab.invalid，服務實際葉SAN=bridge.lab.invalid，鏈根R可信、EKUserverAuth、固定2030日期有效。錯誤NameMismatch。操作員建議return true繞過回呼，隨後應用又出現MissingScope。",
+        "候選信任缺根、名字錯目標、日期錯誤。本例鏈/日期/用途有正向資料，參考名與SAN不符是明確條件。先查部署要求：R1原意訪問bridge，客戶端目標設置誤填radio；有限修正正確參考名與目標一致，不改驗證回呼。",
+        "補下一份資料修正後TLS正常，應用principal=LabReader、action=tx.start，政策只許status.read。這是第二個獨立授權條件，而不是先前名稱修正無效。若原意狀態查詢，就改動作；若發話需求則需合法主體/資源授權。",
+        "迴歸正確名合法讀成功、錯名字拒絕、合法身份越權拒絕、未信任根拒絕。不能爲了消除兩次錯誤把NameCheck和Policy都設true；那樣會讓工作可用但保護條件消失。"
+      ]
+    },
+    {
+      "heading": "例題一：完整檢查結果如何支持結論",
+      "kind": "worked-example",
+      "paragraphs": [
+        "對案例A原資料寫條件：chain=true、date=true、usage=true、name=false；通道接受應爲這組必要條件的AND，所以false。僅檢查chain得到true會漏身分。修目標後四項true，通道條件才成立；應用動作仍另檢。",
+        "應用資料actions={status.read}、resources={channel-A}，請求channel-A/tx.start，動作不在集合所以MissingAction。請求channel-B/status.read則動作成立、資源失敗；二者同時成立才Allowed。不能以OR讓一項符合變全權。",
+        "若最終請求channel-A/status.read，所有給定層允許，業務仍需權威回覆R1 Completed。本地Accepted可能只入隊，端點TLS並不會替設備確認完成。因此報告寫“預期身份通道與合法讀政策通過，匹配請求完成”，而非“所有公司通訊資安驗證完畢”。",
+        "實驗用固定鏈與policy，再分別故意略name或把權限改OR，負例會失敗。真實握手/權限系統由正式棧實現；toy bool組合只教哪些證據不能互相抵消，不用來替換預設TLS驗證。"
+      ]
+    },
+    {
+      "heading": "案例B輸入：安全媒體單向無聲",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "虛構R2通話信令TLS正常，媒體A→B接收900包，authPass0/authFail900，B→A正常。重連後送出A→B用contextV4，B有效contextV3；profile相同且PCM輸入穩定。沒有真實會話key輸出。",
+        "候選codec不能解碼、網路沒送、方向安全上下文不符。有效媒體驗證尚未通過，所以不能將decoded0直接說codec壞；網卡資料證實到了測點，但不證明應用可信包。給定版本差支持context生命週期。",
+        "有限修正按SDK真實契約安裝同會話V4並結束V3，避免舊事件/包改新狀態；不是把SRTP關閉變RTP。新包驗證成功後再看decoded與實際播放，方向獨立所以反向正常並不否定本次失敗。",
+        "迴歸兩個方向、重連、舊包/重放與合法亂序；同時確認錯誤counter按context世代計算。實驗沒有實現SRTP密碼演算法，真實SDK協商、派生與媒體路徑仍需獲准環境驗證。"
+      ]
+    },
+    {
+      "heading": "案例C輸入：輪替後間歇失敗",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "虛構K5可接[0,120)，K6可接[100,220)，送出t100改K6。節點A已加載兩鑰，節點B實際只有K5；t110請求在A成功、B BadMac或UnknownKey。磁碟部署檔B已寫K6，實例卻未重新讀取。",
+        "兩節點的差異是有效加載，不是字串檔案存在。重疊長度20，t110K6適用，但B缺驗證能力；隨機路由造成間歇，不需先推定網路在隨機改包。先用KeyId/configVersion/instance證據定位，祕密值不進報告。",
+        "有限修正發佈與加載流程：先讓所有預定接收者具新驗證能力，再切送出，最後t120拒絕K5。若B無法加載，應按部署策略暫停切換或明確降級，不能無限保持舊K5全部接受。",
+        "迴歸t99、100、119、120、節點未更新、未知鑰與被改資料。若K5因泄漏需立即撤銷，那是另一目標，不能把正常重疊恢復策略當事件響應答案。"
+      ]
+    },
+    {
+      "heading": "例題二：認證包與業務結果的不同去重",
+      "kind": "worked-example",
+      "paragraphs": [
+        "給定請求operation=Pulse7、會話S9、seq40，t10合法接受並pulse一次，回報遺失。t11客戶端重送相同seq40/tag，MAC仍正確但窗口已見40拒絕。t12客戶端改seq41並重新簽，認證窗口允許新訊息。",
+        "如果業務只看認證窗口，seq41會再次pulse，形成同operation兩次副作用。防重放保護訊息，而業務冪等需要Pulse7的執行結果關係。保持同意圖ID查權威結果或返回已知結果，不能以新nonce解決未知結果。",
+        "若業務去重只存在單程序記憶體，重啓或第二節點仍可能再次pulse。完整規格需設備冪等、事務或權威狀態確認，否則應將結果Unknown管理而非承諾exactly-once。原請求已發生的可能性不因認證換版本消失。",
+        "驗收合法新意圖、相同意圖重試、舊訊息、壞MAC高序號、跨實例與回報遺失。模型只計數單執行緒記憶體中的業務例，不給公司設備發pulse，也不聲稱完成跨節點持久驗證。"
+      ]
+    },
+    {
+      "heading": "讀C#：安全檢查不能互相覆蓋",
+      "kind": "code-reading",
+      "paragraphs": [
+        "SecurityDecision的三個可空bool參數表示給定的名稱、認證及授權觀察，依本例順序判斷。name=false先回NameMismatch；尚未取得該層觀察則NeedEvidence，只有三者都通過才Allowed。鏈、日期、用途由Tls模式獨立實算。這是有限責任模型，不把三項當完整TLS或產品安全政策。",
+        "檢驗性質比只列幾個輸入更有幫助：name=false時絕不能Allow；沒有認證不能授權；Authorization失敗不能執行；壞MAC不能推進窗口；t等於key截止不能接受；審計不含完整secret。每項都是實際機制邊界，迴歸據此設計。",
+        "方法參數與狀態必須屬於同一個request上下文，不能用全域_lastCertificate來解釋另一條連接。讀取下游結果也要帶相同會話世代；如果SDK回呼只有call對象而沒有request欄位，就依實際對象壽命追，不杜撰公司API參數。",
+        "完整項目Diagnose模式結合真記憶體HMAC與固定政策條件做拒絕/接受測試，TLS模式另外實跑自建鏈。它不向真實認證服務發請求，不修改系統狀態，所有Lab型別在README說明。"
+      ],
+      "code": {
+        "title": "純教學檢查鏈，Unknown並非Allow",
+        "text": "static string SecurityDecision(bool? name, bool? authenticated, bool? authorized) {\n    if (name is null) return \"NeedEvidence\";\n    if (name == false) return \"NameMismatch\";\n    if (authenticated is null) return \"NeedEvidence\";\n    if (authenticated == false) return \"Unauthenticated\";\n    if (authorized is null) return \"NeedEvidence\";\n    return authorized == true ? \"Allowed\" : \"Forbidden\";\n}"
+      }
+    },
+    {
+      "heading": "安全維護的迴歸怎樣覆蓋負條件",
+      "kind": "maintenance",
+      "paragraphs": [
+        "正向用例證明合法需求可用，負向用例證明邊界沒有被修正削弱；兩者不能互相替代。證書只測一張好葉、授權只測Admin、輸入只測完整訊息，都會漏掉失敗時的資源或權力行爲。",
+        "時間/版本邊界用具體值，例如截止前一刻與等於截止；數據邊界用短頭、最大長、超限與錯誤編碼；生命週期用新舊會話交錯；權威範圍用重啓與多節點。測試選擇來自機制，不能機械把每章同樣模板貼一遍就說高品質。",
+        "觀察誤差與環境限制需顯式記錄。離線NoCheck不驗撤銷，合成Granted不等於OS ACL實測，context版本比較不等於SRTP密碼棧，純manifest不等於設備更新。把這些寫清是保持結論可用，不是替缺基本教學找藉口。",
+        "若正式系統只能只讀觀測，也能進展：覈對版本/有效配置、追條件與實際錯誤、給出可審查最小補丁及驗證設計。不要爲證明自己會資安而運行未知生產探測、收集全部祕密或推定真實攻擊者。"
+      ]
+    },
+    {
+      "heading": "如何寫別人看得懂的維護結論",
+      "kind": "maintenance",
+      "paragraphs": [
+        "先寫觸發、舊行爲和修正後行爲，再給關鍵證據鏈。例如“節點B尚未加載K6，切換後合法新訊息被拒；修有效加載與發佈次序後新版本通過，舊版本在120截止仍拒絕。”讀者無需先背所有協議縮寫即可理解因果。",
+        "接着寫保持條件、變因與通過的約束，最後寫未驗證項。公開報告可以給合成ID、版本和時間，不給金鑰、Token、私人帳號、端點配置或完整PCAP。資料表只服務推理，完整原始證據另留在授權位置。",
+        "若有多個修正，分別解釋每項解決哪個條件。名稱修正解決服務身份，scope修正解決動作，context修正解決媒體驗證；不要將它們統稱“修連接”，下一次維護纔不會全套重複試。",
+        "項目將一般機制與獨立模型分開，公司SDK、可信鑰部署與設備行爲仍需實際上下文。教材目標是讓你有知識讀維護代碼與提出驗證，不以章節完成保證任何職稱或現實系統已安全。"
+      ]
+    },
+    {
+      "heading": "實作：多層拒絕與有限修正",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- diagnose，先讀NameMismatch、MissingAction、缺觀察、方向context、K5/K6時間以及業務重複的固定輸入，寫下預測，再比對輸出。未知KeyId的字典查找測試在rotation模式，兩模式各有明確責任，不能假定diagnose已驗全部條件。",
+        "故意讓name=false也跳到授權，錯誤服務反例應FAIL；還原後驗證層級。另把key截止120改成包含120，舊版本拒絕負例會失敗；恢復並確認deadline與rotation邊界一致。",
+        "保持同operation改新seq，模型應顯示認證新訊息允許但業務意圖只計一次；另獨立示例新程序記憶體會遺失去重，解釋爲何不能承諾崩潰全局一次。所有pulse只改記憶體計數，沒有硬體動作。",
+        "驗收提交自己可理解的症狀→機制→證據→有限修正→成功/拒絕迴歸段落。模型通過不取代真實TLS撤銷、SDK媒體、OS權限、設備更新與持久事務測試，後續工作需實際規格。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "安全錯誤和攻擊歸因是否同一結論？",
+      "answer": [
+        "錯誤說明某條件不成立，配置/編碼/時鐘/版本也能產生同樣失敗。",
+        "攻擊歸因需要額外可信證據與事件流程，不能憑BadMac或401獨立宣佈。",
+        "先定位實際失敗機制並保留資料範圍，修正保持合法和拒絕邊界。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生鏈/日期/用途true、name=false，身份Authenticated=true來自另一連接。能拼成Allowed嗎？",
+      "answer": [
+        "不能。name失敗已經不滿足預期服務身份，另一連接認證不屬同請求。",
+        "檢查結果要與同連接、實例和上下文關聯，必要條件共同成立纔可繼續。",
+        "迴歸錯名和交錯連接，不讓全域最後結果污染原操作。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生輪替K7=[0,200)、K8=[180,280)，送出180切K8，節點缺K8，t190。問題與重疊長度？",
+      "answer": [
+        "兩個合法區間重疊180到200，長度20；t190K8允許但節點缺驗證能力。",
+        "修有效分發/加載和發佈順序，文件存在不等於實例持有。",
+        "迴歸179/180/199/200，舊K7等於200拒絕且新K8可用。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料SRTP authPass1000/decodedFrames正常，playback OpenDenied。關閉SRTP會修什麼？",
+      "answer": [
+        "當前安全驗證與解碼有正向證據，失敗在本地播放資源，關閉保護不解決此條件。",
+        "查原程序身份、端點、佔用與格式規格，有限修正這層。",
+        "保持安全配置重測合法輸出及錯誤開啟，不能把無聲直接等於加密壞。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料合法seq5完成pulse、同operation新seq6合法。防重放可以保證只pulse一次嗎？",
+      "answer": [
+        "訊息序號不同可各過窗口，業務意圖仍相同，安全重放和業務冪等不等價。",
+        "按operation關聯原結果並設計權威/持久規格，記憶體只覆蓋本實例。",
+        "迴歸回報遺失、多節點與重啓，未知結果不自動重發副作用。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "模型NoCheck鏈true可寫證書未被撤銷嗎？",
+      "answer": [
+        "不能，NoCheck明確沒檢查撤銷，true只屬該離線政策路徑。",
+        "報告分別寫鏈/名稱/用途/時間已測，撤銷與完整TLS未測。",
+        "正式環境按實際CRL/OCSP與可用性策略驗收，別複製toy設置關閉保護。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料Mac失敗後最高seq卻被推到9999，下個合法7拒絕。迴歸應看哪個中間狀態？",
+      "answer": [
+        "壞訊息不應更新最高或已見集合，狀態污染發生在完整性確認之前。",
+        "檢驗壞高seq後Highest不變且合法7接受，修驗證/更新順序。",
+        "同時保留重複及舊包拒絕，不只看壞包最終返回BadMac。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "寫輪替修正報告爲什麼要含舊鑰截止拒絕？",
+      "answer": [
+        "只寫新訊息成功無法證明舊權力已按規格結束。",
+        "報告給出缺版本證據、有效加載變因、t邊界和允許/拒絕結果，不含祕密值。",
+        "把真實庫/SDK未測範圍說清，別人才能理解修正因果及適用邊界。"
+      ]
+    }
+  ],
+  "recap": [
+    "先定義保護需求與真實失敗層，再區分配置和攻擊證據。",
+    "有限修正需合法功能成功，也需錯誤條件繼續拒絕。",
+    "報告講前因後果、變因與邊界，模型不可代替真實系統驗收。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 8446：TLS 1.3 握手及保護範圍",
+      "url": "https://www.rfc-editor.org/rfc/rfc8446.html"
+    },
+    {
+      "label": "IETF RFC 5280：憑證與驗證路徑",
+      "url": "https://www.rfc-editor.org/rfc/rfc5280.html"
+    },
+    {
+      "label": "Microsoft：Authentication 與 Authorization 分工",
+      "url": "https://learn.microsoft.com/en-us/aspnet/core/security/authorization/introduction?view=aspnetcore-10.0"
+    },
+    {
+      "label": "IETF RFC 6750：Bearer憑證的使用與錯誤",
+      "url": "https://www.rfc-editor.org/rfc/rfc6750.html"
+    },
+    {
+      "label": "IETF RFC 3711：SRTP完整性及重放保護",
+      "url": "https://www.rfc-editor.org/rfc/rfc3711.html"
+    },
+    {
+      "label": "Microsoft：離線鏈與自訂信任",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.x509certificates.x509chainpolicy.trustmode?view=net-10.0"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 通訊資安觀念追讀專案",
+      "path": "./assets/labs/security-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 diagnose，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 diagnose 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

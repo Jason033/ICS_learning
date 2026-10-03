@@ -1,0 +1,242 @@
+{
+  "id": "auth",
+  "topicId": "security",
+  "title": "驗證、授權與執行身分",
+  "intro": "連得上、知道你是誰、允許你操作，是三種不同條件。本章從信任與身分的基本定義開始，解釋驗證、權限政策與服務執行帳號如何配合，讓你讀公司程式時不把所有拒絕都當密碼錯誤。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "不需要先會資安工具；主體、憑證、政策與信任界線在本章定義。",
+    "知道程序可連網與使用檔案即可；範例均自行建立的Lab型別，不接真正帳號系統。"
+  ],
+  "goals": [
+    "區分可達、驗證、授權與業務完成。",
+    "讀出身分來源、Token條件、角色/範圍及資源政策。",
+    "分開OS服務帳號與遠端API主體，定位有限修正。"
+  ],
+  "sections": [
+    {
+      "heading": "安全需求從「誰能對什麼做什麼」開始",
+      "kind": "concept",
+      "paragraphs": [
+        "主體是發起操作的身分，可以是人、程式、服務或裝置。資源是受保護的對象，例如一個通道、檔案或設備；動作是讀狀態、修改設定、發話或刪除。權限不是抽象的“有管理員”，而是指定主體能否對指定資源做指定動作。",
+        "驗證authentication確認身分聲明是否有足夠可信證據；授權authorization決定已確認的主體在當前條件下能否操作。即使身分確認成功，也可以拒絕高權限動作。反過來，程式可能允許匿名讀公開資訊，表示這項政策不用先確認個人，並不是整個系統沒有安全。",
+        "網路可達只說某條傳輸或連線條件成立。TLS握手可以確認通道對端，但應用還可能要求Token；應用身分成立也不表示設備已完成。把這些訊號記成分層結果，可以讀出一個失敗究竟發生在TCP、TLS、驗證、政策或業務。",
+        "信任界線是資料或權力從一個信任程度進入另一個地方的邊界。客戶端送來的UserName、Role與CanWrite都只是聲明，伺服端不能直接相信；應由已驗證憑證與自己的政策建立主體，再執行存取判斷。"
+      ]
+    },
+    {
+      "heading": "驗證證據、挑戰與憑證",
+      "kind": "mechanism",
+      "paragraphs": [
+        "密碼、證書私鑰的持有、外部認證系統簽發的Token，是不同身分證據。帳號名只表示你聲稱是誰；讀到某張公開憑證也不表示你持有對應私鑰。驗證需要把證據與聲明聯繫，並排除偽造或不符合當前使用條件的資料。",
+        "挑戰/回應可以讓驗證者給出新的隨機資料，持有祕密者依協定產生回應。新的挑戰避免把舊回應直接拿來重用；實際SIP Digest、TLS或登入協定各有不同演算法與條件，不可把本章Lab bool驗證模型冒充任何一套協定。",
+        "Bearer Token的基本語意是持有者可用它取得其允許的權力，通常不需另外證明某把持有者私鑰。因此它是祕密，不應完整放log或URL。Token可採不透明查詢，或可驗證格式如JWT；能解碼JWT內容不表示簽章有效，更不表示可信主體已建立。",
+        "驗證除了真偽還有發行者、目標audience、有效期與其他政策。由測試系統簽發給API-A的合法Token，不應被API-B無條件接受。時間檢查需有明確UTC與容許誤差；過大誤差可能讓已過期權力繼續可用，不能為瞭解決校時問題直接停檢到期。"
+      ]
+    },
+    {
+      "heading": "主體、宣告、角色與資源政策",
+      "kind": "mechanism",
+      "paragraphs": [
+        "驗證後形成principal，可帶subject、issuer、role、scope等宣告。宣告是身分來源對主體的描述，必須來自可信且適用的來源；客戶端自行加Role=Admin不能變成可信角色。不同發行者可能使用不同欄位格式，映射契約也要版本化。",
+        "角色把人或服務歸到一類，如Reader與Operator；scope較常表示允許的一組API能力。資源政策仍可能依通道、租戶、位置或狀態限制：同為Operator也不一定能控制所有通道。單純if(role==Admin)容易忽略資源歸屬與業務限制。",
+        "授權一般在具有權威資料的服務端執行，不只把按鈕隱藏。UI禁用有助提示，但攻擊或錯誤客戶端仍可發請求。伺服端應在執行有副作用之前檢查同一主體與當前資源，不依前一天快取的“有權”結果永遠放行。",
+        "在非同步程式裡，主體與請求上下文不可放在會被下一個請求覆寫的共享欄位。R1的回呼若拿R2的_user執行授權，就可能用錯身分。把主體、資源、動作與ID保留在該次上下文，與實際驗證/政策版本一起記錄。",
+        "身份的可信程度也要包含使用情境。如果外部認證系統只確認登入帳號，這項證據未必適合高風險設備控制；可能需另有多因素、明確操作確認或受限服務身分。實際門檻由部署政策與需求決定，教材不把所有系統都改成同一登入流程。維護重點是知道哪些條件真的被檢查，不因畫面顯示已登入就省略後續。"
+      ]
+    },
+    {
+      "heading": "OS身分與遠端業務身分並存",
+      "kind": "mechanism",
+      "paragraphs": [
+        "服務帳號讓OS決定這個程序可讀哪些檔案、開什麼裝置、使用哪把私鑰；遠端API主體讓遠端決定這次業務請求可做什麼。兩者可以不同：本機LabSvc用它的檔案權限載入憑證，遠端把該憑證或Token映射成BridgeReader。",
+        "本機AccessDenied在私鑰開啟，尚未發出TLS，與遠端403在Parsed後不是同一錯誤。將服務改管理員可能改善本機權限，卻不增加遠端BridgeReader的業務權力。相反，修改遠端role也不讓本機突然能讀私鑰。",
+        "身份還可能在代理或閘道終止並向後傳遞。後端若接受代理提供的user header，必須有可信的傳遞與入口限制，不能讓外部客戶端自己填同名header冒充。這是部署信任關係，不由名字“X-User”自動成立。",
+        "認證與授權快取有有效期與撤銷問題。用戶被撤權後，舊Token或快取可能依規格繼續有效一段時間；需要明確哪個權威來源、何時重新確認、失敗時如何處理。重連不等於重新授權，改密碼也不總是自動撤銷所有既有會話。"
+      ]
+    },
+    {
+      "heading": "例題一：合法身分仍不能寫設備",
+      "kind": "worked-example",
+      "paragraphs": [
+        "虛構API接收R10，Token已在教學輸入標記爲可信驗證通過：subject=LabReader、aud=BridgeApi、scope=status.read，有效至t=600，當前t=500。請求是resource=channel-A、action=device.write。部署政策要求device.write且resource被分配給該主體。",
+        "先檢查有效使用條件：發行來源已可信、aud一致、500早於600，身分成立。接著請求action=device.write而scope只有status.read，缺所需能力，授權拒絕。此拒絕不是Token造假、TCP失敗或設備不在線。",
+        "若UI原意只是讀狀態，有限修正客戶端動作爲status.read，並保持同一主體，合法查詢可以通過；若確實需要寫，則依管理政策給予合適資源權限，不能把用戶直接改成所有資源Admin。",
+        "驗收status.read允許、device.write拒絕、未分配channel-B拒絕以及到期後拒絕。四個案例分別覆蓋動作、資源和時間；只讓R10成功卻破壞另外三條邊界，不算完成維護。"
+      ]
+    },
+    {
+      "heading": "例題二：401、403與前置失敗",
+      "kind": "worked-example",
+      "paragraphs": [
+        "HTTP教學時間線有三筆：R20在TLS之前出現本地KeyAccessDenied，沒有HTTP響應；R21 TLS成立後服務回401並給認證挑戰；R22已識別LabReader，伺服器回403且audit=MissingScope。三者UI都顯示“連接失敗”。",
+        "R20要查本機程序身分與私鑰使用，HTTP碼不存在不能編成401。R21根據HTTP契約表示請求缺有效認證憑證，先查挑戰與適用認證方式；它也可能是到期、aud不符，不能直接斷言密碼打錯。",
+        "R22表示服務理解卻拒絕這項請求，給定audit已進一步定位scope不足。HTTP403在一般規範並不保證已認證，因此“403一定認證成功”是過強規則；本例是已取得服務身份/audit證據才確定。SIP也有自己的挑戰語意，不能把HTTP碼強套。",
+        "有限修正分別處理私鑰訪問、正確憑證/條件與合適政策。驗收每條失敗仍有不同類別，合法請求完成且其他主體未擴大權限；日誌不輸出Token內容，只記錄經過批准的身份標識與拒絕理由。"
+      ]
+    },
+    {
+      "heading": "讀C#：授權必須依可信上下文",
+      "kind": "code-reading",
+      "paragraphs": [
+        "LabPrincipal是本模型自己定義的記錄，輸入Authenticated表示前一驗證層已有可信結果，不是解析一個字串就設置true。Authorize先拒絕未確認主體，再檢查action和resource。HashSet在此只表示給定允許集合，不是生產權限資料庫。",
+        "Contains按指定字串比較語義判斷成員；真實命名大小寫、租戶和資源映射需契約一致。不能讓攻擊者把任意resource名稱當路徑直接操作，授權目標與實際執行目標也須一致，否則檢查A卻執行B形成邊界漏洞。",
+        "該代碼使用主體參數，不從全域_currentUser讀取，所以不同請求可各自保留上下文。實際公司的async回呼更需追發起者、request與session關係；如果角色更新或主體撤權，需按政策重新檢查相應權威狀態。",
+        "模型只教檢查順序，沒有實現JWT、密碼驗證或真實Token發行。正式認證應使用平臺與經過審查的庫，讀取其驗證參數與事件路徑，不能複製這個Authenticated bool到外部輸入當可信標記。"
+      ],
+      "code": {
+        "title": "純授權模型，Lab型別非廠商API",
+        "text": "static string Authorize(LabPrincipal principal, string resource, string action) {\n    if (!principal.Authenticated) return \"Unauthenticated\";\n    if (!principal.Actions.Contains(action)) return \"MissingAction\";\n    if (!principal.Resources.Contains(resource)) return \"WrongResource\";\n    return \"Allowed\";\n}"
+      }
+    },
+    {
+      "heading": "維護取捨：預設拒絕與失敗分類",
+      "kind": "maintenance",
+      "paragraphs": [
+        "預設拒絕表示沒有足夠允許條件不執行有副作用工作；不是把所有觀測缺失一律當“賬號被攻擊”。認證服務暫不可達、格式錯誤、過期與政策拒絕要分類，才能在保證邊界的同時正確維護。",
+        "對外錯誤可依政策減少暴露，對內審計仍要讓有權限的人區分拒絕類別。若內外都只留一個false，維護只能不斷擴大權限試錯；若外部顯示完整私鑰路徑與憑證內容，又會不必要泄漏。兩種信息受衆需要不同顆粒度。",
+        "快取與重試也有邊界。認證失敗後無限重試可造成鎖帳號或增加負載；讀取狀態的重試與有副作用控制需要不同語意。既有Token到期後取得新Token不代表舊請求安全重送，應另確認業務結果與冪等。",
+        "公司系統可能採用Windows整合認證、SIP Digest、客戶憑證或其他方案；本章框架幫助讀規格和代碼，不替未知公司定義實施。實際SDK方法、claims映射與期限以已確認版本和授權文件爲準。"
+      ]
+    },
+    {
+      "heading": "故障分支：換管理員也不能通過",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀服務在OS管理員下仍收到Forbidden。候選A本地資源權限、B遠端認證無效、C應用授權不足。補證據本地私鑰開啟成功、TLS驗證成功、服務audit明確subject=BridgeReader與resource=channel-C、action=tx.start。",
+        "進一步政策快照顯示BridgeReader只允channel-A的status.read。A已不符合當前失敗位置，B也有明確已驗證主體證據；C由動作與資源兩項不符支持。提高OS權限沒有作用是因爲兩種權力在不同層。",
+        "若本來只該讀A，修正請求路由與動作；若真的要發C，按業務授權流程配置相應主體，不在客戶端硬編碼Admin。修改必須保留scope與resource同時檢查，不能用OR讓任一條件成立就全部放行。",
+        "迴歸A/read允許、A/tx拒絕、C/read按分配拒絕、匿名拒絕與到期拒絕。審計保留政策版本和原因，使下次同樣Forbidden可與這次比較，而不是再次猜密碼或重裝網卡。"
+      ]
+    },
+    {
+      "heading": "實作：可信主體、動作與資源三條件",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- auth。先讀LabPrincipal固定輸入，預測未認證、缺動作、錯資源及允許四條輸出。實驗離線，不創建系統帳號、不驗證密碼、不向任何認證端點請求。",
+        "把Actions.Contains與Resources.Contains錯誤改爲OR，會讓只有讀能力的主體越界；負例斷言應FAIL。恢復成各項都需成立再運行auth及all，確認基準拒絕保持。",
+        "完成基準後，可自己新增兩個交錯請求：不同LabPrincipal各自帶動作與資源集合，第一份Reader第二份Operator，保持每份上下文；再錯改成共享_currentUser，比較哪個請求的判斷被污染。這是新增變因練習，專案基準沒有Operator排程測試，也不對公司執行緒時序做效能承諾。",
+        "驗收能寫出subject/resource/action、認證來源與授權理由，並分開OS身份和API身份。正式密碼、Token與SDK驗證沒有被這個純政策模型代替，安全部署需按實際規格和審批維護。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "TCP連通、TLS成立、principal建立、action允許與Completed各代表什麼？",
+      "answer": [
+        "TCP是傳輸，TLS是安全通道條件，principal是可信應用身份，授權才判斷動作，Completed是業務終點。",
+        "前一層成立不會自動補上後一層，失敗也需定位具體層。",
+        "驗收同請求逐步關聯，避免用握手成功宣佈設備操作完成。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "客戶端傳Role=Admin爲什麼不能直接接受？",
+      "answer": [
+        "外部欄位是主張，不是可信身分證據，可能任意修改。",
+        "角色應來自已驗證來源的主體與服務端政策，授權在執行之前判斷。",
+        "重測僞造角色仍拒絕，合法受限主體只取得其允許動作與資源。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：已驗證Token aud=A、expires=900，現在800，伺服器B。時間有效是否就可接受？",
+      "answer": [
+        "800早於900僅說明時間條件，通過不能替代目標audience。",
+        "aud=A不適用於B，應按B規格拒絕；不以調整權限修目標錯誤。",
+        "取得B適用憑證後仍檢查發行來源、時間與政策，不關閉aud驗證。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生政策：允許read與resource X。請求read/Y和write/X各判什麼？",
+      "answer": [
+        "read/Y動作成立但資源不符；write/X資源成立但動作不符。",
+        "兩個條件要同時成立，OR會放行這兩種越界。",
+        "迴歸read/X允許，兩個越界與匿名都拒絕，使政策邊界完整。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：本地私鑰OpenDenied，沒有TLS/HTTP。先重輸遠端密碼嗎？",
+      "answer": [
+        "失敗點在本機程序取得金鑰資源，遠端還沒收到認證。",
+        "查服務身份對該鑰的合法使用權限及加載契約，不用遠端密碼解釋本地錯誤。",
+        "原身份修正後分層驗證金鑰、通道與業務授權，每層保持記錄。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：HTTP403但沒有伺服器principal證據，可以說一定登入成功嗎？",
+      "answer": [
+        "一般403語意是拒絕履行請求，不保證該部署已經建立認證主體。",
+        "補認證/授權audit、政策與該請求關聯，才能細分拒絕原因。",
+        "不要只靠狀態碼擴大權限；修正後仍測匿名與越權拒絕。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "解碼JWT看見sub和role就表示驗證完成嗎？",
+      "answer": [
+        "編碼可讀與真實性無關，內容可以由攻擊者僞造。",
+        "正式庫需驗證簽章、可信issuer、aud、期限和配置約束，才形成principal。",
+        "教材模型的Authenticated來自給定可信輸入，不讓外部bool或decoded欄位代替驗證。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "管理員服務API仍MissingScope，如何寫有限修正？",
+      "answer": [
+        "OS管理員只作用本地資源，遠端scope是另一權威的業務權限。",
+        "確認原請求是否應爲讀；按需求修動作或合法配置最小scope與資源。",
+        "原部署身份回測合法成功與越界拒絕，保留政策版本而不長期提升整個服務。"
+      ]
+    }
+  ],
+  "recap": [
+    "先確定可信身分，再對同一資源與動作判政策。",
+    "OS帳號和遠端API主體的權力不可互相替代。",
+    "狀態碼需結合實際層證據，成功與拒絕都要驗收。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：Authentication 與 Authorization 分工",
+      "url": "https://learn.microsoft.com/en-us/aspnet/core/security/authorization/introduction?view=aspnetcore-10.0"
+    },
+    {
+      "label": "IETF RFC 6750：Bearer憑證的使用與錯誤",
+      "url": "https://www.rfc-editor.org/rfc/rfc6750.html"
+    },
+    {
+      "label": "IETF RFC 9110：HTTP認證與401/403語意",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html"
+    },
+    {
+      "label": "Microsoft：憑證驗證及應用身分政策",
+      "url": "https://learn.microsoft.com/aspnet/core/security/authentication/certauth"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 通訊資安觀念追讀專案",
+      "path": "./assets/labs/security-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 auth，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      21
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 auth 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

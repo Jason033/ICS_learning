@@ -1,0 +1,280 @@
+{
+  "contentVersion": 2,
+  "intro": "SDR把部分訊號功能寫成資料處理流程，仍需要正確型別、取樣率、狀態與時間契約。用一條完整離線tone鏈對照GNU Radio方塊檔案，分開數學結果、顯示校準與真硬體節拍。",
+  "prerequisites": [
+    "本章以一個已知1k tone複述濾波、抽取與DFT，不要求已安裝GNU Radio。",
+    "C#獨立陣列模型與GNU Radio文件判讀有分開的驗證範圍。"
+  ],
+  "goals": [
+    "辨認SDR的類比前端、數位處理與業務資料邊界。",
+    "給每個flowgraph箭頭標型別、rate、格式與狀態。",
+    "手推C#濾波抽取DFT鏈並讀GNU Radio對應引數。",
+    "分清樣本時間、CPU吞吐、Throttle與真裝置時鐘。"
+  ],
+  "sections": [
+    {
+      "kind": "concept",
+      "heading": "軟體定義不表示整條電臺都在軟體裡",
+      "paragraphs": [
+        "SDR是software-defined radio，將適合的混頻、濾波、調變解調或協議處理放到可配置數位軟體。天線、類比濾波、放大、ADC/DAC、時鐘及RF轉換仍有物理限制。改變GUI方塊不能讓過載ADC恢復已丟的峰，也不能讓錯誤帶外輸入免混疊。",
+        "我們在無硬體環境可以用數學Source造waveform，以Filter、Rate Change、DFT、Decoder等功能處理，再用檔案或圖當Sink。這樣可精確控制輸入、比較一個變因，非常適合讀程式機制；但它沒有驗證真實噪聲、時鐘、接線、發射或射頻前端。",
+        "GNU Radio是處理框架，GRC是圖形編排工具，它生成相應程式；方塊之間的連線傳資料，不是現實電纜。一個complex線通常傳I/Q樣本，一個float線常傳實數樣本，message或PDU則可表示離散工作或幀。型別顏色來自工具，但正確型別不保證rate和物理單位正確。",
+        "本章實際可重跑的是獨立.NET10 C#鏈，GNU Radio部分是官方檔案核對後的流程與可選操作說明，未在本任務執行其GUI。使用者可先完全透過正文與模型建立知識，再按自己環境驗證GUI，不能把文件示意當已測截圖。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "一個arrow至少有型別、數量與時間契約",
+      "paragraphs": [
+        "為每段記錄輸入／輸出單位、samples/s、每樣本格式、frame或連續stream、延遲、狀態和丟失政策。Source產生率是內容時間定義，scheduler每次取幾份是計算批次；某塊消費N、產生N/2即有降率，但其餘塊不會僅因看到array變短就自動知道Hz標尺。",
+        "流處理塊之間常有緩衝；只有資料和空間足夠時才繼續。這會形成背壓。無限數學Source沒有硬體節拍可快速產生，若圖只跑到GUI或NullSink，可能CPU全速運算；硬體Source/Sink則常用真實時鐘限制速率。佇列太長、CPU忙與頻率錯誤應分別診斷。",
+        "tagged stream或message還攜帶長度、起點、時間戳等契約。重取樣後tag位置和timestamp需要按定義調整；程式碼若只改samples而不更新索引，後面BER對齊與播放時序會錯。metadata不是文書附件，而是資料表示的一部分。",
+        "執行時改taps、中心或rate也要一致世代：舊buffer是否排空、新狀態何時生效、舊tag是否仍適用，都必須定義。多執行緒scheduler不會自動讓公司UI、adapter與DSP狀態成為一次原子改變。先找owner與事件邊界再談動態切換。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題一：32份8k資料走過濾波與抽取",
+      "paragraphs": [
+        "輸入為32份fs8000、f1000、幅度1、phase0的實數cos，名義內容32/8000=4ms。LabFir三tap[0.25,0.5,0.25]以初始0狀態處理，再保留偶索引0,2,..30共16份，輸出fs4000。名義持續16/4000仍4ms，不是因陣列短就聲速變快。",
+        "三tap穩態1k幅度倍率0.853553、群延遲1輸入sample=0.125ms。抽取讓每圈由8份變4份，但真實tone仍1k。前段起始過渡與索引選擇另外保留；輸出最後對應原索引30，首末跨度3.75ms，與4ms名義長度不可混算。",
+        "為比較穩態，模型取output.Skip(4).Take(8)，這八份名義2ms、fs4000，DFT間距500Hz，正1k在k2。程式實際計算最大內點peak2，再用peak×4000/8得到1000Hz。這個三tap只用於限定無其他帶外輸入的tone，不能保證任意8k資料降4k抗混疊合格。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/dsp-rate-contract.svg",
+        "alt": "C#合成32份8k一千Hz資料，经FIR後取偶索引成16份4k，八份穩態DFT以k2代表1000Hz。",
+        "caption": "圖按實際模型資料契約標示；名義時長4ms，群延遲0.125ms。三tap僅用於限定tone，不是任意抗混疊設計。"
+      }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "例題二：處理快不等於內容取樣率變快",
+      "paragraphs": [
+        "沿上例16份輸出，若假設CPU花1ms處理完，計算吞吐16/0.001=16000samples/s；這是處理速率，資料內容仍是4000sample/s、4ms。這個1ms是給定教學輸入，不是本機實測效能；Program.cs的對應檢查只是算兩種不同單位邊界。",
+        "另給實際來源每10ms送100份，內容fs10000。處理每塊3ms，平均有7ms餘量；若某塊處理12ms，它超過一輪產生週期，後塊可能等待。是否丟失取決於佇列和deadline，不能只因一次12ms就推網路丟包，也不能以平均3ms保證全部及時。",
+        "有限修正前取產生、開始處理、結束、消費各事件。CPU內算DFT耗時與湊塊等待分開，日誌寫盤或鎖可能帶來尾部；增大chunk可提高吞吐卻增加成批等待。工程驗收需資料正確與期限內消費一起看，不能僅報每秒可算多少樣本。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "Throttle只調運算節拍，不改數列頻率",
+      "paragraphs": [
+        "GNU Radio無硬體的連續模擬可用Throttle讓資料以近似指定平均處理速度往下走，避免不必要CPU滿載。它不插值、不抽取、不修改Tone的取樣語義；把Throttle從8k改4k只讓執行快慢改變，不自動把每圈8份變4份。",
+        "真實ADC、音訊Source或硬體Sink通常已有時鐘和背壓；再隨意加另一個Throttle會有節拍競爭。是否需要按官方對應環境判定，不能把每條圖都加Throttle當通用修正。本章純模擬連續圖只在降率後用一個4kThrottle；有限C#計算不需要它。",
+        "TimeSink的SampleRate和FrequencySink的Bandwidth／SampleRate主要用於軸與對應內容時間，Source的SampleRate則影響生成角度索引。它們必須與該位置實際fs一致，但職責不同。只改sink會讓圖重標，不等於真實重取樣。",
+        "GUI更新率又是每秒重新整理多少次畫面，與samples/s不同。降低重新整理可減負載，不應改變Tone物理頻率；一份顯示可能聚合很多樣本。追「rate」變數時以引數作用和資料流定義識別，而不是見rate都設同一個數。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "C#流水線每段儲存什麼，丟掉什麼",
+      "paragraphs": [
+        "Pipeline先Tone8k造32份，LabFir保留歷史併產同數量，然後Where只取偶索引。output長度16，顯式fs/2用於時長與DFT軸，不以輸入fs沿用到底。Skip4刻意取穩態後段，Take8才給Dft，其統計視窗不同於完整16份。",
+        "DFT搜尋k1..k3，是已知實數低於Nyquist且非DC的受限定tone驗證；不是可識別任意多頻道的通用峰檢測器。多個tone、噪聲、窗與頻率邊界需不同檢測契約。圖若完全照搬這段只取第一最大峰，可能漏掉業務關鍵頻帶。",
+        "Program.cs實際實現陣列運算，沒有GNU Radioscheduler、圖型別檢查或硬體時鐘。把這些範圍說清楚，才能用同一資料和規則對照真實庫，而不是只證明兩個都印出了1k。生產程式碼還要測試state、異常、銷燬及metadata一致性。"
+      ],
+      "code": {
+        "title": "實際編譯的濾波→抽取→重新校準頻率軸",
+        "text": "double fs = 8000;\ndouble[] input = Tone(fs, 1000, 32);\nvar filtered = new LabFir([0.25, 0.5, 0.25]).Process(input);\nvar output = filtered.Where((v,i) => i % 2 == 0).ToArray();\nvar bins = Dft(output.Skip(4).Take(8).Select(v => new Complex(v,0)).ToArray());\n// 此窗口的Hz轴为 k * (fs/2) / 8"
+      }
+    },
+    {
+      "kind": "maintenance",
+      "heading": "讀GNU Radio方塊檔案，建立可核對的小圖",
+      "paragraphs": [
+        "可選純模擬圖先在GRC建立samp_rate=8000、tone_freq=1000、out_rate=samp_rate/2，所有波形塊型別Float。連線Signal Source→Decimating FIR Filter→Throttle，再從其輸出分叉到QT GUI TimeSink及FrequencySink。不要選USRP、Audio或任何真實RF Source/Sink；這份圖只教合成tone。",
+        "Signal Source選Cosine、SampleRate8000、Frequency1000、Amplitude1、Offset0。Decimating FIR Filter的Decimation2、Taps[0.25,0.5,0.25]；Throttle設out_rate4000。兩個sink用輸出率4000，Frequency中心0；為了與無窗算例比較，可選擇矩形／不加窗並記錄FFT長度，但GUI內部尺度須查本版本，不能保證其dBFS與C#Magnitude同定義。",
+        "穩態Time圖週期1ms、幅度約0.853553、Frequency峰仍1k是本限定輸入的預期。起始濾波過渡、不同輸出起點和FFT窗會影響代表點，比較時對齊索引。若FrequencySink欄位叫Bandwidth，仍填該位置samples/s4000，不填Tone頻率1000或僅實數半帶2000。",
+        "官方教程有跨版本更新及部分已廢棄舊頁；讀取實際安裝版本檔案和塊引數，不直接複製舊3.7 Python生成碼。GRC的 .grc是流程說明，生成程式是相應實現，改生成檔案可能被下次生成覆蓋。維護真正流程需保留源圖、版本與引數契約。"
+      ],
+      "table": {
+        "caption": "本章可選純模擬圖；檔案核對，未實際執行GNU Radio GUI",
+        "headers": [
+          "方塊",
+          "輸入→輸出",
+          "引數負責什麼"
+        ],
+        "rows": [
+          [
+            "Signal Source Float",
+            "無→8k實數samples/s",
+            "cos內容1000Hz、幅1"
+          ],
+          [
+            "Decimating FIR Filter Float",
+            "8k→4k",
+            "三tap限定tone、Decimation2"
+          ],
+          [
+            "Throttle Float",
+            "4k→4k",
+            "限制無硬體的執行節拍，不重取樣"
+          ],
+          [
+            "QT Time/Frequency Sink Float",
+            "4k→顯示",
+            "軸按4k，重新整理率另定義"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "使用圖形工具時仍有可辨別的故障分支",
+      "paragraphs": [
+        "連線型別錯誤可能阻止生成；連線成功只證明工具理解的資料型別，不證明signal rate或物理單位。把Complex接到Float應有明確轉換意義，例如取Real會丟Q與方向，Magnitude是非線性會改變頻譜；不為讓線連上隨便加一個轉換塊。",
+        "若只有NULL Sink與無節拍Source，高CPU可能是預期的全速離線行為；若有真實Source仍overrun，需查消費服務不足。Underrun是輸出裝置沒及時得到資料，overrun是輸入生產超過接收緩衝能力；訊息來自哪端和計數定義很重要，不能把兩個都歸為RF弱。",
+        "重複Vector Source在首末接頭不連續，會產生頻譜和時間突變；它是合成資料設計，非網路必然出錯。Source Repeat、frame tag與Reset條件需跟目標匹配。用已知tone和單次有限資料檢驗再引入noise、offset、timing，一次一變因。",
+        "Channel Model可模擬噪聲、頻偏與延遲等，但每引數有歸一化與噪聲約定。沒有版本或範圍證據，不把一個名為channel的塊認成真實衛星／公司無線環境。模擬結果負責驗證機制預測，真實結論另需裝置和工作觀測。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "C#實跑與GNU Radio檔案判讀分別驗收",
+      "paragraphs": [
+        "主實作先dotnet run -- pipeline，手推32→16份、8k→4k、名義4ms、DFT8視窗peak2=1k；四項檢查透過。設中斷點比較filtered與output的索引，確認不是陣列少一半但仍沿用fs8k。",
+        "故障變因只將DFT頻率換算中的fs/2改fs，預期peak2被錯標2k，原1000Hz驗收非零失敗；還原後透過。另一紙上變因是把Throttle改快，資料陣列不變所以它不能修這種Hz標籤錯。留下單位與結果，再復原基線。",
+        "可選GRC階段按前表自行建立純模擬圖、核對本機版本，截圖要標其來源與引數；本任務沒有替你執行GUI。驗收比較頻率／時域預測，明確三tap不合格於任意抗混疊與GUI尺度差異。真實硬體、音訊裝置和外部接收發射均不屬於這次驗證。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "降率後所有頻率翻倍，是源錯還是sink錯",
+      "paragraphs": [
+        "案例原Source8k、tone1k，Filter抽取2，陣列與Time週期按輸出率顯示1ms，但Frequency標2k。候選A為Tone改變，候選B為Frequency仍沿用輸入8k，候選C為抽取導致別名。取各段實際樣本與sink引數，不能只靠調Source頻率補償圖。",
+        "新增證據為Dft8的peak2，輸出16份契約4k，Frequency卻填8000；2×8000/8=2000對應B。有限修正只把輸出sink軸改4000，並驗證Time週期、DFT峰與資料時長一致；輸入tone不用變化。",
+        "若source真增加帶外3k且無合格前濾波，才查C並按頻帶規格修；若實際樣本變2k才查A的生成式。圖形工具仍需要事件與數值機制，連線顏色和無Exception不能替代工程驗收。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "SDR是否讓天線與類比前端限制消失？",
+      "answer": [
+        "軟體可配置部分數字功能，仍依賴天線、時鐘、ADC/DAC與類比濾波。",
+        "已過載或混疊的資訊不能由任意GUI塊無條件恢復。",
+        "模擬圖驗證資料機制，真實裝置條件另需證據。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "Throttle可以替代真正重取樣嗎？",
+      "answer": [
+        "Throttle限制無硬體流程處理節拍，不增刪或正確插值樣本。",
+        "重取樣需改數列與率、濾波和狀態，sink只重標軸。",
+        "按引數職責判讀，不能將所有rate混為一項。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新資料：輸入48k、960樣本、抽取3且滿足濾波，輸出數、率與名義時長？",
+      "answer": [
+        "輸出320份，fs16000sample/s。",
+        "960/48000=20ms，320/16000也是20ms。",
+        "需定義起點與濾波延遲；首末跨度與名義長不同。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新資料：輸出fs6000、DFT12視窗，峰k3。若sink誤填12000，各報告Hz？",
+      "answer": [
+        "正確3×6000/12=1500Hz。",
+        "誤填3×12000/12=3000Hz，資料沒自動變快。",
+        "有限修正metadata並對照Time與原樣本，不反調tone掩蓋。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "新資料：240份內容fs12000，CPU用2ms處理完，處理吞吐與內容時長？",
+      "answer": [
+        "內容240/12000=20ms。",
+        "CPU吞吐240/0.002=120000samples/s。",
+        "兩者時間邊界不同，不把120000寫成真實sample clock。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：兩個float塊能連線但輸入率32k、sink按48k，1k峰標1.5k。是否型別檢查足夠？",
+      "answer": [
+        "型別相容不保證率契約一致。",
+        "軸比例48/32=1.5解釋錯標，取真實樣本率與各引數。",
+        "修sink或真實重取樣按工作需要，再驗證週期與時長。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "新資料：無硬體Signal Source直接接Null Sink，CPU滿載但資料正確，首先是什麼機制？",
+      "answer": [
+        "離線無限Source可能由scheduler全速運算，沒有實際節拍。",
+        "確認工作目的與是否需要Throttle，不先判RF或隨機執行緒故障。",
+        "採用合適節拍／有限資料後驗證負載與內容不變；真硬體另用其時鐘規則。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "Source重複有限陣列首末不連續，頻譜多出旁瓣，能立刻說外部干擾嗎？",
+      "answer": [
+        "重複拼接產生人造跳變，屬於合成輸入定義。",
+        "查Repeat、邊界與同一次有限記錄，比較窗與拼接預測。",
+        "修輸入契約或明確展示該效果，不能歸因未接的真實RF。"
+      ]
+    }
+  ],
+  "recap": [
+    "辨認SDR的類比前端、數位處理與業務資料邊界。",
+    "給每個flowgraph箭頭標型別、rate、格式與狀態。",
+    "手推C#濾波抽取DFT鏈並讀GNU Radio對應引數。",
+    "分清樣本時間、CPU吞吐、Throttle與真裝置時鐘。"
+  ],
+  "sources": [
+    {
+      "label": "GNU Radio：GRC方塊與變數的官方入門",
+      "url": "https://wiki.gnuradio.org/index.php/GNURadioCompanion"
+    },
+    {
+      "label": "GNU Radio：Sample Rate Tutorial與取樣／處理速率區別",
+      "url": "https://wiki.gnuradio.org/index.php?title=Sample_Rate_Tutorial"
+    },
+    {
+      "label": "GNU Radio：Decimating FIR Filter",
+      "url": "https://wiki.gnuradio.org/index.php/Decimating_FIR_Filter"
+    },
+    {
+      "label": "GNU Radio官方FAQ：速率、硬體節拍與轉換尺度",
+      "url": "https://wiki.gnuradio.org/index.php/FAQ"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/dsp-maintenance-lab.zip",
+      "label": "下載本主題完整 C# 教學專案",
+      "description": ".NET 10 標準函式庫模型及預期輸出；不連裝置或公司系統。"
+    },
+    {
+      "path": "./assets/labs/dsp-maintenance-lab/Program.cs",
+      "label": "C# 模型原始碼",
+      "description": "本章追讀 pipeline 模式；型別與資料是自製教學模型。"
+    },
+    {
+      "path": "./assets/labs/dsp-maintenance-lab/README.md",
+      "label": "執行、變因與驗收說明",
+      "description": "先手推再跑；區分模型結果與真實裝置限制。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包括手推本章模式、設中斷點核對、改一個變因、執行故障與復原；作答包括新資料推理與核對。尚待個人計時校準。"
+  }
+}

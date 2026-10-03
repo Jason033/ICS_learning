@@ -1,0 +1,341 @@
+{
+  "contentVersion": 2,
+  "intro": "紀錄依時間排序，不一定就是事件的真實先後；同一個文字ID，也不一定就是同一件工作。本章從時間戳、時鐘、身份與因果關係的基本定義開始，教你把兩端與多層資料整理成可檢驗的時間線，並在誤差存在時保留正確的推理邊界。",
+  "prerequisites": [
+    "能區分一次操作的預期與實際結果；本章會從零補充證據與推理所需概念。",
+    "例題使用本文完整定義的 Lab 契約，不需要公司原始碼、SDK、Wireshark 或裝置。"
+  ],
+  "studyTime": {
+    "reading": [
+      14,
+      23
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含定義、兩個逐步例題與程式追讀；操作包含預測基準、改一個變因、反證及復原；作答需要列推理和驗收。尚待個人計時校準。"
+  },
+  "goals": [
+    "區分事件發生、被觀測、入佇列、套用與顯示的時間，正確計算各段耗時。",
+    "用時鐘偏移與誤差區間比較兩端紀錄，避免負延遲與錯誤排序。",
+    "用request、session、target與因果箭頭對齊同一次工作，區分晚到、舊結果與UI延遲。"
+  ],
+  "sections": [
+    {
+      "heading": "事件有時點，也有身份與含義",
+      "kind": "concept",
+      "paragraphs": [
+        "時間線不是把所有log依時間欄排序就完成。每行要先知道「發生甚麼、對誰、在哪個位置」。發出請求、收到通知、handler進入、狀態更新、UI顯示，是不同事件。若一行寫Completed卻記錄在收到之前或僅表示本地排入，整張時間線的解釋就會錯。",
+        "先約定事件名稱與記錄位置。例如Lab Send指傳送方法進入，Receive指對端入口，Apply指透過身份guard後改狀態，Display指呈現已更新狀態。事件時間取在對應位置，不把寫檔完成時刻當成原事件時刻。這樣才可問Receive至Apply之間是否排隊，以及Apply至Display是否UI延遲。",
+        "時間線最小單位包含身份、觀測位置、事件、時間值、時間單位、時鐘來源與誤差。身份用來選對工作，位置用來解釋證據，時間與誤差用來比較先後。缺身份時把兩通電話拼在一起，缺時鐘資訊時把不同起點當同軸，兩者都可能產生看似合理卻完全錯的故事。"
+      ]
+    },
+    {
+      "heading": "時鐘的起點、單位與用途",
+      "kind": "concept",
+      "paragraphs": [
+        "時間值是某個時鐘對時點的標記。牆上時鐘型別如UTC日期可用來跨機器大致對齊，但受校時、精度與跳動影響；量測經過時間的計時器通常適合本地耗時。Stopwatch以底層timer tick量測elapsed time，tick數值必須結合Frequency換算，不能直接當毫秒。",
+        "即便兩邊都使用「ms」，起點不同仍不能直接相減。A的0可能是程式啟動，B的0可能是擷取開始；兩邊Stopwatch數值也不能僅因型別相同就放同軸。可以比較同一個本地計時器內的開始與結束差，跨機器則需有對齊方法與誤差，或改用請求/回應形成的因果關係。",
+        "時鐘解析度表示能區分多細的數值，不等於準確度。顯示微秒不代表與真實時間誤差只有一微秒；clock抖動、取樣與記錄開銷都可能影響結果。工程報告要分開「欄位有幾位小數」和「知道時間的誤差有多大」，否則非常精細的表格會製造不存在的確定性。"
+      ]
+    },
+    {
+      "heading": "偏移與誤差：先換同一軸，再計算",
+      "kind": "mechanism",
+      "paragraphs": [
+        "定義offset為B時鐘−A參考時鐘。若B慢50ms，offset=−50ms。要把B觀測值換成A軸，用Btime−offset；負offset被減掉等於加回50。這個正負定義必須寫在表頭，因為反著定義時公式也會反向，背一個減號不足以避免錯算。",
+        "若offset估計為−50±5ms，表示真實offset位於[−55,−45]，校正事件時刻也有±5ms範圍。對同軸已知的A傳送100與B接收80，中心校正為80−(−50)=130，延遲中心30；範圍是[25,35]。這裡A時間視為精確，誤差全放在offset；若A事件記錄也有誤差，需額外合併相應不確定範圍。",
+        "誤差區間重疊時不能僅由數值判定先後。例如事件甲校正後[100,120]，乙[115,135]；有些可能值甲早，有些乙早。能說時間範圍重疊，不可硬說甲在乙前15ms。但若乙是處理甲所傳送的同一訊息，程式或協定的因果約定另可支持甲先乙；時間值只是其中一種證據。"
+      ]
+    },
+    {
+      "heading": "例題一：原始負20ms，不代表資料回到過去",
+      "kind": "worked-example",
+      "paragraphs": [
+        "Lab設定A傳送真實100ms，B接收真實130ms；B時鐘比A慢50ms，故B記錄80ms。直接用80−100得到−20，看起來接收早於傳送；這是混用不同時鐘的結果，不是網路有負延遲。",
+        "採用offset=B−A=−50±5：B接收換A軸為80−(−50)=130，事件範圍125–135；相減A傳送100得到25–35ms。輸入、正負定義、中間換軸與結果範圍全部列出，別人能獨立檢查。只有當兩端觀測位置確實對應同一請求傳送與接收，這個區間才代表該段傳送耗時。",
+        "若offset完全未知，不能猜設0然後報30ms。可改報告同端RTT、用同步估計或提供雙端因果關聯；RTT是請求出發到對應回應回來在同一端的差，包含對端處理，不是直接的單向網路延遲。模型為了教學提供真實時間，正式系統不能假裝自己也知道它。"
+      ],
+      "table": {
+        "caption": "offset定義B−A；A傳送視為精確，只有offset估計存在±5ms誤差。",
+        "headers": [
+          "位置",
+          "原始記錄ms",
+          "轉換到A軸",
+          "能得出的結論"
+        ],
+        "rows": [
+          [
+            "A傳送",
+            "100",
+            "100",
+            "參考時刻"
+          ],
+          [
+            "B接收",
+            "80",
+            "80−(−50)=130±5",
+            "接收125–135"
+          ],
+          [
+            "該段耗時",
+            "不能直接相減",
+            "[125,135]−100",
+            "25–35ms"
+          ]
+        ]
+      },
+      "image": {
+        "src": "./assets/diagrams/troubleshooting-clock-alignment.svg",
+        "alt": "B比A慢50正負5毫秒，原始接收80換到A軸130，延遲為25至35毫秒。",
+        "caption": "本例offset定義B−A；A視為精確，誤差只來自offset估計。原始負延遲不是時間倒流。"
+      }
+    },
+    {
+      "heading": "身份連線事件：request不夠，還要作用範圍",
+      "kind": "mechanism",
+      "paragraphs": [
+        "requestID是區分請求的標籤，不自動保證全公司永遠唯一。若程式重啟後從R1重新編號，或兩個裝置都使用R1，同一文字會指不同工作。把request放在session、target及操作範圍中比較，就能避免把舊會話或另一裝置的完成貼到當前任務。",
+        "session表示我們定義的一次連線/觀察世代；重連或重新建立物件時可能增加。target表示請求的物件，如B或C。Lab完整身份是(Request,Session,Target)，因此(R1,7,B)、(R1,8,B)、(R1,8,C)是三個不同身份。真實介面未必自帶這些欄位，維護者可在本地上下文儲存，但不能無證據把舊訊息重新標為當前session。",
+        "同一使用者意圖還可能包含多個attempt。intent指使用者要完成一次工作，attempt是一次傳送嘗試；重試應保留兩種關聯，否則收到兩個完成會看似兩次操作。若契約未定義去重或外部副作用，不能僅依request標籤判斷安全重試。時間線應列明誰建立身份、經過哪裡、在哪裡被匹配或拒絕。"
+      ]
+    },
+    {
+      "heading": "例題二：結果到了，畫面晚顯示在哪裡",
+      "kind": "worked-example",
+      "paragraphs": [
+        "給定Lab同軸毫秒與完整身份(R9,8,B)：入口0、Send5、B Receive25、B Completed45、A Receive65、Apply130、Display160；本地業務期限100。外部從25到45處理20ms，A傳送到接收結果65−5=60ms；A收到至Apply花65ms，Apply至Display花30ms。",
+        "在100ms判斷時，外部已完成且A已收到，但狀態尚未套用。因此把100ms超期解釋為B沒有完成是不成立的。下一觀測是65–130這段為何排隊，如UI執行緒被同步任務佔用；只比較端到端160而沒有中間觀測，會把責任錯誤歸給網路。",
+        "另給同文字R9但session7的Completed在70ms進入A，它不可解除當前R9/session8的待處理。先按完整身份分組，再計算各段，舊結果在時間上更早並不意味著它更有效。修正應定位合法結果的派送/套用流程，保留舊session拒絕；驗收將收到、套用和顯示分別量測，而非只讓畫面更早亮起。"
+      ],
+      "table": {
+        "caption": "所有值明確使用同一Lab邏輯毫秒軸，單一當前身份(R9,8,B)。",
+        "headers": [
+          "事件",
+          "時刻ms",
+          "與前一步差",
+          "解釋"
+        ],
+        "rows": [
+          [
+            "入口",
+            "0",
+            "—",
+            "使用者意圖"
+          ],
+          [
+            "Send",
+            "5",
+            "5",
+            "本地發出"
+          ],
+          [
+            "B Receive",
+            "25",
+            "20",
+            "B已收到"
+          ],
+          [
+            "B Completed",
+            "45",
+            "20",
+            "外部工作完成"
+          ],
+          [
+            "A Receive",
+            "65",
+            "20",
+            "結果回到A"
+          ],
+          [
+            "Apply",
+            "130",
+            "65",
+            "本地排隊/處理段"
+          ],
+          [
+            "Display",
+            "160",
+            "30",
+            "呈現段"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "因果先後比按時間排序更可靠的地方",
+      "kind": "mechanism",
+      "paragraphs": [
+        "因果關係回答「哪一個事件使另一個事件有可能發生」。同步方法內先構造request再Send，是同一控制流的先後；同一訊息由A發出再被B收到，是傳遞的先後；B收到請求後發回應，再到A，是另一條因果箭頭。這些箭頭不要求兩端時鐘相同，卻要求身份與訊息關係確實對應。",
+        "兩個不同請求沒有任何訊息或共享狀態關係時，日誌時間近不代表互相導致。CPU升高和丟包同時發生，可能CPU讓處理晚，也可能負載同時造成兩者；更晚出現的錯誤行也可能只是最先被觀察的結果。建立候選機制與受控干預才能加強因果結論，不能用時間鄰近代替解釋。",
+        "不同工作在時間上交錯時，通常只有部分可確定順序，不一定存在我們已知的唯一總序。把不確定的兩事件畫在平行行，標誤差與已知因果箭頭，比強行排A/B/C更準確。維護者的目標是找出足以判斷契約是否被違背的先後關係，而非製造一個每微秒都知道的故事。"
+      ]
+    },
+    {
+      "heading": "媒體時間戳與日誌時間不是同一種量",
+      "kind": "concept",
+      "paragraphs": [
+        "RTP式媒體timestamp表示樣本在媒體時間軸的位置，用取樣clock換算間隔，不是UTC日期，也不直接代表網路抵達時間。8000單位/秒下，timestamp相差160代表20ms媒體間隔。接收arrival來自本地時鐘，若要算播放期限，還需建立媒體起點S0對應本地時刻T0與buffer等待量。",
+        "以本模型T0=0ms、S0=0、clock8000、buffer40ms，deadline=T0+(S−S0)×1000/clock+40，timestamp0/160/320對應期限40/60/80ms。arrival20/40/60都及時；arrival50/70/90全晚10ms。這裡T0與arrival使用同一Lab軸，不能省去這個約定後把任意抓包時間和timestamp硬相減。",
+        "同樣packet序號用來識別媒體次序，log行號只是檔案輸出位置；UI顯示版本又可能不同。分清每種欄位度量什麼，可避免把到達亂序誤作媒體生成亂序，或把檔案後寫誤作事件後發生。需要更多媒體機制可查VoIP主題，本章已給出本例所有換算前提。"
+      ]
+    },
+    {
+      "heading": "讀碼：區間與完整身份是兩個獨立檢查",
+      "kind": "code-reading",
+      "paragraphs": [
+        "DelayInterval先把遠端時刻減offset轉到參考軸，再減本地Send，最後加減uncertainty。uncertainty必須非負；它不是隨機修正值，而是我們允許真實結果落入的邊界。真實測量如果上下界出現負值，可能誤差過大或配錯事件，不能簡單夾成0掩蓋問題。",
+        "身份檢查則與時間計算分開。先篩當前目標和session的同請求，再算對應時點；順序倒轉可能對舊會話得到漂亮耗時而錯認成功。原模型用record值相等比較完整身份，既保護session也保護target，不只比較Request字串。"
+      ],
+      "code": {
+        "title": "取自可編譯LabTime與LabIdentity，offset定義不可省略",
+        "text": "public static (long Low, long High) DelayInterval(\n    long localSend, long remoteReceive, long offset, long uncertainty)\n{\n    if (uncertainty < 0) throw new ArgumentOutOfRangeException(nameof(uncertainty));\n    long corrected = remoteReceive - offset - localSend;\n    return (corrected - uncertainty, corrected + uncertainty);\n}\nrecord LabIdentity(string Request, int Session, string Target);\n// (R1,7,B), (R1,8,B), (R1,8,C) must not join as one operation."
+      }
+    },
+    {
+      "heading": "實作：故意做出錯序，再用約定校正",
+      "kind": "lab",
+      "paragraphs": [
+        "在.NET 10獨立專案執行timeline，先預期raw=-20與corrected=[25,35]，再比較實際輸出。手寫offset=B−A與uncertainty含義，不只抄輸出。在紙上將offset改為+50而保持原始80/100，觀察結果成為負區間，說明改變符號定義會直接破壞推理。",
+        "在暫存source只將remoteReceive−offset改成remoteReceive+offset，offset_not_negative_transport應該失敗。另只將完整身份比較改成Request比較，join_full_identity應失敗。每項分別注入並恢復後跑all，證明兩種獨立保護都被驗收，而不是一個測試順便擋住所有問題。",
+        "整理例題二時間線，先排除舊session行，再計算Send→Receive、Receive→Apply、Apply→Display。寫一個短結論說明期限100時已知和未知，並提出一個能區分本地排隊與錯誤guard的觀測。程式不連線真實時鐘同步服務，NTP與公司時鐘質量仍需真實測量。"
+      ]
+    },
+    {
+      "heading": "故障分支：外部慢、本地慢還是串錯會話",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "初始任務期限100ms出現Pending，候選甲B未處理完、乙A已收到但本地排隊、丙取到舊會話結果。先要完整身份的B處理完成與A接收入口，不是只看最新Completed字樣。若B current完成130而A current接收150，支持外部階段越過期限；若B45、A65、Apply130，則支持本地後段越過期限。",
+        "第三份資料只有session7/R9完成45，而current為session8/R9，不能拿45證明當前外部已經完成。應補當前身份的對端觀測或可靠查詢，狀態仍可保持Unknown/Pending，不能為了讓介面正常就忽略session。缺證據在這裡有明確原因：目前只取得另一件工作結果。",
+        "修正按分支選責任與驗收：外部慢需查處理/鏈路段而保留期限政策；本地慢需查佇列與派送並測負載；串錯會話需修關聯上下文且回歸重連與ID複用。每個修正都還需要負面驗收舊結果不能更新當前，避免只修本次顯示而破壞身份邊界。"
+      ]
+    },
+    {
+      "heading": "可移交時間線應標出不知道的部分",
+      "kind": "maintenance",
+      "paragraphs": [
+        "先把事件按身份分組，再畫每個觀測點；用實線表示已知因果，時間範圍表示誤差，空白表示缺事件。別把「沒有該行」用一個虛構零毫秒補滿。每張表附時間源、單位、起點和offset方向，避免接手者重新猜正負號。",
+        "結論應以責任段為主：例如合法結果在65ms進入A，但到130ms才Apply，差65ms發生在本地接收後。它清楚指出下一步調查範圍，也保留真實原因未完全確定。報告讀者應能憑表和契約復算，不必理解全部協定名稱才能知道為什麼不先改網路。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "兩端都記錄毫秒，為什麼仍不能直接相減？",
+      "answer": [
+        "單位相同不代表時鐘起點、偏移與準確度相同；一邊可能程式啟動、一邊捕獲開始。",
+        "先確定時間來源和參考軸，再用校正與誤差範圍換算；本地同一計時器內的差可避免跨時鐘起點問題。",
+        "沒有對齊資料時報告因果先後或同端RTT，不假定offset為0。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "「B Completed」在45ms寫入，是不是足夠證明使用者45ms聽見聲音？",
+      "answer": [
+        "不是。事件只支持其定義的工作完成，需先查日誌位置與契約。",
+        "控制完成、媒體樣本、播放呼叫、裝置輸出和真人聽見是不同層；完成行也可能僅是本地排入。",
+        "沿對應媒體方向取得後續觀測，不能把同一個時間戳升為實體驗收。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：A Send250ms，B Receive238ms，offset=B−A=−35±7ms；A時點視為精確。求校正接收範圍與該段延遲。",
+      "answer": [
+        "接收中心238−(−35)=273ms；不確定範圍266–280ms。",
+        "減去傳送250，延遲16–30ms，中心23ms。直接238−250得到−12是混時鐘。",
+        "結果依賴事件屬於同一請求且offset在該時段有效；若A也有誤差需另合併。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：事件甲[200,220]，乙[215,225]，無身份或因果關係。能判甲先乙嗎？",
+      "answer": [
+        "不能。區間重疊，可能甲200乙225，也可能甲220乙215。",
+        "只能報告兩事件範圍與先後不確定，不能以中心210/220斷言真實先後。",
+        "若補充同訊息傳送/接收契約可新增因果關係；僅增加顯示小數位不會解決誤差。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：同軸Send10、外部Receive30、Completed55、本地Receive80、Apply95、Display155，本地絕對截止時刻t=100ms。哪段跨過期限？使用者何時看見？",
+      "answer": [
+        "外部處理55−30=25，本地接收後套用95−80=15；狀態95已在期限100前套用。",
+        "顯示155−95=60，使用者在155看到；若驗收目標是狀態套用則未超期，若目標是顯示則超過55ms。",
+        "先明確期限針對哪層結果，不能看顯示晚就宣告外部未完成。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：媒體clock16000、S0=320、T0=10ms、buffer30ms。S=640，arrival65ms。T0與arrival使用同一本地相對毫秒軸。期限與late是多少？",
+      "answer": [
+        "媒體差640−320=320單位；320/16000×1000=20ms。",
+        "期限10+20+30=60ms，到達65，晚5ms。",
+        "T0與arrival必須使用同一本地軸，S是媒體位置而非UTC或arrival。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "current=(R2,5,B)，收到(R2,4,B)70ms、(R2,5,C)80ms、(R2,5,B)120ms；期限100。哪條能更新當前，超期能證明外部未執行嗎？",
+      "answer": [
+        "只有第三條request/session/target全相符，其結果到達120超過本地期限20ms。",
+        "前兩條時間較早但身份不同，不能套用當前任務。timeout只說明期限內未得到目標結果，不能證明外部未執行。",
+        "查詢同身份外部階段，並按契約處理合法晚到；回歸舊session和其他目標仍不更新當前。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "本地Send5、結果Receive65、Apply130。維護者想把網路timeout加倍；另一人建議追65–130佇列。哪項更能區分當前候選？",
+      "answer": [
+        "結果已在65進入本地，當前長段是Receive至Apply的65ms；追此段能區分佇列、guard和handler工作。",
+        "加倍期限可能讓結果看似成功，但外部慢與本地慢都可能改善，鑑別力低。",
+        "確認合法身份和記錄位置，量佇列進入/離開與應用分支；有限修正後同時驗收期限、負載和舊結果隔離。"
+      ]
+    }
+  ],
+  "recap": [
+    "區分事件發生、被觀測、入佇列、套用與顯示的時間，正確計算各段耗時。",
+    "用時鐘偏移與誤差區間比較兩端紀錄，避免負延遲與錯誤排序。",
+    "用request、session、target與因果箭頭對齊同一次工作，區分晚到、舊結果與UI延遲。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：Stopwatch 的 elapsed time 與 frequency",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch?view=net-10.0"
+    },
+    {
+      "label": "IETF RFC 5905：時鐘偏移、延遲與誤差模型",
+      "url": "https://www.rfc-editor.org/rfc/rfc5905.html"
+    },
+    {
+      "label": "Microsoft：分散式追蹤的 trace 與 span",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/distributed-tracing-concepts"
+    },
+    {
+      "label": "IETF RFC 3550：RTP timestamp與媒體clock",
+      "url": "https://datatracker.ietf.org/doc/html/rfc3550"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab.zip",
+      "label": "下載完整 C# 故障分析模型",
+      "description": ".NET 10 原始碼、說明與實際預期輸出；獨立邏輯時間模型，不連網或讀音訊裝置。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/Program.cs",
+      "label": "故障分析 Program.cs",
+      "description": "本章主要追讀 timeline 模式；Lab 型別不是廠商 API。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/README.md",
+      "label": "環境、各模式及可驗收邊界",
+      "description": "將程式觀測、非零樣本與真人聽見分開；操作包含故障注入與復原。"
+    }
+  ]
+}

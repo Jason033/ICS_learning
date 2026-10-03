@@ -1,0 +1,298 @@
+{
+  "contentVersion": 2,
+  "intro": "能維護系統的地圖，不只是把所有框畫滿。它應讓接手者知道哪項功能由誰負責、事件從哪裡回來、哪個資源誰釋放，以及變更後該驗收甚麼。這篇完整示範一份Lab功能檔案與共享物件生命週期，教你把未知公司程式逐步整理成有證據、可更新的理解。",
+  "prerequisites": [
+    "不需要先知道公司拓撲；本章從圖範圍、owner、借用者與生命週期定義開始。",
+    "使用完整Lab功能卡與共享物件案例；可獨立學習，不是其他主題必修總圖。"
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含必要名詞定義、完整虛構契約及兩個逐步例題；操作需預測、跑基準、修改一項、反證並復原；作答需整理資料與驗收範圍。尚待個人計時校準。"
+  },
+  "goals": [
+    "按問題選擇角色、元件、部署與動態圖，使用明確圖例區分呼叫、資料、事件與所有權。",
+    "由建構、訂閱、退訂和關閉追出共享資源的owner與借用者，驗證實例和身份隔離。",
+    "製作可單獨閱讀的功能卡、證據索引與變更回歸地圖，把未知轉為具體查證工作。"
+  ],
+  "sections": [
+    {
+      "heading": "同一套系統需要不同尺度的圖",
+      "kind": "concept",
+      "paragraphs": [
+        "概念地圖有範圍；如果一張圖同時畫使用者、電腦、class、每條byte與電氣pin，讀者難以知道框之間是不是同層次。先寫這張圖要回答哪個問題，例如誰使用系統、功能由哪些模組協作、程式實際在哪些機器執行，或一次操作的先後。",
+        "系統情境圖把整體軟體視為一個責任邊界，說明使用者與外部參與者；元件圖深入程式內部看功能責任與依賴；部署圖關心機器、程式實例與連線；動態圖描述特定功能執行時的互動。C4是一種用系統情境、容器、元件與程式碼等尺度描述軟體的畫圖方法。它還使用container這個抽象，指可獨立執行應用或資料儲存等，不等同於一定使用Docker容器。",
+        "不必為了完整套用所有圖。維護一項Callback錯實例，用物件關係與動態路徑就有幫助；網路路由故障則部署/端點圖更重要。選擇尺度是讓證據能清楚表達，不能拿元件圖的同class當成部署時只有一個實例，也不能從電腦上兩程式自動推斷它們之間有通訊。"
+      ]
+    },
+    {
+      "heading": "圖例要區分四種關係",
+      "kind": "mechanism",
+      "paragraphs": [
+        "呼叫關係表示某物件呼叫另一個成員，資料關係表示特定內容流經哪裡，事件關係表示誰訂閱誰的通知，所有權關係表示誰負責建立/釋放資源。四種箭頭不是同一種「連線」。尤其controller借adapter不表示controller擁有釋放權，controller收到事件也不表示它建立publisher。",
+        "本Lab owner是最外層Console測試程式，它建立共享LabAdapter a。目標B與C的兩個controller建構時都借a，並各自訂閱Completed；正向各呼叫a.Send，反向a.Emit會Invoke兩訂閱者，各按target/session/key判斷是否套用。Name=\"shared\"只是標籤，不是全球唯一身份。",
+        "圖例可寫實線箭頭為已確認呼叫、反向標event、雙線或文字標owner、灰框標未測試外部。關係旁附證據編號和版本，看到線就能知道從哪裡證明。未知不要隨便畫實線再在腳註說全部假設，否則讀者最先記住的是錯關係。"
+      ]
+    },
+    {
+      "heading": "完整維護檔案示例：不是只有圖和原始表",
+      "kind": "mechanism",
+      "paragraphs": [
+        "功能卡F1：LabControl1.0，目標是B/C分別設定level，輸入整數0–100，成功是各自合法同身份Completed套用一次。範圍是單處理程序、單執行緒Console，本地adapter模型；無實際SDK、網路或裝置。相關原始碼為Program.cs的ownership模式、LabController建構/Submit/OnCompleted/Dispose與LabAdapter.Send/Emit/Dispose。",
+        "證據E1：兩個建構都傳同一a，證明共用同一個實例；E2：建構+=和Dispose−=，證明借用者訂閱生命週期；E3：ownership執行輸出B關閉後adapterDisposedfalse/subscribers1；E4：C之後Completed，證明另一借用者仍能工作；E5：全部借用者結束Subscribers0。每項附取得方法與相同source版本，不將試驗值當永遠不變的現實。",
+        "維護結論：B關閉只退訂自己，不釋放共用a；a由外層owner在C也結束後釋放。限制：無多執行緒關閉/回呼競爭、無真實SDK釋放順序測試。下一步若對映公司軟體，先找建立共用物件的owner、所有借用者和版本釋放契約，再選擇相應實體驗收。讀者憑這張卡就能知道問題、證據、結論和範圍。"
+      ],
+      "table": {
+        "caption": "F1檔案中的證據索引；源記錄保留細節，結論由正文解釋。",
+        "headers": [
+          "ID",
+          "從哪裡取得",
+          "證明什麼",
+          "不證明什麼"
+        ],
+        "rows": [
+          [
+            "E1",
+            "兩個constructor的a引數",
+            "同一物件被借用",
+            "真實SDK已連線"
+          ],
+          [
+            "E2",
+            "+=與−=位置",
+            "訂閱與退訂責任",
+            "多執行緒無競爭"
+          ],
+          [
+            "E3",
+            "Bclose後輸出",
+            "a仍活、剩一訂閱者",
+            "所有裝置正常"
+          ],
+          [
+            "E4/E5",
+            "C完成、最終計數",
+            "相鄰使用者保留、都退訂",
+            "實體資源一定全釋放"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "所有權與生命週期：GC不能代替全部責任",
+      "kind": "mechanism",
+      "paragraphs": [
+        "GC（Garbage Collector，垃圾回收器）會依哪些物件仍可到達，管理受控記憶體的回收。owner是被約定負責終止資源生命週期的角色；借用者只在允許範圍內使用。物件參照可讓GC知道物件仍可到達，但GC並不自動理解某個device handle、SDK session或事件關係應何時結束。Dispose是在明確時點釋放資源/解除關係的約定，不是立刻保證全部記憶體都消失。",
+        "訂閱者的handler委派會被publisher持有；publisher若長期存活，未退訂的subscriber可能也被保留並繼續收到通知。說「關視窗後GC會處理」不一定成立。也不要把「任何迴圈參照都洩漏」當規則，GC可以處理不可到達的物件群；問題在仍可到達的publisher和關係未按生命週期解除。",
+        "本Lab controller.Dispose設closed並從a.Completed移除OnCompleted，不呼叫a.Dispose；重複Dispose直接return。外層using在借用者結束後釋放a。closed guard是防止不該應用的第二道保護，不能替代退訂：若仍訂閱，雖不Apply，也可能浪費回呼、保留物件或記錄無效Trace。"
+      ]
+    },
+    {
+      "heading": "例題一：B關閉後C為甚麼還能完成",
+      "kind": "worked-example",
+      "paragraphs": [
+        "初始a共享，兩controller目標B/C、Session1，各自從R1開始，所以key分別(R1,1,B)與(R1,1,C)。a.Emit B完成時兩handler都可能進入，但B按合法key套用，C因target不同忽略；C仍Pending。完整身份使同request文字不串線。",
+        "B Dispose兩次，第一次closed=true且退訂，第二次無動作。a.Disposed仍false、SubscriberCount由2變1，剩C。a.Emit C後C改Completed；再發B完成，B已不在訂閱列表，Applied不增加。C結束也退訂，SubscriberCount0，然後最外層owner才釋放a。",
+        "若B直接Dispose a，C的後續Emit/Send會遇ObjectDisposedException；若B沒退訂只設closed，B雖然不Apply但訂閱數仍2。兩種錯誤在相鄰使用者與資源關係不同位置表現，驗收不應只看B介面關閉成功。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/big-picture-ownership-events.svg",
+        "alt": "Console owner建立共享adapter，B/C借用並訂閱，B關閉只退訂，C仍正常，最後owner釋放。",
+        "caption": "所有權、呼叫及事件分開標示；模型單執行緒，不測SDK或實體設備多執行緒釋放。"
+      }
+    },
+    {
+      "heading": "例題二：名稱相同的另一個publisher也不會自動送到",
+      "kind": "worked-example",
+      "paragraphs": [
+        "模型建立a(Name=\"shared\")與wrong(Name=\"other\")，B/C只訂閱a。wrong.Emit同B完整key，B仍Pending，因為事件釋出物件沒有它的handler；文字身份正確也不能替代publisher關係。隨後a.Emit同key，B才Completed。",
+        "即使把wrong.Name也改shared，兩個物件仍分開，不會因Name相同就合併事件列表。變數名、class名和顯示標籤都不保證物件相同；建構參照及動態事件路徑才是證據。如果從圖上只看「兩個adapter」框，會忽略不同實例這種常見維護問題。",
+        "有限修正是讓操作與回報來自正確實例/通道，核對生命週期；不能訂閱所有adapter廣播並忽略target來讓結果趕上。回歸保留wrong不影響、共享a各target不串、B關閉C繼續與全部退訂。圖不僅描述正確結構，也告訴你哪條關係改變會造成哪類錯誤。"
+      ]
+    },
+    {
+      "heading": "從變更邊界選回歸，不必無目的測全系統",
+      "kind": "mechanism",
+      "paragraphs": [
+        "改B的Dispose會影響B訂閱、共享adapter和C繼續工作；改LabKey比較會影響多目標與重連；改事件時序會影響Pending建立與同步回呼。把變更點連到直接依賴和狀態轉移，再選回歸；這叫影響分析，不是檔案很多就很全面。",
+        "以關閉責任為例，正面是B可關閉，負面是關閉B不應關閉a或令C失效，生命週期是重複關閉和全部結束後owner釋放。若真實SDK要求先停止資料流再解除控制，需要把該順序加入契約和驗證。Lab沒有裝置流，不能證明該外部順序。",
+        "圖版本更新還要更新證據版本。舊圖基於a共享，若新版本每view獨立建立adapter，owner和回歸不同；不能只換標題沿用舊結論。保留變更理由、受影響關係和驗證結果，未來讀者才知道哪份圖對應手上程式碼。"
+      ]
+    },
+    {
+      "heading": "把未知變成具體查證，不用未知填滿正文",
+      "kind": "concept",
+      "paragraphs": [
+        "看到公司名稱RCSCall或iCallAPI，可以先記錄它在哪些檔案宣告、由哪處new或factory建立、建構傳給誰、哪幾處訂閱。即使外部DLL沒有原始碼，也可用合法文件/後設資料看簽名與版本，並取得授權的執行證據。未知內部實現不妨礙先確定本地呼叫關係。",
+        "每個缺口寫問題、影響與下一證據。例如「不知道SDK事件在哪執行緒→影響UI派送→查版本文件並在授權測試環境記錄執行緒」；「不知道誰擁有adapter→影響關閉→找所有建立/Dispose位置」。這些句子可指導維護動作，而「還不夠上下文」本身不能推進。",
+        "確定事實與候選圖分開，假設如「這個類可能做音訊連線」只留待證問題，不畫成已知實線。補齊新證據時更新對應關係與結論，否定的假設也保留簡短理由，減少後來的人再走同一條猜測。"
+      ]
+    },
+    {
+      "heading": "讀碼：建立、借用、退訂與釋放形成閉環",
+      "kind": "code-reading",
+      "paragraphs": [
+        "constructor把借用adapter存欄位並+=，Dispose只−=；owner使用using最後釋放adapter。需要看這幾處合在一起，不能只搜Dispose看到名字就宣告資源已經完整釋放。SubscriberCount由event委派清單計算，實際反映當前關係，不是手寫「關閉後應為1」常數。",
+        "OnCompleted中closed guard與終態規則限制狀態應用，但handler入口Trace先寫一行；因此不退訂可能仍有無效回呼，即使Applied不變。驗收同時檢查訂閱數、鄰接消費者和應用計數，才不會把一道guard當全部生命週期正常。"
+      ],
+      "code": {
+        "title": "可編譯模型中的借用者生命週期；adapter由外層owner釋放",
+        "text": "public LabController(LabAdapter adapter,string target)\n{\n    this.adapter=adapter; this.target=target;\n    adapter.Completed+=OnCompleted;\n}\npublic void Dispose()\n{\n    if(closed)return;\n    closed=true;\n    adapter.Completed-=OnCompleted;\n}\n// LabAdapter.SubscriberCount reads Completed.GetInvocationList().Length.\n// It is an observation of the event list, not a fixed expected number."
+      }
+    },
+    {
+      "heading": "實作：交付一份可以獨立閱讀的功能檔案",
+      "kind": "lab",
+      "paragraphs": [
+        "在獨立.NET10專案執行ownership前，列建構後、B第一次/第二次關閉、C完成、C關閉的訂閱數與狀態。畫owner和兩個借用者，並分別標Send正向與Completed反向。執行後對照實際資料，填寫F1/E1–E5，文字解釋為什麼C不應受B關閉影響。",
+        "暫存副本刪除adapter.Completed−=，預期borrower_unsubscribes_not_disposes_shared失敗；另一次把該退訂改成adapter.Dispose，a提前釋放，同一斷言或之後操作失敗。每次獨立注入、儲存結果、恢復原碼再all，驗證兩類不同責任錯誤。",
+        "最後把F1改為你想調查的公司小功能空白模板，只保留欄位與問題，不帶入Lab事實。填真實證據前未知明確列任務；完整功能檔案應讓未參與的人知道目標、機制、測試、結論、限制和下一步，附件輸出不取代這份解釋。"
+      ]
+    },
+    {
+      "heading": "診斷分支：關B後C不再完成，是資源還是身份",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "初始共用a，B關閉後C Pending。候選甲a被B釋放、乙C仍訂閱但完成target錯、丙B關閉時誤退訂C。選擇a.Disposed、SubscriberCount以及C handler入口/身份來區分，比重開全部軟體更有鑑別力。",
+        "新增a.Disposedfalse/subscribers1、C入口收到(R1,1,B,Completed)，而C目標C，支持身份錯而非已釋放；應查完成來源的target關聯。另一資料a.Disposedtrue則支持錯誤owner釋放；第三資料false/subscribers0而C尚使用則支持誤退訂或C生命週期提前結束。",
+        "有限修正分別是目標對映、借用者釋放責任或正確handler退訂物件；回歸B/C各完成、wrong publisher不影響、B關閉C繼續、重複關閉和全部結束。沒有這些具體證據時只報告候選與下一觀察，不把「資源問題」當沒有解釋的終局答案。"
+      ]
+    },
+    {
+      "heading": "維護地圖的完成標準是能解釋與更新",
+      "kind": "maintenance",
+      "paragraphs": [
+        "交付者應能用圖和功能卡回答：入口到結果經過哪些關係、每條證據證明哪裡、誰負責資源、版本變化影響什麼、哪項還需查。若單看報告只能看到CSV數字、十個縮寫或滿頁框，地圖尚未幫助理解，需補因果文字而不是繼續加名詞。",
+        "長期維護以小功能逐步累積；每次有證據才擴充關係，主題可以獨立。把基礎概念、實際原始碼證據、執行驗證和未測試層分開，讀者既知道已學到什麼，也不會把虛構完整圖誤當公司架構。更新後重核相鄰責任，才能維持地圖與實際系統的一致。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "角色/元件圖和部署/動態圖各回答什麼？是不是必須畫全部C4層級？",
+      "answer": [
+        "元件/角色幫助理解責任與依賴，部署看執行實例在哪裡，動態看某次功能互動順序。",
+        "不必全部畫，只選對當前問題有價值的尺度並寫範圍與圖例。",
+        "不能用同class推只有一個實例，或用結構圖代替本次執行證據。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "closed guard讓B不再Apply，為什麼還需要退訂？GC是否自動按需求解除關係？",
+      "answer": [
+        "publisher仍持handler時可繼續回呼並保留subscriber，closed只限制部分行為。",
+        "GC根據可到達性管理記憶體，不自動理解事件關係何時該解除或SDK資源關閉順序。",
+        "退訂、鄰接使用者和owner釋放分別驗收；不可到達的迴圈不等於必然洩漏。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生共享publisher有B/C/D三個合法訂閱者；B Dispose兩次、C一次，D仍活。各階段SubscriberCount應多少，publisher該誰釋放？",
+      "answer": [
+        "建構後3，B第一次後2、第二次仍2，C後1。",
+        "D仍使用時publisher不能由B/C提前釋放；最終owner在D也結束後處理。",
+        "回歸剩餘D工作與被關閉者不回呼，訂閱數反映實際列表。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生兩adapter實例Name都X，B只訂閱a；wrong.Emit正確(R2,1,B)。能自動完成B嗎？",
+      "answer": [
+        "不能，顯示Name相同不等於物件相同，事件列表分開。",
+        "B必須從已訂閱a對應路徑取得完成，或按明確契約改變依賴。",
+        "驗證建構參照與動態入口，不以統一命名/廣播替代實例關係。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生current B/C各requestR9、session5；a.Emit(R9,5,C,Completed)。兩個handler進入，應該幾次Apply？",
+      "answer": [
+        "只有C應Apply一次，B因target不同忽略。",
+        "handler進入次數2不是業務應用次數2，需按完整身份判讀。",
+        "回歸B隨後自己的完成、重複C不再Apply、舊session不更新當前。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生舊圖v1每view獨立adapter，新版v2共享。能沿用「view關閉就Dispose adapter」結論嗎？",
+      "answer": [
+        "不能，owner與借用關係已經變化，舊釋放結論可能讓其他view失效。",
+        "更新圖版本與建立/Dispose證據，明確共享owner和借用者退訂責任。",
+        "回歸相鄰view繼續、重複關閉與全部結束釋放，儲存變更理由而不只換圖示題。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "B關閉後C Pending；a未釋放/subscribers0，而C應該活。優先候選、下一證據與修正是什麼？",
+      "answer": [
+        "不支持a已釋放，訂閱列表空支持C被提前退訂或生命週期結束。",
+        "查關閉呼叫的handler實例、委派物件與C Dispose位置，核對B只移除自己的關係。",
+        "修正確退訂物件/生命週期，回歸B關閉後剩C一訂閱及C完成，保留關閉B不再回呼。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "圖寫「RCSCall→iCallAPI→Ozeki」，只根據類名猜。如何把它變成可維護記錄？",
+      "answer": [
+        "刪除未經證明的實線依賴，將它拆成具體待查問題。",
+        "查宣告、建構、傳入、呼叫、訂閱、實際DLL版本與授權執行證據，為每關係給來源ID。",
+        "有證據再畫對應箭頭與含義，未知註明影響/下一觀察，不把公開Lab事實貼到公司結構。"
+      ]
+    }
+  ],
+  "recap": [
+    "按問題選擇角色、元件、部署與動態圖，使用明確圖例區分呼叫、資料、事件與所有權。",
+    "由建構、訂閱、退訂和關閉追出共享資源的owner與借用者，驗證實例和身份隔離。",
+    "製作可單獨閱讀的功能卡、證據索引與變更回歸地圖，把未知轉為具體查證工作。"
+  ],
+  "sources": [
+    {
+      "label": "C4官方：不同範圍的結構與支持圖",
+      "url": "https://c4model.com/diagrams"
+    },
+    {
+      "label": "Microsoft：Dispose與資源釋放責任",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose"
+    },
+    {
+      "label": "NASA：介面定義、檔案與變更管理",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
+    },
+    {
+      "label": "C4官方：container是應用或資料儲存抽象",
+      "url": "https://c4model.com/diagrams/container"
+    },
+    {
+      "label": "C4官方：deployment的執行環境與實例",
+      "url": "https://c4model.com/diagrams/deployment"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab.zip",
+      "label": "下載完整概念地圖 C# 專案",
+      "description": ".NET 10 標準庫模型、操作說明與實際輸出；不連公司SDK、網路或實體裝置。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/Program.cs",
+      "label": "概念地圖 Program.cs",
+      "description": "本章追讀 ownership 模式；Lab型別自行建立，不是廠商API。"
+    },
+    {
+      "path": "./assets/labs/big-picture-maintenance-lab/README.md",
+      "label": "模型環境、機制與驗收限制",
+      "description": "各模式輸入、預期、故障注入與復原；模型輸出不等於實體效果。"
+    }
+  ]
+}

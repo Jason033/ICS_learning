@@ -1,0 +1,120 @@
+MODE evidence
+DATA missing_observation actual=NeedEvidence expected=NeedEvidence
+PASS missing_observation
+DATA no_process_with_unknown_later_stages actual=NoProcess expected=NoProcess
+PASS no_process_with_unknown_later_stages
+DATA endpoint_mismatch actual=EndpointMismatch expected=EndpointMismatch
+PASS endpoint_mismatch
+DATA not_ready actual=NotReady expected=NotReady
+PASS not_ready
+DATA ready actual=Ready expected=Ready
+PASS ready
+MODE ownership
+PASS normal_acquired
+DATA normal_cleanup actual=0 expected=0
+PASS normal_cleanup
+DATA exception_cleanup actual=0 expected=0
+PASS exception_cleanup
+DATA opened_matches_closed actual=2 expected=2
+PASS opened_matches_closed
+DATA fd_after_five_minutes actual=350 expected=350
+PASS fd_after_five_minutes
+DATA operations_to_limit actual=674 expected=674
+PASS operations_to_limit
+DATA minutes_to_limit=22.466667
+PASS standard_stream_example
+MODE startup
+DATA config_missing actual=MissingConfig expected=MissingConfig
+PASS config_missing
+DATA resource_denied actual=AccessDenied expected=AccessDenied
+PASS resource_denied
+DATA device_pending actual=DevicePending expected=DevicePending
+PASS device_pending
+DATA business_ready actual=Ready expected=Ready
+PASS business_ready
+DATA ready_observed_ms actual=930 expected=930
+PASS ready_observed_ms
+PASS deadline_stops_pending
+DATA ordering_does_not_imply_ready actual=DevicePending expected=DevicePending
+PASS ordering_does_not_imply_ready
+PASS working_directory_changes_relative_source
+MODE endpoints
+DATA longest_prefix_140 actual=LAB expected=LAB
+PASS longest_prefix_140
+DATA prefix_70 actual=VPN expected=VPN
+PASS prefix_70
+DATA default_route actual=WAN expected=WAN
+PASS default_route
+PASS loopback_does_not_match_lan
+PASS protocol_matters
+PASS loopback_match
+MODE devices
+DATA bytes_per_frame actual=4 expected=4
+PASS bytes_per_frame
+DATA callback_bytes actual=3840 expected=3840
+PASS callback_bytes
+DATA callback_ms actual=20 expected=20
+PASS callback_ms
+DATA capacity_ms actual=60 expected=60
+PASS capacity_ms
+DATA underflow_ms actual=30 expected=30
+PASS underflow_ms
+DATA wrong_direction actual=WrongDirection expected=WrongDirection
+PASS wrong_direction
+DATA unsupported_format actual=UnsupportedFormat expected=UnsupportedFormat
+PASS unsupported_format
+PASS invalid_rate_rejected
+MODE time
+DATA corrected_send_low actual=992 expected=992
+PASS corrected_send_low
+DATA corrected_send_high actual=996 expected=996
+PASS corrected_send_high
+DATA delay_low_ms actual=22 expected=22
+PASS delay_low_ms
+DATA delay_high_ms actual=30 expected=30
+PASS delay_high_ms
+DATA raw_delay_low actual=-3 expected=-3
+PASS raw_delay_low
+DATA causal_feasible_low actual=0 expected=0
+PASS causal_feasible_low
+DATA causal_feasible_high actual=5 expected=5
+PASS causal_feasible_high
+DATA wall_clock_adjustment actual=-300 expected=-300
+PASS wall_clock_adjustment
+PASS different_instance_rejected
+MODE pressure
+DATA core_equivalents actual=1 expected=1
+PASS core_equivalents
+DATA machine_cpu_percent actual=25 expected=25
+PASS machine_cpu_percent
+DATA queue_full_seconds actual=20 expected=20
+PASS queue_full_seconds
+DATA expanded_queue_seconds actual=120 expected=120
+PASS expanded_queue_seconds
+DATA drain_seconds actual=10 expected=10
+PASS drain_seconds
+DATA balanced_queue_stays actual=300 expected=300
+PASS balanced_queue_stays
+PASS cpu_generation_guard
+MODE diagnose
+DATA case_A_first_boundary actual=EndpointMismatch expected=EndpointMismatch
+PASS case_A_first_boundary
+DATA case_B_resource_boundary actual=ResourceDenied expected=ResourceDenied
+PASS case_B_resource_boundary
+DATA early_negative_evidence actual=NoProcess expected=NoProcess
+PASS early_negative_evidence
+DATA case_C_underflow_ms actual=15 expected=15
+PASS case_C_underflow_ms
+DATA case_C_queue_full actual=20 expected=20
+PASS case_C_queue_full
+DATA case_C_expanded_queue actual=70 expected=70
+PASS case_C_expanded_queue
+DATA remote_completed_low actual=425 expected=425
+PASS remote_completed_low
+DATA remote_completed_high actual=435 expected=435
+PASS remote_completed_high
+DATA receive_after_completion_low actual=15 expected=15
+PASS receive_after_completion_low
+DATA receive_after_completion_high actual=25 expected=25
+PASS receive_after_completion_high
+PASS end

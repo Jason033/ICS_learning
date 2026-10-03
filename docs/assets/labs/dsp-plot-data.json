@@ -1,0 +1,83 @@
+{
+  "scope": "synthetic mathematical examples; not RF/ADC measurements",
+  "dft": {
+    "fsSamplesPerSecond": 4.0,
+    "samples": [
+      1.0,
+      0.0,
+      -1.0,
+      0.0
+    ],
+    "sampleTimesSeconds": [
+      0.0,
+      0.25,
+      0.5,
+      0.75
+    ],
+    "nData": 4,
+    "nFft": 4,
+    "window": "rectangular",
+    "forwardScale": "unscaled",
+    "bins": [
+      {
+        "k": 0,
+        "real": 0.0,
+        "imaginary": 0.0,
+        "magnitude": 0.0
+      },
+      {
+        "k": 1,
+        "real": 2.0,
+        "imaginary": 1.2246467991473532e-16,
+        "magnitude": 2.0
+      },
+      {
+        "k": 2,
+        "real": 0.0,
+        "imaginary": -2.4492935982947064e-16,
+        "magnitude": 2.4492935982947064e-16
+      },
+      {
+        "k": 3,
+        "real": 2.0,
+        "imaginary": 3.6739403974420594e-16,
+        "magnitude": 2.0
+      }
+    ]
+  },
+  "aliasing": {
+    "fsSamplesPerSecond": 8000.0,
+    "waveforms": "amplitude 1, phase 0 cosine at 1000 Hz and 7000 Hz",
+    "sampleTimesSeconds": [
+      0.0,
+      0.000125,
+      0.00025,
+      0.000375,
+      0.0005,
+      0.000625,
+      0.00075,
+      0.000875
+    ],
+    "samples1000Hz": [
+      1.0,
+      0.7071067811865476,
+      6.123233995736766e-17,
+      -0.7071067811865475,
+      -1.0,
+      -0.7071067811865477,
+      -1.8369701987210297e-16,
+      0.7071067811865474
+    ],
+    "samples7000Hz": [
+      1.0,
+      0.7071067811865474,
+      -4.286263797015736e-16,
+      -0.7071067811865474,
+      -1.0,
+      -0.7071067811865461,
+      -4.904777002955296e-16,
+      0.7071067811865505
+    ],
+    "continuousCurveFormula": "cos(2*pi*f*t), t=0..0.001 seconds; not acquired points"
+  }
+}

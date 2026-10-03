@@ -1,0 +1,249 @@
+{
+  "id": "services-and-startup",
+  "topicId": "systems",
+  "title": "服務、啟動與執行身分",
+  "intro": "桌面雙擊成功，部署成服務卻失敗，往往不是同一個執行環境。這一章從服務管理、啟動契約、帳號及相依資源開始，解釋為什麼Running還沒準備好，以及如何讀出程式啟動與重啟責任。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "知道程式執行後形成程序即可；服務管理員、依賴與環境會重新定義。",
+    "會讀狀態、相對路徑和簡單條件式；不需要先會安裝服務。"
+  ],
+  "goals": [
+    "解釋服務管理狀態與業務就緒的差別。",
+    "追出帳號、工作目錄、設定版本與啟動依賴。",
+    "用有限重啟政策與同身分回歸確認修正。"
+  ],
+  "sections": [
+    {
+      "heading": "背景服務由誰啟動、誰監督",
+      "kind": "concept",
+      "paragraphs": [
+        "一般桌面程式常隨使用者登入而啟動，生命週期與畫面互動較接近；服務由服務管理機制安排，可在沒有互動視窗時執行。Windows的SCM是服務控制管理員，負責記錄、啟動、停止及管理服務；Linux的systemd以unit單元描述工作與相依。並非每個Linux環境都用systemd，例如某些容器直接執行主程序。",
+        "服務名稱、程序名稱與執行檔不一定一對一。Windows某些服務可以共用宿主程序；systemd單元也可能包含子程序。同一程序存在不能直接證明某個服務的每項功能已啟動，服務名查不到也可能是名稱、管理方式或命名空間不同。先辨識部署實際用哪個管理機制。",
+        "管理員只能從契約知道啟動結果。例如收到服務報告的狀態，或觀察主要程序是否退出；它不會自動知道程式已連上設備、取得音訊裝置或完成登入。業務就緒需要應用自己的條件與訊號。把ready=process exists寫進程式，會把初始化失敗當健康。",
+        "維護時先畫出啟動責任：管理員啟動程序，程序讀設定，建立本地資源，初始化依賴，發出就緒，才接受需要這些條件的業務。部分程式可先提供健康查詢再就緒，但需區分liveness與readiness，讓查詢者知道目前是存活還是可以承接指定工作。"
+      ]
+    },
+    {
+      "heading": "啟動狀態如何變成可承接工作",
+      "kind": "mechanism",
+      "paragraphs": [
+        "Windows服務常經過StartPending到Running，再到StopPending及Stopped。Pending可以報告進展與估計等待，使管理員知道它仍初始化；實際可用狀態仍依程式設計。Running若定義過早，畫面看起來健康，第一筆工作卻會撞上未建立的設備資源。",
+        "systemd的Type=simple通常在主要程序啟動後就視為啟動流程已達其契約，不等待程式完成所有業務初始化；Type=notify可由程式發出READY=1提供明確就緒訊號。Type=oneshot則用一次任務完成的方式描述工作。它們不是好壞排名，而是監督者與被監督工作之間的契約選擇。",
+        "因此不同Type下active的意義會不同。讀公司部署檔要同時看Type、主要程序、就緒通知與錯誤退出路徑；不能把所有active都當設備可操作。教材只讀部署片段，不安裝或修改本機服務，也不保證公司使用某一種Type。",
+        "停止同樣是有序過程。先拒絕新工作，再等待或取消在途工作，釋放本地資源與解除事件，最後回報停止。若停止限期短於清理需要，管理機制可能強制結束；重啟後殘留的遠端會話或設備狀態需在恢復流程重新查證，不應假設程序退出即全部恢復。"
+      ]
+    },
+    {
+      "heading": "帳號、工作目錄與設定來源",
+      "kind": "mechanism",
+      "paragraphs": [
+        "執行身分決定可存取的檔案、裝置、憑證、網路資源與權限。管理員桌面與專用服務帳號的權限不同；Windows的本機系統帳號也不等同登入使用者。Linux unit的User指定執行身分，額外的權限限制及隔離還可能縮小可見資源。",
+        "相對路徑是相對於目前工作目錄解析，而不一定相對於執行檔位置。程式讀config.json，在桌面可能來自專案目錄，在服務可能找不到或讀到不同檔案。有效設定應記錄解析後的來源與版本，敏感值不記內容；把「檔案存在」與「該實例讀了哪份」分開。",
+        "環境變數由啟動環境傳入，不一定與使用者目前終端相同。更新磁碟上的設定也不保證已運行的程序重新讀取。讀碼時查設定載入時刻、覆寫順序、預設值與是否可熱更新，才能解釋為何改檔案後畫面仍用舊端點。",
+        "Windows服務通常不能依賴互動桌面的視窗、音訊選擇或使用者映射磁碟機。Linux背景程序也可能沒有桌面音訊會話。這不是禁止服務處理音訊，而是部署要明確提供其可用環境；能在使用者桌面試播並不能確認服務身分的音訊路徑。"
+      ]
+    },
+    {
+      "heading": "相依：順序、必要條件與應用恢復",
+      "kind": "mechanism",
+      "paragraphs": [
+        "啟動順序與依賴成功是不同責任。systemd的After控制排序，Requires等描述需求與失敗關係；單寫After不等於一定啟動該依賴，更不等於它的業務已就緒。Windows服務依賴也不能替應用驗證遠端設備或雲端認證服務真的可操作。",
+        "遠端依賴有自己的延遲與故障。固定sleep兩秒只是延後，不是確認設備就緒；速度較快的機器會浪費時間，慢鏈路則仍不足。應用可用有期限的初始化與明確條件，失敗時保存原因並決定拒絕服務、降級或稍後恢復。",
+        "監督重啟也可能與應用重試互相放大。外層每秒重啟、內層每次十個重試，故障時會持續產生更多連線與認證請求。需看哪一層負責恢復、重試間隔、啟動頻率限制與是否保存最初錯誤，避免最後只看到「啟動太快」而丟失第一個失敗原因。",
+        "恢復不是每次重新啟動全部元件。若只有裝置暫時不可用，應依契約處理該依賴；若設定無法解析，重試同一內容不會改善。先分類可恢復暫時失敗與需要人改設定的永久錯誤，再安排具體的有限策略。"
+      ]
+    },
+    {
+      "heading": "例題一：相對路徑讓兩個環境讀不同設定",
+      "kind": "worked-example",
+      "paragraphs": [
+        "虛構Bridge的程式讀File.ReadAllText(\"bridge.json\")。桌面工作目錄是C:\\Lab\\Bridge，該目錄v5設定ListenPort=9200；服務工作目錄為C:\\Windows\\System32，沒有該檔。桌面能連線，服務StartPending後退出，錯誤為FileNotFoundException。",
+        "先將路徑解析寫清楚：桌面實際尋找C:\\Lab\\Bridge\\bridge.json；服務尋找C:\\Windows\\System32\\bridge.json。這個差異發生在建立網路端點之前，沒有必要先查封包是否被遠端丟掉。設定載入失敗是目前有證據支持的第一個斷點。",
+        "有限修正可把設定來源明確傳入，或依部署契約以AppContext.BaseDirectory解析應隨程式部署的檔案。不能無條件把所有資料都寫到執行檔目錄；程式目錄常是唯讀，持續輸出的log與狀態檔應有另行配置的可寫位置。",
+        "驗證以原服務帳號、服務啟動方式和v5檔案執行，記錄解析後來源、設定版本和9200成功監聽，再做狀態查詢。另測缺檔及格式錯誤，確保失敗報出實際路徑而不洩漏祕密，且不把錯誤吞成Running。"
+      ]
+    },
+    {
+      "heading": "例題二：啟動順序正確但仍未就緒",
+      "kind": "worked-example",
+      "paragraphs": [
+        "給定虛構時間線：A設備介接服務0ms啟動，20ms管理狀態active，900ms才DeviceReady；B控制服務設定After=A，30ms啟動，40ms對A送第一筆命令，得到NotReady。使用者稱「已設定依賴還是失敗」。",
+        "排序只確保B的啟動安排在A的指定管理階段之後。20ms active與900ms DeviceReady是不同契約，40ms工作早於業務就緒860ms。設定順序並未提供設備初始化完成的證據，所以增加After不能處理這個斷點。",
+        "若A採明確通知並把管理就緒與DeviceReady關聯，監督者可等待A聲明；另一種設計是B使用有期限的readiness查詢，達條件才送工作，未達時清楚回報初始化中。選擇取決於管理契約、降級需求與各服務是否可獨立使用。",
+        "設整體啟動等待1500ms，每100ms查詢，固定模型從30ms開始會於930ms觀察到900ms後的Ready，仍在1530ms整體截止前。若A至2000ms才就緒，B應在期限停止等待並回報，而不是無限sleep。這是邏輯時間示例，不是實際排程精度承諾。"
+      ]
+    },
+    {
+      "heading": "讀C#：啟動檢查與業務就緒要分開",
+      "kind": "code-reading",
+      "paragraphs": [
+        "教學LabService保留Running與DeviceReady兩個欄位。Running在初始化程序開始後成立，Ready只有需要的設定與設備檢查都成立才為true。字串結果將錯誤分成MissingConfig、AccessDenied、DevicePending與Ready，讓維護者知道哪一條條件沒過。",
+        "短路運算&&在第一項false時不再計算後一項，避免在無設定情況繼續操作設備。這只適合本例純條件；真實檢查可能產生I/O與變化，要分別保存每項結果與時間，不能讓呼叫者反覆讀一組會自行改變的屬性。",
+        "讀公司程式時找OnStart、ExecuteAsync或入口函式，再看初始事件何時訂閱、例外如何傳到監督者、Ready是否只根據bool running。BackgroundService是.NET宿主抽象的一種，不表示所有公司.NET Framework程式有相同生命週期API。",
+        "失敗應保留可用的錯誤類別與關聯，而不是爲了讓服務顯示Running而捕捉所有例外。可降級的故障可以明確標示部分功能不可用；不可用的核心依賴則不能僞裝成完整就緒。"
+      ],
+      "code": {
+        "title": "教學純函式，不呼叫服務管理員",
+        "text": "static string Readiness(bool configExists, bool canOpen, bool deviceReady) {\n    if (!configExists) return \"MissingConfig\";\n    if (!canOpen) return \"AccessDenied\";\n    return deviceReady ? \"Ready\" : \"DevicePending\";\n}"
+      }
+    },
+    {
+      "heading": "讀部署輸出：查詢而非變更",
+      "kind": "maintenance",
+      "paragraphs": [
+        "Windows的Get-CimInstance Win32_Service可查看Name、State、ProcessId、StartName與PathName，Get-Service是另一種狀態入口。StartName是執行帳號，PathName是啟動命令，不應把服務名稱等同exe名稱。命令列可能含祕密或私有路徑，教學用合成內容，不提供任何公司輸出。",
+        "Linux的systemctl show選擇ActiveState、SubState、MainPID、User與WorkingDirectory等屬性，systemctl cat可讀unit與覆寫片段。需要了解目前有效的內容，因為局部覆寫可能改變原檔；不同版本欄位與權限以實際manual為準，容器中沒有systemd不能把查詢失敗當服務不存在。",
+        "查詢狀態後再讀同一啟動期間的journal或事件記錄，可找到最初失敗。顯示RestartCount增加只說重啟發生，沒有指出它是人為、崩潰、健康政策或依賴失敗；退出碼與第一個錯誤才幫助分類。",
+        "本章不要求執行start、stop、restart、enable或修改unit。這些會變更可用性與配置，只有工作規程允許時再做。學習模型足以先練習順序、身份與就緒判讀，實際Windows部署尚未執行。"
+      ],
+      "code": {
+        "title": "唯讀命令與合成輸出",
+        "text": "Windows PowerShell:\nGet-CimInstance Win32_Service -Filter \"Name='LabBridge'\" | Select-Object Name,State,ProcessId,StartName,PathName\n合成：LabBridge Running 4100 LabSvc C:\\Lab\\Bridge\\Bridge.exe\nLinux:\nsystemctl show lab-bridge.service -p ActiveState -p SubState -p MainPID -p User -p WorkingDirectory\n合成：ActiveState=active SubState=running MainPID=4100 User=labsvc WorkingDirectory=/opt/lab"
+      }
+    },
+    {
+      "heading": "故障分支：手動可用，服務不可用",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀是桌面手動執行成功，服務每次啓動失敗。候選A設定路徑不同、B帳號無權限、C網路依賴未就緒。第一份補證據確認兩者都解析到同一份v7設定，而且服務已記錄ConfigLoaded，排除本次A的主張。",
+        "第二份證據是服務身分labsvc對所需憑證私鑰開啟得到AccessDenied，桌面身份LabUser可開啟；錯誤發生在建立TLS連接之前。這定位本地私鑰存取，而非遠端握手或缺少網路路由。公開憑證可讀不表示其私鑰可讀，兩者需分開。",
+        "有限修正是按部署政策給該專用身份所需私鑰的使用權限，或調整合法密鑰加載方式，不是讓整個服務長期使用管理員。修改後同一服務身份重測密鑰開啟、TLS驗證與業務權限；即使握手成功還可能在下一層遇到授權政策。",
+        "另保留失敗迴歸：沒有私鑰權、錯誤設置來源與依賴未就緒分別產生正確分類。如此下一次表面上同樣“服務失敗”時，不用重新猜所有原因，也不依賴桌面成功來替代部署驗收。"
+      ]
+    },
+    {
+      "heading": "實作：追啟動條件與有限等待",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- startup。先讀Readiness四組輸入，逐項預測是MissingConfig、AccessDenied、DevicePending或Ready；再讀等待模型，給定30ms起點、100ms間隔、900ms就緒與1500ms總等待，預期930ms觀察到就緒。",
+        "把設備就緒改成2000ms，模型應在有效截止前停止，輸出未就緒而不是Ready。再把“After之後立即可用”的錯誤假設加入，40ms檢驗應FAIL。這不是實際systemd運行，而是把排序與條件分開的可重跑驗證。",
+        "恢復原數據，執行startup及all，確認原斷言恢復。模型以Path.GetTempPath下的LabDesktop與LabService兩條本平臺路徑，用Path.Combine計算同一bridge.json來源；只處理字符串，不創建目錄或讀取私人設置。Windows與Linux分隔符由各平臺API決定，不能把Linux結果當實際Windows服務解析。",
+        "驗收能逐項說出有效設置來源、服務身份、初始化完成條件和監督/應用恢復責任。真實服務帳號權限及啓動部署留待獲準Windows或Linux環境覈實，不能把固定模型的毫秒數當公司啓動性能。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "服務Running是否一定能操作設備？",
+      "answer": [
+        "Running依服務管理契約表示管理狀態；程序仍可能在初始化或依賴暫不可用。設備可用需要另外的業務條件。",
+        "把管理狀態、配置、設備就緒與最後成功工作分別記錄。",
+        "驗收一筆需要設備的無副作用查詢，並確認輸入/輸出匹配同一實例。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "相對路徑爲何在桌面和服務不同？",
+      "answer": [
+        "它相對於當前工作目錄，不自動相對於exe位置。啓動器可以給兩者不同目錄。",
+        "讀取有效設置時記錄解析後來源、版本和加載時刻，祕密值不寫log。",
+        "在原部署身份與工作目錄重測缺檔、正確檔及錯誤格式，才能確認修正。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生數據：B在50ms開始每80ms查Ready，A在410ms就緒，B整體等待600ms。何時首次看到？",
+      "answer": [
+        "查詢點是50、130、210、290、370、450ms；410落在370與450之間。",
+        "首次滿足在450，距離B起點400ms，尚未超過650ms截止。",
+        "模型僅說明固定查詢規則；真實排程有偏差，應記錄實際查詢與ready時刻。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生部署：After=db，未寫任何需求關係，db未啓動。能認爲B會自動啓動db？",
+      "answer": [
+        "After只是排序關係，不單獨要求該單元啓動。不能用它推導db一定存在。",
+        "查完整unit的Requires/Wants等需求關係及db業務就緒，而非只看一個字段。",
+        "按照有效部署契約驗證依賴缺席、啓動失敗及延遲就緒三種路線。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：桌面可開私鑰，服務AccessDenied；ConfigLoaded已確認。先改什麼？",
+      "answer": [
+        "設置加載已成立，當前失敗點是服務身份的本地私鑰使用權，尚未進入遠端TLS。",
+        "依部署政策修正該專用身份所需權限或加載方式，避免擴大成永久管理員。",
+        "用原服務方式重測私鑰、握手與業務授權，每層分別確認，不以桌面成功結案。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：每秒重啓，最初InvalidConfig，最後StartLimitHit。主因可寫啓動太快嗎？",
+      "answer": [
+        "頻率限制是監督機制對反覆失敗的後果，最初InvalidConfig提供更早的失敗原因。",
+        "查該實例有效設置的解析與版本，修正內容，而非只放寬重啓限制。",
+        "重測正確啓動及錯誤設置的有限失敗，確認不再形成重啓風暴。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "停止程序後能假設遠端設備自動停止TX嗎？",
+      "answer": [
+        "本地程序退出只讓OS回收其資源參考，不保證遠端收到停止或實體狀態改變。",
+        "正常停止需按設備契約結束業務，崩潰恢復需重新讀取權威狀態。",
+        "驗證停止中、取消、回報晚到與重新啓動後的狀態同步，不只看PID消失。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "哪一種證據能區分設置改了但未加載與網絡故障？",
+      "answer": [
+        "記錄有效配置來源、版本及載入時刻，可以確認這實例實際使用哪份數據。",
+        "再比較端點建立與發送記錄；未加載正確端點的錯誤先發生在本地配置。",
+        "修改後驗證新實例確實加載目標版本，再測試傳輸及業務回覆，避免一次改多個層。"
+      ]
+    }
+  ],
+  "recap": [
+    "服務管理狀態、業務就緒與設備完成須分別定義。",
+    "身份、工作目錄、有效設置與依賴契約決定部署表現。",
+    "恢復需有分類、期限與驗收，不以無限重啓代替修正。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft：服務程式與帳號",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/services/service-programs"
+    },
+    {
+      "label": "Microsoft：服務執行帳號",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/services/service-user-accounts"
+    },
+    {
+      "label": "systemd 官方：服務啟動與就緒契約",
+      "url": "https://github.com/systemd/systemd/blob/main/man/systemd.service.xml"
+    },
+    {
+      "label": "Microsoft：Get-WinEvent 查詢與保存資訊",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent?view=powershell-7.5"
+    },
+    {
+      "label": "systemd 官方：journalctl 欄位與過濾",
+      "url": "https://github.com/systemd/systemd/blob/main/man/journalctl.xml"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 作業環境觀念追讀專案",
+      "path": "./assets/labs/systems-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 startup，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 startup 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

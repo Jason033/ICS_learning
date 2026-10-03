@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 835" role="img" aria-labelledby="title desc">
+<title id="title">先校正時鐘，才能比較雙端時點</title>
+<desc id="desc">A發送記錄100毫秒，B接收記錄80毫秒。B時鐘減A時鐘偏移負50正負5毫秒。B換到A軸為130正負5，接收範圍125到135，減發送100得到延遲25到35。原始負20是混用時鐘。</desc>
+<rect width="430" height="835" rx="18" fill="#f4f7fb"/>
+<g font-family="sans-serif" fill="#16304f" text-anchor="middle">
+<text x="215" y="43" font-size="24" font-weight="bold">先換同一軸，再相減</text>
+<text x="215" y="79" font-size="20">同一請求，兩端記錄不同時刻</text>
+<text x="215" y="109" font-size="19">本例單位相同，時鐘有偏移</text>
+<g fill="#fff" stroke="#8aa5bd"><rect x="20" y="137" width="390" height="105" rx="12"/><rect x="20" y="279" width="390" height="130" rx="12"/><rect x="20" y="446" width="390" height="130" rx="12"/><rect x="20" y="613" width="390" height="120" rx="12"/></g>
+<text x="215" y="174" font-size="22">原始 A Send = 100ms</text><text x="215" y="209" font-size="22">原始 B Receive = 80ms</text>
+<text x="215" y="317" font-size="22">offset 定義：B 時鐘 − A 時鐘</text><text x="215" y="354" font-size="22">估計 offset = −50 ± 5ms</text><text x="215" y="389" font-size="20">B 比 A 慢 50ms</text>
+<text x="215" y="484" font-size="22">換 A 軸：80 − (−50) = 130</text><text x="215" y="522" font-size="22">B 接收範圍：[125,135]ms</text><text x="215" y="557" font-size="19">只有 offset 有誤差，A 視為精確</text>
+<text x="215" y="651" font-size="22">延遲：[125,135] − 100</text><text x="215" y="690" font-size="24" font-weight="bold">結果：[25,35]ms</text>
+<g stroke="#567797" stroke-width="3"><path d="M215 242v32M215 409v32M215 576v32"/></g>
+<text x="215" y="774" font-size="20">80 − 100 = −20 是錯誤混軸</text><text x="215" y="806" font-size="19">未取得 offset，不能直接假定為0</text>
+</g></svg>

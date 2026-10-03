@@ -1,0 +1,201 @@
+[
+  {
+    "project": "big-picture-maintenance-lab",
+    "source_files": 5,
+    "source_bytes_match": true,
+    "zip_bytes": 6892,
+    "sha256": "60e3abfa536fcabeb745dd320397d4289626512ea096446df5b6ec213d5d49a2",
+    "members": [
+      "big-picture-maintenance-lab/BigPictureMaintenanceLab.csproj",
+      "big-picture-maintenance-lab/NuGet.Config",
+      "big-picture-maintenance-lab/Program.cs",
+      "big-picture-maintenance-lab/README.md",
+      "big-picture-maintenance-lab/expected-output.txt"
+    ]
+  },
+  {
+    "project": "dsp-maintenance-lab",
+    "source_files": 5,
+    "source_bytes_match": true,
+    "zip_bytes": 7044,
+    "sha256": "0dd40bb772551a028e437a63fc41c0829601941def8f483e818eb4561825f675",
+    "members": [
+      "dsp-maintenance-lab/Lab.csproj",
+      "dsp-maintenance-lab/NuGet.Config",
+      "dsp-maintenance-lab/Program.cs",
+      "dsp-maintenance-lab/README.md",
+      "dsp-maintenance-lab/expected-output.txt"
+    ]
+  },
+  {
+    "project": "integration-maintenance-lab",
+    "source_files": 3,
+    "source_bytes_match": true,
+    "zip_bytes": 5055,
+    "sha256": "d257b0045713f5010f5c0a050e1fb11462ddef9e92a33c7e770c9cec6dfb8dd7",
+    "members": [
+      "integration-maintenance-lab/Program.cs",
+      "integration-maintenance-lab/README.md",
+      "integration-maintenance-lab/integration-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "networking-maintenance-lab",
+    "source_files": 4,
+    "source_bytes_match": true,
+    "zip_bytes": 6623,
+    "sha256": "c50b4affb4a28780ac09e8af46a6ab7f9e03ccca5754d24b3e45b3ccfdb4cb41",
+    "members": [
+      "networking-maintenance-lab/Program.cs",
+      "networking-maintenance-lab/README.md",
+      "networking-maintenance-lab/expected-output.txt",
+      "networking-maintenance-lab/networking-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "ozeki-maintenance-lab",
+    "source_files": 3,
+    "source_bytes_match": true,
+    "zip_bytes": 4992,
+    "sha256": "d139b355924bb4f60181f4ba07a819649c2dd19ca0b3ac419299080e8ecd6ad9",
+    "members": [
+      "ozeki-maintenance-lab/Program.cs",
+      "ozeki-maintenance-lab/README.md",
+      "ozeki-maintenance-lab/ozeki-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "ptt-maintenance-lab",
+    "source_files": 4,
+    "source_bytes_match": true,
+    "zip_bytes": 4969,
+    "sha256": "f2873d27bc6a7013f08b3de5fb77a29df6e6c517e1a02d6f7c18a739d6acd16d",
+    "members": [
+      "ptt-maintenance-lab/Program.cs",
+      "ptt-maintenance-lab/README.md",
+      "ptt-maintenance-lab/expected-output.txt",
+      "ptt-maintenance-lab/ptt-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "radio-maintenance-lab",
+    "source_files": 4,
+    "source_bytes_match": true,
+    "zip_bytes": 6106,
+    "sha256": "d7d9b8929d96a0c04a4eb6efbfcbc98f53dcb2ab412a4377d5f0a94b124c7ff8",
+    "members": [
+      "radio-maintenance-lab/Program.cs",
+      "radio-maintenance-lab/README.md",
+      "radio-maintenance-lab/expected-output.txt",
+      "radio-maintenance-lab/radio-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "reliability-maintenance-lab",
+    "source_files": 5,
+    "source_bytes_match": true,
+    "zip_bytes": 5356,
+    "sha256": "e163935f7a1a5c582f4721d7fe422d0161f142d868c28bda693a4dbf7f64f65d",
+    "members": [
+      "reliability-maintenance-lab/NuGet.Config",
+      "reliability-maintenance-lab/Program.cs",
+      "reliability-maintenance-lab/README.md",
+      "reliability-maintenance-lab/expected-output.txt",
+      "reliability-maintenance-lab/reliability-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "satellite-maintenance-lab",
+    "source_files": 5,
+    "source_bytes_match": true,
+    "zip_bytes": 6563,
+    "sha256": "f7c58cf2bda6df41bc22ee0116c0a72410f7359388d590a4df2d69d520b034e5",
+    "members": [
+      "satellite-maintenance-lab/Lab.csproj",
+      "satellite-maintenance-lab/NuGet.Config",
+      "satellite-maintenance-lab/Program.cs",
+      "satellite-maintenance-lab/README.md",
+      "satellite-maintenance-lab/expected-output.txt"
+    ]
+  },
+  {
+    "project": "security-maintenance-lab",
+    "source_files": 5,
+    "source_bytes_match": true,
+    "zip_bytes": 10984,
+    "sha256": "219cd357c286a88f64e18bc70309767f1241dc2a459766b15acaeb70a2bf394e",
+    "members": [
+      "security-maintenance-lab/NuGet.Config",
+      "security-maintenance-lab/Program.cs",
+      "security-maintenance-lab/README.md",
+      "security-maintenance-lab/SecurityMaintenanceLab.csproj",
+      "security-maintenance-lab/expected-output.txt"
+    ]
+  },
+  {
+    "project": "serial-maintenance-lab",
+    "source_files": 4,
+    "source_bytes_match": true,
+    "zip_bytes": 4604,
+    "sha256": "ea221c5a96f8ce36f04d22e76ab0cb56179c8c5ef313b2102b8a2197b085b404",
+    "members": [
+      "serial-maintenance-lab/Program.cs",
+      "serial-maintenance-lab/README.md",
+      "serial-maintenance-lab/expected-output.txt",
+      "serial-maintenance-lab/serial-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "sockets-maintenance-lab",
+    "source_files": 4,
+    "source_bytes_match": true,
+    "zip_bytes": 5943,
+    "sha256": "3669317ba3f098855bf4731eb6c43b3b795b4bb35ccf2727a5fcca76c89a9c50",
+    "members": [
+      "sockets-maintenance-lab/Program.cs",
+      "sockets-maintenance-lab/README.md",
+      "sockets-maintenance-lab/expected-output.txt",
+      "sockets-maintenance-lab/sockets-maintenance-lab.csproj"
+    ]
+  },
+  {
+    "project": "systems-maintenance-lab",
+    "source_files": 5,
+    "source_bytes_match": true,
+    "zip_bytes": 7766,
+    "sha256": "0f05e17ce459c8371e9cbde4f01594b5b4c0c3665b0c14e6ea3403ef93a30f86",
+    "members": [
+      "systems-maintenance-lab/NuGet.Config",
+      "systems-maintenance-lab/Program.cs",
+      "systems-maintenance-lab/README.md",
+      "systems-maintenance-lab/SystemsMaintenanceLab.csproj",
+      "systems-maintenance-lab/expected-output.txt"
+    ]
+  },
+  {
+    "project": "troubleshooting-maintenance-lab",
+    "source_files": 5,
+    "source_bytes_match": true,
+    "zip_bytes": 6919,
+    "sha256": "df4a017e7c2503e9753a8674ff6bd9eba4220828b9ba27006204dc7e2c03b4d1",
+    "members": [
+      "troubleshooting-maintenance-lab/NuGet.Config",
+      "troubleshooting-maintenance-lab/Program.cs",
+      "troubleshooting-maintenance-lab/README.md",
+      "troubleshooting-maintenance-lab/TroubleshootingMaintenanceLab.csproj",
+      "troubleshooting-maintenance-lab/expected-output.txt"
+    ]
+  },
+  {
+    "project": "voip-maintenance-lab",
+    "source_files": 3,
+    "source_bytes_match": true,
+    "zip_bytes": 3402,
+    "sha256": "7e11097f294924ad489e94e5d9f82652fe3d8505449a272657546b92bd1476eb",
+    "members": [
+      "voip-maintenance-lab/Program.cs",
+      "voip-maintenance-lab/README.md",
+      "voip-maintenance-lab/voip-maintenance-lab.csproj"
+    ]
+  }
+]

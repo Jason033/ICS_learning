@@ -1,0 +1,18 @@
+{
+  "sdk": "10.0.401",
+  "sourceHash": "34d2321636cda6effead9887ffd89225ae6015eb40a2311fcdde5c50a0a0ab70",
+  "baselineMode": "all",
+  "mechanismChecks": 29,
+  "baselineExitCode": 0,
+  "mutation": "inverse divides by 1 rather than N in isolated copy",
+  "mutationExitCode": 1,
+  "mutationStdout": "MODE spectrum\nX1=(2.000,0.000) X3=(2.000,0.000)\nPASS real cosine splits amplitude between positive and negative bins\n",
+  "mutationStderr": "FAIL forward unscaled inverse divided by N reconstructs samples\n",
+  "limitations": [
+    "No hardware, RF, sound device or company DLL",
+    "GNU Radio documentation checked, GUI not run",
+    "Direct DFT, not optimized FFT",
+    "Three-tap limited tone filter is not general anti-alias design",
+    "Three repetition code is not general FEC receiver"
+  ]
+}

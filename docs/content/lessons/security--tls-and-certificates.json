@@ -1,0 +1,254 @@
+{
+  "id": "tls-and-certificates",
+  "topicId": "security",
+  "title": "TLS、憑證與信任鏈",
+  "intro": "加密不只把文字變亂碼，也要確認你正在和誰通訊。這一章由對稱金鑰、公私鑰、雜湊與簽章開始，推導TLS如何建立通道，以及憑證名稱、信任鏈、用途、期限和私鑰為何必須分別檢查。",
+  "contentVersion": 2,
+  "prerequisites": [
+    "不用先懂密碼學；位元組、公開與祕密資料及收送兩端足夠，本章逐步定義。",
+    "會讀布林條件與時間範圍；實作只在記憶體建立教學憑證，不改信任存放區。"
+  ],
+  "goals": [
+    "說明保密、完整性與身分確認各由什麼機制提供。",
+    "推導憑證路徑與SAN/EKU/期限/私鑰的不同責任。",
+    "讀.NET離線鏈模型並定位失敗，保留撤銷及完整TLS未測的限制。"
+  ],
+  "sections": [
+    {
+      "heading": "保密、完整性與來源不是同一件事",
+      "kind": "concept",
+      "paragraphs": [
+        "保密讓沒有祕密金鑰的人無法合理讀取內容；完整性讓接收端能發現資料被修改；來源確認讓你知道資料來自哪個具有指定證據的主體。三者有關但不相同：單純把資料編碼成Base64完全不保密，未帶可信祕密的普通hash也不能單獨阻止攻擊者修改內容後重新計算hash。",
+        "對稱密碼讓兩端使用相同祕密或可相互計算的祕密保護資料，速度適合大量傳送；問題是如何先安全取得共享金鑰。公私鑰配對則讓公開部分可分享、私有部分需保密，不同演算法支援簽章或金鑰交換等用途，不是所有公私鑰都用來直接加密任意長內容。",
+        "數位簽章用私鑰對資料產生可由公鑰檢查的證據，讓接收端確認持有該私鑰者對這些資料的綁定。它不自動保密，也不獨自說明公鑰屬於誰。雜湊把任意長資料縮成固定摘要，簽章協議常使用摘要與規定格式，但不能自行把“私鑰加密hash”當所有簽章演算法的正確定義。",
+        "TLS組合金鑰協商、身份證據與經驗證的加密保護，建立一條端點之間的安全通道。應用業務、日誌與終端設備在通道之外可能仍泄漏或誤用資料；TLS不能糾正“把祕密印log”或“信任外部Admin欄位”的程序設計。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/security-tls-identity.svg",
+        "alt": "可信根、鏈與日期、名稱與用途、TLS及應用授權的前置責任。",
+        "caption": "原創教學圖：每個框列出因果條件及可觀察位置，路徑不代表公司實際部署。"
+      }
+    },
+    {
+      "heading": "TLS 1.3握手如何逐步建立通道",
+      "kind": "mechanism",
+      "paragraphs": [
+        "客戶端先發ClientHello，說明可用參數、隨機值和金鑰交換資料；伺服器選擇參數回ServerHello。以一般證書加臨時金鑰交換握手爲例，兩端由金鑰交換產生共享祕密，並結合握手內容派生不同用途的金鑰。臨時私有值不應在網路直接傳送。",
+        "伺服器給Certificate及CertificateVerify，後者證明掌握與證書公鑰對應的私鑰，並把證據綁定到本次握手內容。客戶端需驗證信任與預期身份；然後雙方Finished驗證握手一致性。不是“伺服器把私鑰給客戶端”，也不是TLS1.3沿用所有舊版RSA傳送預主祕密的路徑。",
+        "會話資料以協定規定的認證加密保護，記錄序號與派生條件協助保證完整性。旁觀者通常仍看見兩端、長度與時間等元數據；TLS不自動隱藏流量模式，端點自己也能讀明文。代理終止TLS後重新向後端建立另一條通道，保護區段需要單獨判斷。",
+        "客戶端證書是可選的另一種身份證明。當伺服器要求並驗證客戶端憑證時，可建立雙向TLS；但證書映射到應用用戶以及該用戶可操作什麼仍屬應用政策。TLS成功不足以宣稱tx.start授權或設備TX完成。"
+      ]
+    },
+    {
+      "heading": "憑證把公開鑰與身份/用途綁定",
+      "kind": "mechanism",
+      "paragraphs": [
+        "X.509憑證包含主體、發行者、公鑰、有效期與擴充資料，並由發行者簽署。葉憑證給具體服務或主體使用，中繼憑證可簽下一層，根或信任錨由本地政策預先信任。沿有效簽名和約束建立路徑，才能將葉公鑰的聲明連到信任政策。",
+        "根不是因為自簽就天然可信。自簽只說明它可驗證自身簽名，真正信任來自受管理的部署決定。攻擊者自建“TrustedRoot”仍不應被接受。教學使用CustomRootTrust只在這個鏈對象中信任自己創建的根，不將其安裝進OS存放區。",
+        "路徑驗證不只逐個簽名，還涉及CA/基本約束、路徑長度、時間與用途等條件。中繼缺失可能使鏈無法建成，但把全部陌生證書都加爲根會破壞信任邊界。正確做法是確認合法鏈與部署，提供所需中繼並保持可信錨範圍。",
+        "憑證不包含可公開的私鑰。服務端要持有對應私鑰纔可證明身份，PFX容器可以包含憑證與私鑰；CER/PEM的具體內容應看結構，不只看副檔名。公開憑證顯示正常，不表示服務帳號能讀取私鑰或私鑰真與該公鑰匹配。"
+      ]
+    },
+    {
+      "heading": "名稱、用途、期限與撤銷要分開",
+      "kind": "mechanism",
+      "paragraphs": [
+        "客戶端有參考身份，例如欲訪問bridge.lab.invalid；憑證SAN的DNS或IP條目要與該身份匹配。連接到192.0.2.1但參考名仍爲域名，與直接以IP爲參考不同；後者需要適用IP SAN，不能把同一字符當DNS條目。簽名與鏈通過不能補上名稱錯配。",
+        "Extended Key Usage擴充用途區分serverAuth、clientAuth等；Key Usage則限制數字簽名、簽發等金鑰用途。給客戶端認證的葉鑰不因名字匹配就可按本教材嚴格政策作爲伺服器。實際系統對沒有EKU等情況有規格，本模型要求明確serverAuth以教責任，不能當全世界統一政策。",
+        "有效期在NotBefore與NotAfter之間，校時錯誤可能造成尚未生效或過期；解決方式是確認真實時鐘和正確證書，不是刪除所有時間檢查。撤銷則處理仍在日期內但不應繼續信任的憑證，涉及CRL/OCSP等資料與可用性政策，不能和到期混爲一項。",
+        "本離線模型固定2030-06-01驗證時間，使用2029–2031葉憑證，另有2028–2029過期負例。設置DisableCertificateDownloads=true不靠AIA取外部中繼，RevocationMode.NoCheck僅用於離線教學，代表未驗證撤銷；這些設置不可複製爲正式通訊安全策略。"
+      ]
+    },
+    {
+      "heading": "例題一：可信鏈成功，名字仍不對",
+      "kind": "worked-example",
+      "paragraphs": [
+        "給定教學根R已在本次CustomTrustStore，葉L由R簽署，SAN=bridge.lab.invalid，EKU=serverAuth，日期2029-01-01到2031-01-01，驗證時間2030-06-01。請求參考身份是radio.lab.invalid。根與葉簽名合法且用途時間符合。",
+        "鏈驗證可以成功，因爲它回答的是給定信任與約束下能否建路徑。名稱比較radio不等於bridge，故身份條件失敗。若程序只用chain.Build(L)結果就當所有TLS身份驗證完成，會把錯誤服務的合法憑證接受。",
+        "有限修正是查客戶端真正應該訪問的參考身份與服務配置：若應bridge就改錯誤目標；若應radio就爲真實radio配置其合法證書。不是關閉名稱匹配，也不是把radio加到所有服務上來掩蓋路由錯誤。",
+        "驗收正確名通過、錯誤名拒絕；合法鏈/不可信鏈、用途錯誤/正確與有效/過期分別測試。必須得到所有必要條件共同成立，不能只針對一個正常證書印true。"
+      ]
+    },
+    {
+      "heading": "例題二：同樣握手失敗的三條前置路線",
+      "kind": "worked-example",
+      "paragraphs": [
+        "合成A證書名字正確、根可信、serverAuth、驗證時間2030，但NotAfter=2029，結果Expired；B日期與名字正確、用途clientAuth-only，結果WrongUsage；C公有葉資料正常卻本地HasPrivateKey=false，在伺服器身份證明前失敗。",
+        "A是驗證時間不在有效範圍，修合法新證書或正確時鐘；B是用途不符合該端身份契約，修合法用途配置；C是伺服器未擁有對應私鑰，查部署容器、鑰對應及服務賬號使用權。三者不是同一“證書壞了”。",
+        "如果從一個PFX讀取到對象HasPrivateKey=true，仍需確認服務身份能實際使用該key。HasPrivateKey描述對象關聯，不保證所有操作都成功，也不代表對端信任/名稱正確。按取得、使用、對端驗證各層留證據。",
+        "修正各自前置後做同主機/同服務方式重測，再驗證應用認證與權限。模型只測鏈、名字、用途與時間，不跑真實TLS協商、撤銷伺服器、代理終止或硬體私鑰提供者。"
+      ]
+    },
+    {
+      "heading": "讀C#：Chain.Build與MatchesHostname責任不同",
+      "kind": "code-reading",
+      "paragraphs": [
+        "X509Chain用ChainPolicy控制本次信任與驗證條件。CustomRootTrust將根來源限定本對象的CustomTrustStore，VerificationTime固定基準，DisableCertificateDownloads阻止鏈引擎利用AIA下載未知issuer。模型沒有AIA或CRL外部資源，也未打開Socket。",
+        "chain.Build返回的是此鏈政策下結果。MatchesHostname另做名稱匹配，本教材傳allowCommonName:false並不給通配符，明確用SAN精確匹配；此方法本身不建立信任，也不檢serverAuth。現代身份規則與實際SslStream/OS驗證細節應按RFC及平臺規格，不把這個API當完整TLS驗證器。",
+        "模型另檢查EKU包含serverAuth，並將信任、日期、名稱與用途分別保留結果。實際生產應使用正式TLS棧預設驗證與正確設置，而不是把自寫四個bool丟進回呼取代全部系統驗證。最危險的維護捷徑是證書回呼無條件return true。",
+        "完整項目用CertificateRequest在記憶體創建新RSA鑰、教學根與葉，不導出私鑰、不安裝證書。輸出只印檢查類別和期望，不輸出鑰或隨機序號，所以學習結果不因隨機key內容變化而需要公開祕密。"
+      ],
+      "code": {
+        "title": "離線鏈政策片段，完整來源在tls模式",
+        "text": "using var chain = new X509Chain();\nchain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;\nchain.ChainPolicy.CustomTrustStore.Add(labRoot);\nchain.ChainPolicy.VerificationTime = new DateTime(2030, 6, 1, 0, 0, 0, DateTimeKind.Utc);\nchain.ChainPolicy.DisableCertificateDownloads = true;\nchain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck; // 僅離線模型：沒有驗撤銷\nbool chainOk = chain.Build(labLeaf);\nbool nameOk = labLeaf.MatchesHostname(\"bridge.lab.invalid\", false, false);\n// EKU另查；這不是完整TLS驗證回呼。"
+      }
+    },
+    {
+      "heading": "維護時讀的四份有效資料",
+      "kind": "maintenance",
+      "paragraphs": [
+        "先讀客戶端reference hostname與端點，再讀實際伺服器提供的葉與中繼，接着看該程序身份的有效信任/私鑰來源，最後讀驗證錯誤及應用層結果。磁碟上放了正確證書但程序沒重新載入，仍可能向外提供舊葉；有效實例證據比文件存在更重要。",
+        "證書指紋可辨認一份證書內容，方便對版本，不是名稱政策或授權本身。固定pinning可以縮小接受對象，卻需規劃輪替、更新與恢復；不能爲了輪替失敗就關閉全部信任。某些SDK/舊.NET預設TLS版本與系統政策可能不同，要覈對版本並用適當診斷。",
+        "時間與錯誤類別協助區別鏈缺失、不可用撤銷、名稱不符和私鑰存取。若全部吞成ConnectFailed，維護容易誤改防火牆或密碼。對外錯誤根據政策適度摘要，內部記錄合法公開證書標識、參考名、驗證類別及時間，不寫私鑰。",
+        "正式憑證維護按受管理CA與部署策略進行，不在學習過程把自籤根安裝到整臺電腦或關閉安全回呼。本模型爲了理解而隔離自己的信任集合；它教你讀責任和負例，不能替代公司完整TLS配置驗收。"
+      ]
+    },
+    {
+      "heading": "故障分支：電腦A可連，服務B不行",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "症狀是同目標桌面A成功、背景B失敗。候選根信任不同、參考名稱不同、服務B私鑰無權或日期錯誤。資料確認B是客戶端無需提供客戶證書，參考名與UTC正確，錯誤是UntrustedRoot；A的信任存放區含合法部署根，B的執行身份存放區沒有。",
+        "當前根範圍差異支持信任部署原因，不需給B伺服器私鑰或把它改管理員。有限修正按公司策略爲該客戶端部署合法信任資料，明確適用存放區或SDK設置；不把網路上收到的任何根自動加入。",
+        "若另一分支錯誤爲NameMismatch且兩邊根相同，則查B使用IP參考而證書只有DNS SAN。應確認實際訪問身份與合法配置，不套前一分支增加信任；根多了也不會把名字變正確。",
+        "迴歸兩種身份執行正確目標成功、不可信根拒絕、錯誤名稱拒絕及過期拒絕。撤銷和正式握手仍需獨立實機驗證；不得用離線NoCheck通過宣佈生產證書未被撤銷。"
+      ]
+    },
+    {
+      "heading": "實作：固定時間與四種拒絕",
+      "kind": "lab",
+      "paragraphs": [
+        "執行dotnet run -- tls。模型用固定2030-06-01時間，記憶體建立自己的根/葉，正確鏈與SAN/用途通過；錯host、錯誤EKU、過期葉和另一個不可信根都應被拒絕。沒有網路、證書存放區變更或私鑰文件。",
+        "故意把名字結果改true，錯host斷言應FAIL；還原後運行tls與all。另嘗試去掉明確serverAuth檢查，clientAuth-only負例會揭示用途責任遺漏。保持驗證日期固定，避免幾年後資料只是隨當天過期導致教學基準失效。",
+        "改變參考名時只改一個欄位，比較chain仍成功與name失敗。修改VerificationTime到2040，教材葉超出有效期；不要用AllowUnknownCertificateAuthority或無條件回呼取代正確原因判讀。",
+        "驗收清楚說哪些條件通過、哪些拒絕及哪些未測：本模型未驗證撤銷、實際TLS握手、OCSP/CRL可用性、TLS參數或公司私鑰權限。合成鏈PASS表示這個模型契約成立，不是生產認證已安全。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "Base64、hash、簽章與加密各能保證什麼？",
+      "answer": [
+        "Base64是表示方式不保密；普通hash爲內容摘要，攻擊者可改內容後重算，單獨不提供可信來源。",
+        "簽章用對應私鑰和可信公鑰關係驗證綁定資料；加密提供內容保密，正式協議還要完整性。",
+        "讀使用的演算法與規格，不把一個函數名稱當三項需求全滿足。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "根自籤就可信嗎？",
+      "answer": [
+        "自籤說明可用自身公鑰驗證其簽名，不把外部身份自動變可信。",
+        "信任錨來自受管理部署政策；任意網路根加入會擴大邊界。",
+        "模型僅在自有CustomTrustStore放教學根，不修改OS，不當正式根部署建議。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：合法根/時間/serverAuth，SAN=ctrl.lab.invalid，請求voice.lab.invalid。Build=true能通過嗎？",
+      "answer": [
+        "路徑條件可成功，但參考名與SAN不同，身份名稱仍失敗。",
+        "必須分別檢查名稱與用途，不能用Build=true代替完整身份驗證。",
+        "查目標需求與合法服務證書，修正後保留錯名字拒絕，不關閉驗證。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生資料：葉2028-01-01至2029-12-31，驗證2030-06-01，SAN正確且根可信。哪條件不成立？",
+      "answer": [
+        "2030超NotAfter，所以時間無效，信任和名字不能抵消過期。",
+        "確認真實時鐘與應配置的合法新葉，不以擴大root範圍修日期。",
+        "重測有效與過期，並記錄模型未做撤銷，不能混爲撤銷通過。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：HasPrivateKey=false用於伺服器身份，證書鏈好。先加客戶端root合理嗎？",
+      "answer": [
+        "伺服器尚未取得對應私鑰來證明身份，當前失敗在本地金鑰部署。",
+        "查證書/鑰容器、關聯及服務身份，客戶端信任不是這個前置斷點。",
+        "原服務方式能使用對應鑰後，再分別驗對端名稱/信任和業務政策。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "陌生資料：A用戶信任合法根，B服務UntrustedRoot，B不需客戶端證書。應給B伺服器私鑰嗎？",
+      "answer": [
+        "不需要。客戶端信任根與持有伺服器私鑰是不同角色，提供私鑰會擴大祕密暴露。",
+        "按策略配置B的有效信任來源，確認其執行身份與SDK存放區。",
+        "合法目標成功，同時任意根及錯誤名仍拒絕，不以管理員繞過驗證。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "NoCheck與DisableCertificateDownloads在模型爲何都明示？",
+      "answer": [
+        "NoCheck表示沒有檢查撤銷，不等於證書從未撤銷；只爲離線教學。",
+        "DisableCertificateDownloads避免AIA下載外部issuer，保持無外部獲取。",
+        "正式環境需自己的撤銷/可用性政策與完整TLS驗證，不能複製離線限制爲生產安全策略。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "客戶端證書握手成立是否證明設備tx.start授權？",
+      "answer": [
+        "雙向TLS可提供對端私鑰持有的通道身份，但應用還需映射主體和判資源動作。",
+        "取得對應應用principal與授權政策，最後還要設備執行與回報。",
+        "驗收合法動作完成、越權拒絕與失效身份拒絕，層層關聯同請求。"
+      ]
+    }
+  ],
+  "recap": [
+    "TLS把金鑰協商、身份與資料保護組合，不能替代業務授權。",
+    "鏈、參考名、用途、期限、私鑰和撤銷各有條件。",
+    "離線自建鏈驗證僅證明固定模型，真實通道與撤銷另驗。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 8446：TLS 1.3 握手及保護範圍",
+      "url": "https://www.rfc-editor.org/rfc/rfc8446.html"
+    },
+    {
+      "label": "IETF RFC 5280：憑證與驗證路徑",
+      "url": "https://www.rfc-editor.org/rfc/rfc5280.html"
+    },
+    {
+      "label": "IETF RFC 9525：TLS服務參考身份",
+      "url": "https://www.rfc-editor.org/rfc/rfc9525.html"
+    },
+    {
+      "label": "Microsoft：CustomRootTrust",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.x509certificates.x509chainpolicy.trustmode?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：MatchesHostname職責與限制",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.x509certificates.x509certificate2.matcheshostname?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：DisableCertificateDownloads",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.x509certificates.x509chainpolicy.disablecertificatedownloads?view=net-10.0"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載 C# 通訊資安觀念追讀專案",
+      "path": "./assets/labs/security-maintenance-lab.zip",
+      "description": "自行建立的 Lab 模型，.NET 10 標準函式庫；本章模式 tls，不修改作業系統設定或連接公司設備。"
+    }
+  ],
+  "studyTime": {
+    "reading": [
+      13,
+      22
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      55
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含先推演 tls 模式、執行與覈對輸出、改一項資料及故障還原；作答含陌生數據推導與解答核對。未經個人計時。"
+  }
+}

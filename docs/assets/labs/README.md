@@ -19,10 +19,19 @@
 | voip-maintenance-lab | 取樣、PCM資料量、封包化、播放期限與音訊追讀 | 實測聲卡、麥克風、SDK或真人語音品質 |
 | integration-maintenance-lab、integration-demo-icd.md | 比對ICD、呼叫、命令、會話、錯誤與事件關聯 | 已確認RCSCall／iCallAPI的真實依賴 |
 | reliability-maintenance-lab | 算整體期限、重試、佇列、事件順序與共享狀態 | 生產級去重、備援或WPF實際反應時間 |
+| systems-maintenance-lab | 讀程序、資源所有權、服務就緒、端點、裝置、時鐘與壓力的分層證據 | 實際Windows服務、Linux權限、驅動或音訊裝置正常 |
+| satellite-maintenance-lab | 分開距離時間、功率預算、容量、佇列、健康與切換世代 | 真實衛星可用率、TCP效能或公司的選路設定 |
+| dsp-maintenance-lab | 手算DFT、混疊、FIR歷史、均方SNR、編碼、I/Q與降率 | 真ADC、RF校準、通用抗混疊濾波或完整GNU Radio流程 |
+| dsp-plot-diagrams.py、dsp-plot-data.json、dsp-plots-readme.md | 用公式重建四點DFT及1k／7kHz同樣本圖，保留軸、單位和代表值 | 曲線來自硬體量測，或能從混疊樣本還原未知原訊號 |
+| security-maintenance-lab | 驗證離線憑證鏈／名稱／用途、HMAC、金鑰版本、重放窗口與稽核欄位 | 正式TLS握手／撤銷、SRTP／VPN或公司安全部署已驗收 |
+| troubleshooting-maintenance-lab | 比較相同無聲症狀的不同失敗階段，對齊身份、時鐘與受控變因 | 已定位任何未知公司故障，或非零樣本一定能被真人聽見 |
+| big-picture-maintenance-lab | 追物件、呼叫、同步回呼、完整身份與共享資源責任，整理功能證據卡 | RCSCall／iCallAPI的真實依賴，或公司系統必須採同一架構 |
 
 ## 使用方式與驗收
 
 C#需.NET 10 SDK。下載對應ZIP到自己的練習資料夾，解壓後讀README，再執行本章指定的`dotnet run -- <模式>`。音訊專案的參數是輸出資料夾，其他專案的模式也不同；不要只跑第一個模式就當作學完所有章節。程式的檢查通過，代表這個教學模型的不變條件成立，不代表真實設備已通過。
+
+本次新增的systems、satellite、dsp、security、troubleshooting、big-picture六個專案可用`dotnet run -- all`執行本主題所有模式。各自的`expected-output.txt`保存實際基準輸出；先理解資料與判斷，再比較結果。DSP重生科學圖是可選Python輔助，需另外安裝matplotlib；不影響C#模型或網站閱讀。
 
 基準、要改的變因、預期結果與修正後的重測都寫在各章。第一次裝工具另計時間。公司舊.NET Framework與SDK的版本、執行緒和資源規則需另核對；模型原始碼與公司程式分開。
 

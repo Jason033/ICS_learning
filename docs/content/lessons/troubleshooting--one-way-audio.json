@@ -1,0 +1,283 @@
+{
+  "contentVersion": 2,
+  "intro": "單向語音不是一個唯一原因，而是兩個相反方向只有其中一個達到聽感目標的症狀。這篇自己給出必要的聲音數值、位元組、身份、期限與輸出契約，用可重建的案例教你追一個方向，再以能分開原因的觀察逐段定位。",
+  "prerequisites": [
+    "能區分一次操作的預期與實際結果；本章會從零補充證據與推理所需概念。",
+    "例題使用本文完整定義的 Lab 契約，不需要公司原始碼、SDK、Wireshark 或裝置。"
+  ],
+  "studyTime": {
+    "reading": [
+      12,
+      20
+    ],
+    "practice": [
+      25,
+      45
+    ],
+    "exercises": [
+      30,
+      50
+    ],
+    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含定義、兩個逐步例題與程式追讀；操作包含預測基準、改一個變因、反證及復原；作答需要列推理和驗收。尚待個人計時校準。"
+  },
+  "goals": [
+    "用有方向的管線把來源、格式、送出、接收、准入、期限與輸出分開。",
+    "讀懂PCM位元組、RMS與時間戳換算，區分有封包、有非零樣本和真人聽見。",
+    "依同身份的分段證據選擇有限修正，並驗收雙向與負面保護。"
+  ],
+  "sections": [
+    {
+      "heading": "先用兩個方向定義單向語音",
+      "kind": "concept",
+      "paragraphs": [
+        "假設A與B通話，A聽不到B而B能聽到A。故障方向是B→A，正常對照是A→B。不要把「A沒聲音」誤寫成A傳送故障，也不要因A→B成功就認定同一條網路與所有資源都正常。收送方向可能使用不同端點、聲音裝置、物件、格式與許可權。",
+        "本章以教學模型的來源A→接收B說明機制；換成真實症狀時只需依實際方向替換角色。控制請求已Accepted是案例的給定前提，不是模型執行了真實SIP或SDK。它只是說明控制層可成功而媒體方向另外失敗；模型沒有拿一個const當真實控制驗收。",
+        "一個方向從來源取樣、編碼成bytes、選目的地、傳遞、接收、識別會話、及時解碼、輸出，到實體裝置與真人聽見。各段需要不同觀測。前半段有資料不保證後半段完成，而另一個方向成功也不能代替故障方向的證據。先寫角色、方向和身份，是避免檢查錯誤路徑最便宜的動作。"
+      ]
+    },
+    {
+      "heading": "自己提供完整契約，不讓讀者猜公司系統",
+      "kind": "concept",
+      "paragraphs": [
+        "Lab定義currentSession=8、合法目標B；每次新執行只送三幀，sequence0/1/2，媒體timestamp0/160/320。每幀包含160個帶正負號16-bit PCM樣本，以小端序寫入320 bytes。樣本率與媒體clock均8000每秒、單聲道，所以160樣本佔20ms。此處幀是一次模型傳送的音訊塊，不是乙太網幀。",
+        "每個非零測試樣本交替+1000/-1000，zero模式則全0；沒有真實語音，也沒有壓縮codec。LabFrame是記憶體記錄，含Session、Sequence、Timestamp及Pcm，不是標準RTP header。RTP的SSRC、PT、序號等有自己的定義，不能把Lab Session欄位說成標準RTP的現成會話欄位。",
+        "接收依次檢查目標、session、期限，再計算接收解碼RMS與靜音，最後進入模型輸出。T0=0ms、S0=0、buffer40ms，arrival正常20/40/60ms，都在同一邏輯軸；deadline40/60/80ms。所有資料與規則完整給出，讀者無需硬體或公司的私有協議也能獨立推導結果。"
+      ]
+    },
+    {
+      "heading": "從樣本到bytes：格式是解釋數字的約定",
+      "kind": "mechanism",
+      "paragraphs": [
+        "PCM樣本表示某時刻振幅的數值；16-bit有符號整數用兩個bytes儲存，+1000與−1000的二進位表示不同。小端序指較低有效的byte放在前面，解碼必須沿相同約定。+1000十六進位0x03E8，小端序bytes為E8 03；若錯用大端序，讀成0xE803，即有符號−6141，資料非零卻已經不是原值。",
+        "格式還包括取樣率、通道數、數值型別與每樣本位數。320 bytes在單聲道16-bit下是160樣本，8000Hz下為20ms；若解釋成雙聲道，則每個時點有兩樣本，總共80個時點，僅10ms。只看byte長度而不看格式，可能把時間、速度與聲道分配都錯讀。",
+        "真實系統有codec時，網路payload未必直接是PCM；加密時也不能按密文計算振幅。要在擁有正確解碼約定的邊界觀察數字，例如解密/codec之後。看RTP流量有增長只能證明某類packet被觀察，不能證明裡面有可理解語音，更不保證音訊裝置已經使用這些樣本。"
+      ]
+    },
+    {
+      "heading": "非零不等於正確語音：RMS的意義與探針位置",
+      "kind": "mechanism",
+      "paragraphs": [
+        "RMS是平方平均後開根號，用來表示這批數值的能量幅度。例如兩個樣本+1000與−1000，各平方1000000，平均1000000，RMS1000。全零RMS0；交替高幅值的雜訊也可以RMS很高，因此非零不能證明語音內容正確或可懂。",
+        "LastRms是在通過當前session與期限檢查之後、靜音guard之前計算，儲存最後一幀到達這個探針的接收解碼值。mute情境Received3/Accepted3/LastRms1000，但Played0；RMS1000是接收資料證據，不是喇叭輸出證據。late情境沒有幀到探針，LastRms保留初始0，這個0不能解釋成已解碼全零。",
+        "Played只表示進入Lab模擬輸出分支，Energetic計這些幀中RMS>0的數量。進一步的系統播放、裝置輸出、實體喇叭和人耳聽見都沒測。正常模式三幀Energetic3驗證這段數值管線符合給定契約，不能對外報告「已確認公司語音雙向正常」。"
+      ]
+    },
+    {
+      "heading": "例題一：bytes、媒體間隔與正常基準",
+      "kind": "worked-example",
+      "paragraphs": [
+        "輸入三幀，每幀160樣本、2 bytes/樣本，長度160×2=320 bytes，總PCM payload3×320=960 bytes；單幀媒體時間160/8000×1000=20ms。timestamp相鄰差160與20ms塊長一致。這裡960只算樣本payload，不包含任何網路header，因為此Lab沒有構造網路packet。",
+        "正常arrival20/40/60；deadline為0+timestamp×1000/8000+40，即40/60/80ms。三幀分別提前20ms，session全部8，目標B，未靜音。接收3、接受3、晚到0、RMS1000、Played3、Energetic3，是可重建的正常參考。",
+        "變成zero時長度與時間完全相同，也接收3、接受3、Played3，只有RMS和Energetic變0。由此可見封包數量、byte長度和播放呼叫都正常，也可能只是輸出全零數字。下一證據應比較來源樣本、轉換後樣本和接收解碼樣本，找首次由非零變零的位置，而非直接增加網路重試。"
+      ],
+      "table": {
+        "caption": "正常基準；T0=S0=0，共同Lab毫秒軸；RMS為期限後、靜音前接收解碼值。",
+        "headers": [
+          "seq",
+          "timestamp",
+          "PCM bytes",
+          "arrival ms",
+          "deadline ms",
+          "提前ms"
+        ],
+        "rows": [
+          [
+            "0",
+            "0",
+            "320",
+            "20",
+            "40",
+            "20"
+          ],
+          [
+            "1",
+            "160",
+            "320",
+            "40",
+            "60",
+            "20"
+          ],
+          [
+            "2",
+            "320",
+            "320",
+            "60",
+            "80",
+            "20"
+          ]
+        ]
+      },
+      "image": {
+        "src": "./assets/diagrams/troubleshooting-evidence-branches.svg",
+        "alt": "相同無聲結果可依接收、接受、期限與接收RMS探針區分原因。",
+        "caption": "只代表Lab數值管線；RMS位於期限後、靜音前，非零輸出仍不代表真人聽見。"
+      }
+    },
+    {
+      "heading": "例題二：收到全部資料，卻全都不能使用",
+      "kind": "worked-example",
+      "paragraphs": [
+        "保持三幀非零樣本、B、session8，只給每幀arrival加30ms：原20/40/60變50/70/90，期限仍40/60/80。每幀晚10ms，收到3、接受3、Late3、Played0。沒有序號缺口，也沒少bytes，但就這個播放策略而言三幀都太晚。",
+        "若把buffer增加到60ms，期限變60/80/100，三幀各提前10ms，能進入輸出；代價是每幀目標播放多等20ms。延遲和可用率存在取捨，不能無限擴大緩衝而不考慮對話體驗與控制響應。實驗應先判斷延遲發生在哪段，再決定緩衝策略是否符合需求。",
+        "另一個情境old-session保持正常arrival卻Session7。它Received3/Accepted0/Late0/Played0，與late有同樣無輸出結果，機制完全不同；改buffer對舊session無效。兩者可用accepted、拒絕原因與時間規則區分，不能見收到但無聲就統稱codec不匹配。"
+      ]
+    },
+    {
+      "heading": "第一個偏離點有用，但不是唯一原因證明",
+      "kind": "mechanism",
+      "paragraphs": [
+        "先沿方向找第一個不符合契約的邊界。若B Received0，先確認觀測是否正確，再查目的地與路徑；此時還沒必要把播放器改成特殊模式。若Received3但Accepted0，外部完全沒到已經被反駁，應該檢查會話與格式准入；若Accepted3/Late3，繼續查時間與排隊。",
+        "同一執行可能存在兩個原因。錯目標讓B收不到，修好目標後才發現靜音；第一個偏離點是定位和修正順序，並不證明後段永久正常。修正後必須從同一契約重新走完管線，不能因計數前進一層就宣佈症狀已經解決。",
+        "正常方向是幫助比較的證據，不是替代故障方向的全部驗收。A→B和B→A可共用某段鏈路但端點、格式與裝置不同；如果一邊收到3另一邊0，先看方向獨有的欄位與路徑。只有明確相同責任的段，才能由一邊成功縮小另一邊候選範圍。"
+      ]
+    },
+    {
+      "heading": "讀碼：資料經過每一道guard後才有什麼證據",
+      "kind": "code-reading",
+      "paragraphs": [
+        "frame.Timestamp換算媒體時間後加40形成deadline；arrival由20ms間隔與故障額外30ms構成。嚴格arrival>deadline才算late，等於deadline在本Lab可接受。deadline策略是本文契約，不一定等於真實SDK排程規則；維護時需核對實際邊界行為。",
+        "平方前將Int16值轉成double，避免在小整數型別中平方溢位。RMS計算在muted判斷前，所以有非零解碼值仍可能沒有Played。追讀時把計數和probe插在流程圖上，才能從輸出認出是哪一段證據，而不是根據變數名稱自行猜測。"
+      ],
+      "code": {
+        "title": "取自LabAudio.Run；固定資料、不呼叫真實音訊裝置",
+        "text": "double deadline = frame.Timestamp * 1000.0 / clock + bufferMs;\ndouble arrival = seq * 20 + 20 + (fault == \"late\" ? 30 : 0);\nif (arrival > deadline) { result.Late++; continue; }\ndouble squares = 0;\nfor (int i = 0; i < pcm.Length; i += 2)\n{\n    double sample = BinaryPrimitives.ReadInt16LittleEndian(pcm.AsSpan(i, 2));\n    squares += sample * sample;\n}\nresult.LastRms = Math.Sqrt(squares / (pcm.Length / 2));\nif (muted) continue;\nresult.Played++;\nif (result.LastRms > 0) result.Energetic++;"
+      }
+    },
+    {
+      "heading": "實作：同症狀五原因，先填證據表再執行",
+      "kind": "lab",
+      "paragraphs": [
+        "在獨立.NET 10專案先預測normal、route、old-session、zero、late、mute六組計數，然後執行audio。每組對應新的Run，不能拿上組累積數字填下一組。對五組無非零輸出各寫第一個未滿足的條件，以及能反駁該候選的觀察。",
+        "保持normal基準，在暫存副本只將測試振幅1000換為500，預期LastRms500但數量不變；再只將buffer40改60，late情境應不再晚到，原audio_late斷言會失敗。這個失敗表示你已經改變期限契約，不能為透過測試便偷偷修改預期而不說明代價。",
+        "每次恢復原source，all應恢復透過。再關閉observe確認只有記錄計數變動，不改變實際接收與輸出。最後寫一頁方向證據報告：正常參考、故障方向、身份、各階段資料、候選、下一檢查、修正與負面回歸；避免用「測過無聲」代替完整條件。"
+      ]
+    },
+    {
+      "heading": "診斷分支：接收資料非零卻沒有聲音",
+      "kind": "diagnostic-case",
+      "paragraphs": [
+        "初始Lab A→B非零輸出0，已知Received3、Accepted3。候選甲過期、乙輸出靜音、丙來源全零。新增Late0、LastRms1000、Played0；RMS來自期限後靜音前的探針，反駁本次已及時解碼全零，Late0反駁全幀超期，下一檢查應是muted和輸出繫結。",
+        "模型發現muted=true，恢復合法未靜音後Played3/Energetic3；負面回歸再開靜音應Played0，舊session應Accepted0，晚到應Late3。有限修正尊重使用者意圖與會話隔離，而不是無條件忽略所有guard。",
+        "真實系統若對應資料是應用已呼叫播放但實體驗收無聲，還存在裝置選錯、系統靜音、輸出失敗或物理路徑問題。此時模型探針不能定位硬體，應沿具體輸出裝置和錯誤結果取得證據；不要因為演示案例答案是muted，就把所有公司故障固定歸於靜音。"
+      ]
+    },
+    {
+      "heading": "交付：把雙向與保護條件一起驗收",
+      "kind": "maintenance",
+      "paragraphs": [
+        "完成記錄先說故障方向，再說定位的責任段與證據。例如「B→A同session資料及時且解碼非零，但進入輸出前被該會話靜音guard拒絕」。附正常參考與修正後計數，讓讀者能明白為何不改路由。實體驗收還需要獨立條件和方法，若未測就清楚列出。",
+        "回歸既測修正方向，也測原正常方向，避免修共享設定令另一邊失效；同時測重連後新session、舊資料拒絕、合法靜音和遲到規則。質量不是所有資料都能發聲，而是合法資料依契約可用、不合法資料仍受到正確限制。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "level": "foundation",
+      "question": "A聽不到B而B聽得到A，先查哪個方向？另一方向成功證明哪些內容？",
+      "answer": [
+        "故障方向B→A，先沿B來源到A輸出取得同身份證據。",
+        "A→B成功可作正常對照，但不證明B來源、A輸出和反向端點正常。",
+        "只對確實共用且含義相同的責任段縮小候選，不用一句網路正常蓋過方向差異。"
+      ]
+    },
+    {
+      "level": "foundation",
+      "question": "LastRms1000、Played0為什麼不矛盾？Played3是否證明真人聽見？",
+      "answer": [
+        "LastRms在接收解碼、期限檢查後且靜音前測量；靜音會讓非零資料不進入輸出。",
+        "Played只統計模型輸出分支，不操作真實裝置，不能保證人耳聽見。",
+        "報告分別說明樣本、播放呼叫、系統裝置、實體和聽感層，避免把probe數值升為實體驗收。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生格式：16000Hz、雙聲道、16-bit、20ms，每塊PCM多少bytes？若誤作單聲道且取樣率不變，會解釋成多少ms？",
+      "answer": [
+        "每聲道16000×0.020=320樣本，雙聲道640樣本，16-bit每樣本2 bytes，共1280 bytes。",
+        "誤作單聲道則1280/2=640時點，640/16000×1000=40ms。",
+        "所以長度相同但格式不同會令時間解釋加倍，需核對通道與block約定。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生同軸資料：clock8000、S0=0、T0=0、buffer35，timestamp0/160/320，arrival30/60/82。各deadline與late？",
+      "answer": [
+        "媒體位置0/20/40ms，期限35/55/75ms。",
+        "第一幀提前5ms，第二晚5ms，第三晚7ms；及時1、晚到2。",
+        "若buffer45期限45/65/85則全部及時，但目標播放時間多等10ms；不能只報告改善而省略代價。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生樣本+600/−600/+600/−600，RMS是多少？若交換小端序E8 03，會仍讀+1000嗎？",
+      "answer": [
+        "每樣本平方360000，平均360000，開根號600。",
+        "+1000的小端序E8 03若按大端序讀成0xE803，即有符號−6141，不是+1000。",
+        "兩者都非零，RMS或流量不能單獨證明格式和內容正確；核對編碼解碼約定。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "陌生Received10、Accepted10、Late10、LastRms0、Played0，能說來源PCM全零嗎？",
+      "answer": [
+        "不能。Late10表示每幀在RMS探針前就退出，LastRms0保留初始值。",
+        "先比較arrival/deadline並定位延遲，或在合適來源/解碼位置增加probe。",
+        "缺一個可用數值和已測全零是不同證據；修期限後才可繼續驗證內容。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "Received8/Accepted0，frame session21而current22；另一個方向正常。維護者建議換codec。你如何選擇下一檢查和修正？",
+      "answer": [
+        "第一偏離是session准入，資料已到達，當前證據不支持codec為已定位原因。",
+        "追媒體物件與重連上下文是否仍使用21，有限修正令當前媒體繫結22。",
+        "驗收22可用、21仍拒絕，並測試雙向及重連；若准入恢復仍無聲再查後段，不聲稱只此一因。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "修route後Received由0變3但RMS1000/Played0，為什麼不能宣佈修好，也不能說原定位錯誤？",
+      "answer": [
+        "錯route是第一個偏離點，修後資料已前進到後段，原證據仍成立。",
+        "後段可同時有靜音或輸出繫結故障；接收解碼非零和未播放支持繼續查輸出guard。",
+        "分別修正並保留錯目標隔離、合法靜音與雙向回歸。報告兩機制與各自證據，不強求一條萬能原因。"
+      ]
+    }
+  ],
+  "recap": [
+    "用有方向的管線把來源、格式、送出、接收、准入、期限與輸出分開。",
+    "讀懂PCM位元組、RMS與時間戳換算，區分有封包、有非零樣本和真人聽見。",
+    "依同身份的分段證據選擇有限修正，並驗收雙向與負面保護。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3550：RTP媒體timestamp與傳輸證據邊界",
+      "url": "https://datatracker.ietf.org/doc/html/rfc3550"
+    },
+    {
+      "label": "Microsoft：BinaryPrimitives小端序16-bit讀取",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.buffers.binary.binaryprimitives.readint16littleendian?view=net-10.0"
+    },
+    {
+      "label": "Microsoft：WAVEFORMATEX取樣率、通道與區塊對齊",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex"
+    }
+  ],
+  "resources": [
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab.zip",
+      "label": "下載完整 C# 故障分析模型",
+      "description": ".NET 10 原始碼、說明與實際預期輸出；獨立邏輯時間模型，不連網或讀音訊裝置。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/Program.cs",
+      "label": "故障分析 Program.cs",
+      "description": "本章主要追讀 audio 模式；Lab 型別不是廠商 API。"
+    },
+    {
+      "path": "./assets/labs/troubleshooting-maintenance-lab/README.md",
+      "label": "環境、各模式及可驗收邊界",
+      "description": "將程式觀測、非零樣本與真人聽見分開；操作包含故障注入與復原。"
+    }
+  ]
+}

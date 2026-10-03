@@ -1,0 +1,184 @@
+{
+  "reviewer": "remaining_systems_security",
+  "actualModelExecution": [
+    {
+      "topic": "satellite",
+      "sourceSHA256": "c61df47ea72258ee5dbb82dd95ff11b71faef661d85db48bc7a4a2035309c93f",
+      "build": "  Determining projects to restore...\n  Restored /tmp/ics-peer-systems-satellite/Lab.csproj (in 68 ms).\n  Lab -> /tmp/ics-peer-systems-satellite/bin/Debug/net10.0/Lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:02.67\n",
+      "exitCode": 0,
+      "stdoutMatchesExpected": true,
+      "stdout": "MODE latency\noneWayMs=273.000 roundTripWithWorkMs=576.000\nPASS distance serialization queue work have separate units\nPASS 500ms wait times out while 650ms admits baseline\nPASS lower geometric path does not remove queues\nMODE budget\nfsplDb=206.074825 receivedDbm=-93.074825 marginDb=6.925175\nPASS km GHz free space formula\nPASS 8dB extra loss crosses required receive power\nPASS doubling distance adds roughly 6dB loss\nMODE capacity\nnormalPayloadBps=240000 robustPayloadBps=160000\nPASS code rate is a fraction not bits per second\nPASS quality recovery may still overload payload service\nPASS quality and delay variation need separate observations\nMODE queues\nbdpBytes=150000 windowBoundBps=426666.667 queueBytes=12500 waitMs=625\nPASS flight window and link capacity are distinct\nPASS persistent offered excess accumulates delay\nPASS admission reduction creates drain capacity\nMODE health\nPASS working destination beats low RTT without service reachability\nPASS stale success cannot prove current health\nPASS fresh verified backup is eligible\nPASS success resets consecutive misses\nPASS three consecutive misses enter failed decision\nMODE failover\nPASS candidate does not immediately become active\nPASS old epoch cannot commit new switch\nPASS route without new session is insufficient\nPASS route and session evidence complete activation\nPASS sustained recovery avoids immediate flapping\nactive=B epoch=2 sessionReady=True\nMODE diagnose\nPASS same geometry plus traffic suggests queue delay not orbit change\nPASS carrier up is not application recovery\nPASS tunnel overhead can cross an example MTU\nPASS all requested checks\n",
+      "stderr": ""
+    },
+    {
+      "topic": "dsp",
+      "sourceSHA256": "34d2321636cda6effead9887ffd89225ae6015eb40a2311fcdde5c50a0a0ab70",
+      "build": "  Determining projects to restore...\n  Restored /tmp/ics-peer-systems-dsp/Lab.csproj (in 68 ms).\n  Lab -> /tmp/ics-peer-systems-dsp/bin/Debug/net10.0/Lab.dll\n\nBuild succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:01.19\n",
+      "exitCode": 0,
+      "stdoutMatchesExpected": true,
+      "stdout": "MODE spectrum\nX1=(2.000,0.000) X3=(2.000,0.000)\nPASS real cosine splits amplitude between positive and negative bins\nPASS forward unscaled inverse divided by N reconstructs samples\nPASS interior single sided amplitude has factor two\nPASS bin spacing and acquisition duration share N and fs\nMODE sampling\nPASS 1kHz and 7kHz cosines alias at 8ksps\nPASS sine at exactly Nyquist may produce zeros\nPASS rational rate change tracks interpolation and decimation\nPASS filtered decimation metadata must use output fs\nMODE filter\nfir=0.250,1.000,2.000,3.000 resetChunk=0.750\nPASS stream state survives block boundaries\nPASS reset causes a repeatable boundary transient\nPASS symmetric FIR group delay converted from samples to ms\nPASS example filter rejects alternating Nyquist component\nMODE snr\nsignalPower=1.000000 noisePower=0.062500 snrDb=12.041200\nPASS power uses mean square not mean amplitude\nPASS doubling signal amplitude adds 6dB if noise stays fixed\nPASS clipping error is distortion even without random noise\nMODE coding\ncodedBER=2/12 decodedBER=0/4 codeRate=0.333333\nPASS single error in each repetition word is corrected\nPASS two errors in same word exceed majority correction\nPASS QPSK symbol rate and code fraction determine information rate\nMODE iq\nPASS complex rotation separates signed frequency\nPASS conjugating IQ reverses frequency sign\nPASS IQ magnitude power is I squared plus Q squared\nPASS negative phase rotation has an explicit sign convention\nMODE pipeline\nPASS decimation changes count and declared rate together\nPASS duration preserved when count and rate change together\nPASS calibrated spectrum preserves tone frequency through rate change\nPASS CPU processing throughput does not redefine physical sample rate\nMODE diagnose\nPASS half amplitude display can be scaling not attenuation\nPASS wrong rate label doubles reported frequency without changing data\nPASS periodic boundary error is discriminated by state continuity\nPASS all requested checks\n",
+      "stderr": ""
+    }
+  ],
+  "independentExerciseComputations": [
+    {
+      "topic": "satellite",
+      "chapter": "latency",
+      "question": 3,
+      "independentResult": {
+        "propagationMs": 30.0,
+        "serializationMs": 12.0,
+        "oneWayMs": 52.0,
+        "replyMs": 124.0
+      }
+    },
+    {
+      "topic": "satellite",
+      "chapter": "satellite-path-and-budget",
+      "question": 6,
+      "independentResult": {
+        "combinedLinearCN": 10.0,
+        "combinedDb": 10.0
+      }
+    },
+    {
+      "topic": "satellite",
+      "chapter": "link-quality-and-capacity",
+      "question": 3,
+      "independentResult": {
+        "payloadBps": 180000.0
+      }
+    },
+    {
+      "topic": "satellite",
+      "chapter": "transport-and-queues",
+      "question": 3,
+      "independentResult": {
+        "bdpBytes": 75000.0,
+        "windowBps": 320000.0
+      }
+    },
+    {
+      "topic": "satellite",
+      "chapter": "health-and-selection",
+      "question": 5,
+      "independentResult": {
+        "completionMs": [
+          150,
+          350,
+          550
+        ],
+        "thresholdCompletionMs": 550
+      }
+    },
+    {
+      "topic": "satellite",
+      "chapter": "failover",
+      "question": 3,
+      "independentResult": {
+        "routeCompleteMs": 250,
+        "tcpCompleteMs": 550,
+        "authCompleteMs": 670,
+        "businessCompleteMs": 750
+      }
+    },
+    {
+      "topic": "satellite",
+      "chapter": "satellite-troubleshooting",
+      "question": 4,
+      "independentResult": {
+        "outerBytes": 1096,
+        "overBytes": 16,
+        "maxInnerBytes": 984
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "time-frequency",
+      "question": 3,
+      "independentResult": {
+        "positiveHz": 1500.0,
+        "negativeHz": -1500.0,
+        "nominalMs": 20.0,
+        "firstLastMs": 19.900000000000002
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "sampling-and-aliasing",
+      "question": 4,
+      "independentResult": {
+        "outputSampleRate": 4000.0,
+        "signedAliasHz": 1000.0
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "filters-and-delay",
+      "question": 3,
+      "independentResult": {
+        "convolution": [
+          1.0,
+          3.0,
+          5.0
+        ],
+        "resetLast": 3.0
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "noise-and-snr",
+      "question": 3,
+      "independentResult": {
+        "signalMeanSquare": 4.0,
+        "noiseMeanSquare": 0.25,
+        "snrDb": 12.041199826559248
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "symbols-coding-and-ber",
+      "question": 4,
+      "independentResult": {
+        "preErrors": 2,
+        "decoded": [
+          0,
+          1
+        ],
+        "postErrors": 0
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "iq-and-baseband",
+      "question": 3,
+      "independentResult": {
+        "magnitude": 5.0,
+        "meanSquare": 25.0,
+        "minusJRotation": "(4-3j)"
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "sdr-intro",
+      "question": 3,
+      "independentResult": {
+        "outputSamples": 320.0,
+        "outputSampleRate": 16000.0,
+        "inputDurationMs": 20.0,
+        "outputDurationMs": 20.0
+      }
+    },
+    {
+      "topic": "dsp",
+      "chapter": "dsp-troubleshooting",
+      "question": 8,
+      "independentResult": {
+        "postBerFraction": 0.0002,
+        "postBerPercent": 0.02,
+        "frameDeliveryPercent": 75.0,
+        "dropPercent": 25.0
+      }
+    }
+  ]
+}

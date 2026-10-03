@@ -1,0 +1,117 @@
+MODE auth
+DATA unverified_principal_rejected actual=Unauthenticated expected=Unauthenticated
+PASS unverified_principal_rejected
+DATA legal_read actual=Allowed expected=Allowed
+PASS legal_read
+DATA write_rejected actual=MissingAction expected=MissingAction
+PASS write_rejected
+DATA other_resource_rejected actual=WrongResource expected=WrongResource
+PASS other_resource_rejected
+PASS wrong_audience_rejected
+PASS expired_context_rejected
+PASS matching_context
+MODE tls
+PASS trusted_chain_at_fixed_2030_time
+PASS san_name_matches
+PASS wrong_host_rejected
+PASS server_usage_matches
+PASS client_only_usage_rejected
+PASS expired_leaf_rejected
+PASS untrusted_root_rejected
+PASS chain_does_not_imply_correct_host
+LIMIT revocation_not_tested no_real_TLS_handshake no_OS_store_changes
+MODE boundaries
+PASS partial_tunnel_not_entire_path
+PASS all_segments_protected
+PASS empty_path_not_verified
+DATA model_payload_budget actual=1380 expected=1380
+PASS model_payload_budget
+DATA large_outer_bytes actual=1580 expected=1580
+PASS large_outer_bytes
+DATA small_voice_outer_bytes actual=280 expected=280
+PASS small_voice_outer_bytes
+PASS direction_A_B_context_mismatch
+PASS direction_B_A_context_matches
+MODE rotation
+PASS old_before_overlap
+PASS new_before_start_rejected
+PASS both_at_start
+PASS old_before_cutoff
+PASS old_at_cutoff_rejected
+PASS new_at_old_cutoff
+PASS mac_with_local_key
+DATA known_id_uses_trusted_key actual=Accepted expected=Accepted
+PASS known_id_uses_trusted_key
+DATA unknown_key_id_rejected actual=UnknownKey expected=UnknownKey
+PASS unknown_key_id_rejected
+DATA known_key_before_start_rejected actual=KeyOutsideWindow expected=KeyOutsideWindow
+PASS known_key_before_start_rejected
+DATA known_key_at_cutoff_rejected actual=KeyOutsideWindow expected=KeyOutsideWindow
+PASS known_key_at_cutoff_rejected
+PASS changed_bytes_rejected
+PASS signed_new_manifest
+PASS signed_old_version_rejected
+PASS unsigned_version_change_rejected
+PASS changed_payload_rejected
+LIMIT no_password_database no_firmware_flash no_Secure_Boot_changes
+MODE replay
+DATA short_header actual=NeedHeader expected=NeedHeader
+PASS short_header
+DATA length_before_allocation actual=TooLong expected=TooLong
+PASS length_before_allocation
+DATA partial_body actual=NeedBody expected=NeedBody
+PASS partial_body
+DATA complete_frame actual=Complete expected=Complete
+PASS complete_frame
+PASS sequence_100
+PASS sequence_102
+PASS out_of_order_101
+PASS duplicate_102_rejected
+PASS old_70_rejected
+DATA bad_high_sequence actual=BadMac expected=BadMac
+PASS bad_high_sequence
+DATA highest_not_poisoned actual=102 expected=102
+PASS highest_not_poisoned
+DATA next_valid_packet actual=Accepted expected=Accepted
+PASS next_valid_packet
+DATA valid_mac_replay actual=ReplayOrOld expected=ReplayOrOld
+PASS valid_mac_replay
+DATA changed_resource_rejected actual=BadMac expected=BadMac
+PASS changed_resource_rejected
+DATA wrong_session_rejected actual=WrongSession expected=WrongSession
+PASS wrong_session_rejected
+DATA expired_envelope_rejected actual=ExpiredOrFuture expected=ExpiredOrFuture
+PASS expired_envelope_rejected
+PASS invalid_utf8_rejected
+MODE audit
+PASS necessary_read_allowed
+PASS unnecessary_write_rejected
+PASS parent_search_required
+PASS audit_no_password
+PASS audit_no_token
+PASS audit_fields_are_whitelisted
+DATA audit={"RequestId":"R1","SubjectId":"LabReader","Resource":"channel-A","Action":"status.read","Decision":"Allowed","PolicyVersion":"v1"}
+PASS newline_identifier_rejected
+MODE diagnose
+DATA case_A_identity_boundary actual=NameMismatch expected=NameMismatch
+PASS case_A_identity_boundary
+DATA case_A_authorization_boundary actual=MissingAction expected=MissingAction
+PASS case_A_authorization_boundary
+DATA case_A_legal_read actual=Allowed expected=Allowed
+PASS case_A_legal_read
+DATA missing_security_observation actual=NeedEvidence expected=NeedEvidence
+PASS missing_security_observation
+PASS case_B_context_mismatch
+PASS case_C_overlap
+PASS case_C_old_key_cutoff
+DATA original_message actual=Accepted expected=Accepted
+PASS original_message
+DATA same_message_rejected actual=ReplayOrOld expected=ReplayOrOld
+PASS same_message_rejected
+DATA new_authenticated_attempt actual=Accepted expected=Accepted
+PASS new_authenticated_attempt
+DATA same_business_intent_once_in_this_process actual=1 expected=1
+PASS same_business_intent_once_in_this_process
+PASS restart_loses_in_memory_deduplication
+LIMIT single_process_memory_only no_global_exactly_once no_real_security_deployment
+PASS end

@@ -1,0 +1,42 @@
+MODE spectrum
+X1=(2.000,0.000) X3=(2.000,0.000)
+PASS real cosine splits amplitude between positive and negative bins
+PASS forward unscaled inverse divided by N reconstructs samples
+PASS interior single sided amplitude has factor two
+PASS bin spacing and acquisition duration share N and fs
+MODE sampling
+PASS 1kHz and 7kHz cosines alias at 8ksps
+PASS sine at exactly Nyquist may produce zeros
+PASS rational rate change tracks interpolation and decimation
+PASS filtered decimation metadata must use output fs
+MODE filter
+fir=0.250,1.000,2.000,3.000 resetChunk=0.750
+PASS stream state survives block boundaries
+PASS reset causes a repeatable boundary transient
+PASS symmetric FIR group delay converted from samples to ms
+PASS example filter rejects alternating Nyquist component
+MODE snr
+signalPower=1.000000 noisePower=0.062500 snrDb=12.041200
+PASS power uses mean square not mean amplitude
+PASS doubling signal amplitude adds 6dB if noise stays fixed
+PASS clipping error is distortion even without random noise
+MODE coding
+codedBER=2/12 decodedBER=0/4 codeRate=0.333333
+PASS single error in each repetition word is corrected
+PASS two errors in same word exceed majority correction
+PASS QPSK symbol rate and code fraction determine information rate
+MODE iq
+PASS complex rotation separates signed frequency
+PASS conjugating IQ reverses frequency sign
+PASS IQ magnitude power is I squared plus Q squared
+PASS negative phase rotation has an explicit sign convention
+MODE pipeline
+PASS decimation changes count and declared rate together
+PASS duration preserved when count and rate change together
+PASS calibrated spectrum preserves tone frequency through rate change
+PASS CPU processing throughput does not redefine physical sample rate
+MODE diagnose
+PASS half amplitude display can be scaling not attenuation
+PASS wrong rate label doubles reported frequency without changing data
+PASS periodic boundary error is discriminated by state continuity
+PASS all requested checks

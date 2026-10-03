@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 1120" role="img" aria-labelledby="title desc">
+<title id="title">同樣無非零音訊，依邊界觀測區分原因</title>
+<desc id="desc">Lab控制成功而輸出零。接收零先查目標與觀測器；收到但接受零查session；接受但晚到查期限；及時且接收RMS零查來源；RMS非零而播放零查靜音。RMS在期限後、靜音前觀測，不代表真人聽見。</desc>
+<rect width="430" height="1120" rx="18" fill="#f4f7fb"/>
+<g font-family="sans-serif" fill="#16304f" text-anchor="middle">
+<text x="215" y="40" font-size="25" font-weight="bold">同一症狀，不同邊界</text>
+<text x="215" y="78" font-size="21">控制成功，非零輸出 = 0</text>
+<text x="215" y="109" font-size="18">下面數量各指同一 Lab 的三幀</text>
+<g fill="#fff" stroke="#8aa5bd"><rect x="20" y="135" width="390" height="140" rx="12"/><rect x="20" y="315" width="390" height="140" rx="12"/><rect x="20" y="495" width="390" height="140" rx="12"/><rect x="20" y="675" width="390" height="140" rx="12"/><rect x="20" y="855" width="390" height="140" rx="12"/></g>
+<g font-size="23" font-weight="bold"><text x="215" y="171">① B Received 接收</text><text x="215" y="351">② Accepted 接受</text><text x="215" y="531">③ Late 期限</text><text x="215" y="711">④ 接收解碼 RMS</text><text x="215" y="891">⑤ Played 模型播放</text></g>
+<g font-size="21"><text x="215" y="211" fill="#9a520e">0幀 → 查目標 / 觀測器</text><text x="215" y="249">收到3幀 → 繼續向下</text>
+<text x="215" y="391" fill="#9a520e">接受0 → 查舊 session</text><text x="215" y="429">接受3幀 → 繼續向下</text>
+<text x="215" y="571" fill="#9a520e">晚到3 → 查延遲與期限</text><text x="215" y="609">及時3幀 → 繼續向下</text>
+<text x="215" y="751" fill="#9a520e">RMS=0 → 查來源 / 轉換</text><text x="215" y="789">RMS非零 → 繼續向下</text>
+<text x="215" y="931" fill="#9a520e">播放0 → 查 muted guard</text><text x="215" y="969">播放非零樣本仍有後續層</text></g>
+<g stroke="#567797" stroke-width="3" fill="none"><path d="M215 275v35m-6-6 6 6 6-6M215 455v35m-6-6 6 6 6-6M215 635v35m-6-6 6 6 6-6M215 815v35m-6-6 6 6 6-6"/></g>
+<text x="215" y="1029" font-size="19">RMS探針在期限後、靜音前</text>
+<text x="215" y="1061" font-size="19">候選可以同時存在，不是唯一答案</text>
+<text x="215" y="1093" font-size="19">非零樣本 ≠ 喇叭發聲 / 真人聽見</text>
+</g></svg>

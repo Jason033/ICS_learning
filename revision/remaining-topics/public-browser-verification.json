@@ -1,0 +1,21 @@
+{
+  "browser": "Chromium",
+  "mobile_lessons": 123,
+  "widths": [
+    1440,
+    390
+  ],
+  "javascript_errors": [],
+  "checks": [
+    "search",
+    "progress persistence",
+    "answer disclosure",
+    "mobile navigation",
+    "overflow",
+    "diagram decoding and original-image links",
+    "unavailable content"
+  ],
+  "base_url": "https://jason033.github.io/ICS_learning/",
+  "published_content_commit": "f47081c187f893c35207cff318b25f7ce3835ccb",
+  "recorded_at_utc": "2026-10-03T14:28:37.956484+00:00"
+}

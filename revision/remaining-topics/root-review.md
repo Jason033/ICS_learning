@@ -69,4 +69,4 @@ map的單guard測試問題也已結案。作者新增完整歷史key(R1,1,B)仍P
 
 全123篇結構檢查、原83篇JSON值不變及原92條網址、15份ZIP成員／bytes、六份合成PCAP、Node呈現檢查均通過。主代理實看新圖手機呈現及兩張科學圖的來源資料；本機Chromium檢查123篇、1440／390px、圖示解碼與大圖連結、搜尋、解答及進度，沒有JavaScript錯誤或橫向溢出。40篇已改為可閱讀，分項時間按共同方法同步，沒有沿用固定50分鐘。
 
-公開發布與逐檔比對正在進行；公開結果將在本文件與validation.md回填。實際讀者理解尚待回饋，獨立模型不外推公司SDK、真實音訊設備、RF／衛星及正式密碼協定部署。
+公開發布已完成：教材提交f47081c、Pages built；全部280個可見docs檔案逐檔雜湊一致，新的Chromium公開123篇／1440與390px檢查通過，無JavaScript錯誤。結果與實際檢查時間存於publication-verification.json、public-browser-verification.json，validation.md提供可獨立閱讀的結論。實際讀者理解尚待回饋，獨立模型不外推公司SDK、真實音訊設備、RF／衛星及正式密碼協定部署。

@@ -25,7 +25,7 @@
 
 六系列40篇與320題均已完成，原83篇不變、原92個網址保留；全站123篇／995題。三組跨作者審查全文讀20篇代表章、檢查全部320題與解答、獨立核算41項陌生輸入；已發現的峰值、算例前提、程式契約及測試互相遮蔽等問題都已修正讀回。全站15個C#專案的50組執行設定成功，15份下載包來源一致，本機123篇實際瀏覽通過。篇數和字數僅防漏，不能保證學習成效或工程職等。
 
-公開發布及逐檔比對正在進行，實際結果將記錄於驗收說明。正式結論、檢查方法、具體修正和限制請先讀[validation.md](validation.md)，不必從大量JSON數據自行猜結論。
+已發布至GitHub Pages，280個可見教材與資源檔逐檔一致、123篇公開瀏覽通過。正式結論、檢查方法、具體修正和限制請先讀[validation.md](validation.md)，不必從大量JSON數據自行猜結論。
 
 | 檔案 | 用途 |
 | --- | --- |
@@ -36,6 +36,7 @@
 | scope-verification.json | 原83篇不變、範圍及網址比對的完整結果 |
 | csharp-verification.json | 15專案編譯、50組執行輸出和來源雜湊 |
 | download-verification.json | 15份ZIP成員與原始碼bytes一致性 |
-| browser-verification.json | 本機真實瀏覽器驗證 |
+| browser-verification.json、public-browser-verification.json | 本機與公開站真實瀏覽器驗證 |
+| publication-verification.json | 教材提交版本、時間及280個公開檔案的逐檔雜湊比對 |
 
 下一步依讀者實際理解和計時補強；公司程式映射需授權來源、版本及設備證據。既有重編報告留在上一層，避免混淆兩輪結果。

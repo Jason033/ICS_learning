@@ -1,0 +1,1692 @@
+{
+  "checked_at_utc": "2026-10-03T14:26:35.322813+00:00",
+  "published_content_commit": "f47081c187f893c35207cff318b25f7ce3835ccb",
+  "base_url": "https://jason033.github.io/ICS_learning/",
+  "checked_files": 280,
+  "ready_lessons": 123,
+  "download_projects": 15,
+  "mismatches": [],
+  "files": [
+    {
+      "path": "app.js",
+      "http_status": 200,
+      "sha256": "eff08f9f0e13121335210079e549912700c52e89c1d3fcc74320b235fa13211a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/big-picture-control-media.svg",
+      "http_status": 200,
+      "sha256": "42f7edf51f4a9a010803dda81c070d04dc6bc1748d200821fd94df29b1005653",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/big-picture-ownership-events.svg",
+      "http_status": 200,
+      "sha256": "0ad2b2fbaecd45dc0b2d6679c21f5bbf8c533033f8503b19b887133826165208",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/dsp-aliasing-samples.svg",
+      "http_status": 200,
+      "sha256": "992233cb3226c891746ab3dcbab58ca60f7522ab105bc961d4520671dd5f2819",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/dsp-four-point-dft.svg",
+      "http_status": 200,
+      "sha256": "4c344128a25b95ba0b37df3c3a80f0368dddace3c258280f5fea7751df84cfda",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/dsp-rate-contract.svg",
+      "http_status": 200,
+      "sha256": "486ab6a7e3110f7ef79a452d6ff144f792047d40759f5a422e098bad23e513ee",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/integration-document-check.svg",
+      "http_status": 200,
+      "sha256": "9f1aa0130b2fbd599d1a07ec8896c4642deb141c727f9a9cdac2035c70cbafb1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/integration-evidence.svg",
+      "http_status": 200,
+      "sha256": "349dcc63132d75b4c843b300eaa4aaa86241700de806755b1d6f65ee759b7844",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/integration-state.svg",
+      "http_status": 200,
+      "sha256": "a3ed64b82fbbc34e38cce52addc7743a65f538c14782d72b88a8ed32097ce852",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/integration-trace.svg",
+      "http_status": 200,
+      "sha256": "766f980fde5a9763736d58e986f83a50126cd48d9988a5d04428b0bf3c520164",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/networking-layer-boundaries.svg",
+      "http_status": 200,
+      "sha256": "98b488b0940c00fcbfb643871d771c648a871b4cf9711768c6d6af77fb64c86c",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ozeki-media-directions.svg",
+      "http_status": 200,
+      "sha256": "f59a64c3e36ccae737b084e70c8a21c08500fd0684bddc166ada9ef0c3fc1dab",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ozeki-media-path.svg",
+      "http_status": 200,
+      "sha256": "65f3a329c64144fc86933ffb6a0da6048950209b860fc94a105116dd810986db",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ozeki-object-map.svg",
+      "http_status": 200,
+      "sha256": "4ea5d8b58d5b4c859dec8f72dd3a903d2ba512618c5f44b8b89f2998547c7476",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ozeki-roles.svg",
+      "http_status": 200,
+      "sha256": "331a8b2480b46f250ebf381015aa64fe285da97d479cad43fb206da2ade35304",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ptt-audio-timeline.svg",
+      "http_status": 200,
+      "sha256": "13c066292ba42e1f05388a94538648b12b0078290a8552e1cbaf93348472513a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ptt-evidence-ladder.svg",
+      "http_status": 200,
+      "sha256": "0e35e9b79231badc14e76fb6816042e584b9c7dc2d9741f72f797a2667f431bc",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ptt-interface-box.svg",
+      "http_status": 200,
+      "sha256": "3a874aaadcafabbba951b47222d9ecbc41c7876299645dce6994a64f190fbc74",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ptt-maintenance-state.svg",
+      "http_status": 200,
+      "sha256": "6c2f895fc3f2d6f021854ac6c7b26e35a44e3ebcb84c36cc91e9bd47869ce9c2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ptt-maintenance-timing.svg",
+      "http_status": 200,
+      "sha256": "09589ad879fe5cb00d4ae68c9ff4c0b55032b38446ddafcf09c739e5091667fc",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/ptt-state-flow.svg",
+      "http_status": 200,
+      "sha256": "8696a848f12793dd6896d421ccd75ee25b1eafdef6ec6ba5ed2ca505909f4d81",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/radio-content-carriers.svg",
+      "http_status": 200,
+      "sha256": "5a74108942ee924c21f6741f43cb5632a61640883ca672560e7960ccbec9bf9d",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/radio-path.svg",
+      "http_status": 200,
+      "sha256": "e9a9e61857d254b2934cdb6dbdace86378850ba68799162ffcc228a08b80ca5a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/radio-quality.svg",
+      "http_status": 200,
+      "sha256": "6db6baeaea7a495796d1d8f75007ee5a2fe17a27a1cfc0d26a458d07b45e7bb1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/radio-repeater-directions.svg",
+      "http_status": 200,
+      "sha256": "536ba866943aab1196676201df210c6f158724d2ac1c2b54b1f21468d660a289",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/reliability-deadlines.svg",
+      "http_status": 200,
+      "sha256": "7e0f1ffb3fa367bdf3dcf151797e73860d12841aa8b4db1f29bbf06ee27cf0b1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/reliability-evidence.svg",
+      "http_status": 200,
+      "sha256": "0276ea88642bf5d5d06704f8434fa784d0b2ba86678e8cd7a5bd42828a0fe3aa",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/reliability-ordering.svg",
+      "http_status": 200,
+      "sha256": "e72068de0b11fa9e75c0e13fe53d2f43cc43c844a9cc0418ef878066c851805f",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/reliability-queue.svg",
+      "http_status": 200,
+      "sha256": "ea9450531b443adc2f72e665983264012842b046003438f1c242f8039fda5f98",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/reliability-race.svg",
+      "http_status": 200,
+      "sha256": "ecf4ad87b681fb7d5beb0f89c65080216ba9ed24e8a54189467f8b0f56c992aa",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/reliability-timeout-worlds.svg",
+      "http_status": 200,
+      "sha256": "d6665ce76e99ce1dd5189a16f129f06e28f154281f99ba6c3b8e8b767732c9f1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/satellite-command-timeline.svg",
+      "http_status": 200,
+      "sha256": "f4f86722bed9e4e661d1b9bc4686cf5499e1ff2a8a74e62af117a3bdeb603173",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/satellite-path-boundaries.svg",
+      "http_status": 200,
+      "sha256": "128575fa98e4e328516692a818d0b1494590764008902fb8fb85f299adb223c8",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/security-media-boundaries.svg",
+      "http_status": 200,
+      "sha256": "6c40dd9bdf313cf4c224350b05419277e5297f9d3c10a0aff911da7b7909f1f9",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/security-tls-identity.svg",
+      "http_status": 200,
+      "sha256": "70607b3ad4d16f3121e0ff867a5e34ac66486719c859465edd25eff00581dd3f",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/serial-8n1.svg",
+      "http_status": 200,
+      "sha256": "b9d2d04d3950077603d4d52129ef8b3433e282f5e363485940b8317d968989c2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/serial-layers.svg",
+      "http_status": 200,
+      "sha256": "5fb52d9e04df24d8e69f9a8b21f47f93c12a61e124c593661e08179c949de21a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/serial-signal-directions.svg",
+      "http_status": 200,
+      "sha256": "67e99a0bbe5fef08bf7fb656f74d4702903bc2db281011e86ad90c0b49a3a04a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/socket-framing.svg",
+      "http_status": 200,
+      "sha256": "e1c8676836a37803c164f260e149c0d5db7a00187eba6012a5fbb668a95387b4",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/socket-roles.svg",
+      "http_status": 200,
+      "sha256": "b07ccd97a4c31a6c8fef031baca8d02223a2edfaf02424e23e274abec42662ec",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/systems-resource-responsibility.svg",
+      "http_status": 200,
+      "sha256": "0847ebc1c4d4ce3a39fbe2b2cafccd25a294af1a48bb1fd4e5fdb0ac5a9a9ad2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/systems-time-observation.svg",
+      "http_status": 200,
+      "sha256": "dd2d0edacee2ec2a36e8c68b5722c2564cffafd8a8658845fc4a0957253aa7bd",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/troubleshooting-clock-alignment.svg",
+      "http_status": 200,
+      "sha256": "c68bd4edce39378904fbc53f154c9af52e84b6f6cc277b543a8cb2c7b10b4e76",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/troubleshooting-evidence-branches.svg",
+      "http_status": 200,
+      "sha256": "31251a26b7299de6551673a7921bbb24df7093281db130ca52a495552e793198",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/voip-audio-chain.svg",
+      "http_status": 200,
+      "sha256": "854e65c5a91aa5a55d5439cf6f68516f1e57674e8fae4097da27ad20a63f3e82",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/voip-evidence-path.svg",
+      "http_status": 200,
+      "sha256": "f852c50805c5a7b922732d68938418ff15bad5ee342ab555afc6d30fa98b8866",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/voip-jitter-buffer.svg",
+      "http_status": 200,
+      "sha256": "e25c0e0ba3755eff1b52d8a48ca7d3f14d5924e63f319b3b3b7cce832efbd1ce",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/voip-sip-roles.svg",
+      "http_status": 200,
+      "sha256": "9070896e2c39a2609c7110d5278f79be20f63ee73e899fd80470ced12946567e",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/wireshark-byte-layers.svg",
+      "http_status": 200,
+      "sha256": "fee0c17f20e5ec266b261032f604c8ee47816d7f7e42b19735c30b68d9917179",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/wireshark-capture-path.svg",
+      "http_status": 200,
+      "sha256": "42cede3e5951163040ec2a98aa6df9de71da9eb91bd16f6c76d071c1057df299",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/wireshark-jitter-clocks.svg",
+      "http_status": 200,
+      "sha256": "19da94eaaccc2570a4e86c75b1f5da5adfb256a556c534c1b8aefb9dcd5c64b5",
+      "matches_source": true
+    },
+    {
+      "path": "assets/diagrams/wireshark-three-panes.svg",
+      "http_status": 200,
+      "sha256": "3342ddfc09937307985705ab50c91f1a10ded1d7ec84e677e36a8ac655d9ca43",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/README.md",
+      "http_status": 200,
+      "sha256": "df9b87ff7372695e0561612bc4a72fd27a718e4e24821448fa39caa3bd3d096f",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/big-picture-maintenance-lab/BigPictureMaintenanceLab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/big-picture-maintenance-lab/NuGet.Config",
+      "http_status": 200,
+      "sha256": "9508cae5f76364f56e80eb97cb16493977243cf38e5cca6284e3d74f83b20a2c",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/big-picture-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "b2f9d691410487c4197e8040985eb9fa079b91e6ea5cd5bc2d9958df9631739a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/big-picture-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "c4b0c1e10413362ba19a09130cea983c365d7a3c66276bc8ae6f3b698e9355b1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/big-picture-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "743b000eaa8e435ed39ae3643c75386b65aeefc1b247300bdcb685c752bd2c31",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/big-picture-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "60e3abfa536fcabeb745dd320397d4289626512ea096446df5b6ec213d5d49a2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-maintenance-lab/Lab.csproj",
+      "http_status": 200,
+      "sha256": "199965fda9f51346aecced6f579b49326518d08f6b361be05a848e6ac08c9703",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-maintenance-lab/NuGet.Config",
+      "http_status": 200,
+      "sha256": "7d59a339f0f6022f0710d690fe52e2a0f868519847651f6c10f6c9ff1bd7213a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "34d2321636cda6effead9887ffd89225ae6015eb40a2311fcdde5c50a0a0ab70",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "b3c0dec62dcbd272070626220c3b844d8888b8afc1a03909e35e2a8e1ca28159",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "e76f1d5d6db10a867add0e4030a72b72aa9c6c290f3a4e6d57704f68d9ac6b06",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "0dd40bb772551a028e437a63fc41c0829601941def8f483e818eb4561825f675",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-plot-data.json",
+      "http_status": 200,
+      "sha256": "f0296e1f1617c7732f7fb31273d16ba73bd5847d7be8c28aa35d9ce3c5a4c3f5",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-plot-diagrams.py",
+      "http_status": 200,
+      "sha256": "abc225ca3db82160908ada7112d876fcb67d50be162cb34add83429d4dae55ee",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/dsp-plots-readme.md",
+      "http_status": 200,
+      "sha256": "03bac8742e2590782dea2621f1017491a3b5ff71a695144cd78ecbcae89a6a39",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/integration-demo-icd.md",
+      "http_status": 200,
+      "sha256": "065435e6a1b4b2e01c7a11690698c11b37721f9d20e2862bf94192655e46914a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/integration-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "bb1a818dfc1bce14ab2a054d3ce278f6261417c5550954e9c452dc7e6e61f2a2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/integration-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "b2ad774944edb8347eb9193b0bc14bf6d00c026ac1365bb9e1f50a544ccaaa01",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/integration-maintenance-lab/integration-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "199965fda9f51346aecced6f579b49326518d08f6b361be05a848e6ac08c9703",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/integration-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "d257b0045713f5010f5c0a050e1fb11462ddef9e92a33c7e770c9cec6dfb8dd7",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/integration-trace-lab.py",
+      "http_status": 200,
+      "sha256": "ab279f89bc449417f8e964deb33f1e98ebb9183226f6e2820611b186fa574dd9",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/networking-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "5323f82b3f1e36a7f41b63b37ea6ad39a61100eab98e89f1c311eb9adfcee5b5",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/networking-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "dfab780df1d08b276db67e154433efb423c75952d97206f304ab955d824fd527",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/networking-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "be967708408cd5a1d0a1918b4d182502979847d8c380d98a04fcb7da017e08a1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/networking-maintenance-lab/networking-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/networking-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "c50b4affb4a28780ac09e8af46a6ab7f9e03ccca5754d24b3e45b3ccfdb4cb41",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ozeki-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "385453363f012a0415951e3f022dd60f4ccd1800eac704e7463679bbe8a9dc78",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ozeki-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "623b7ff96f4c2f63f59b118ffe465e977a33d2a658dad58f6f7904f6cc1666a7",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ozeki-maintenance-lab/ozeki-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "d9f94121f34faf1c40cdff6fecef322f7e558ed48b13010d0674371088859d86",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ozeki-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "d139b355924bb4f60181f4ba07a819649c2dd19ca0b3ac419299080e8ecd6ad9",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ptt-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "576107b1472e97a8d808c5d0f5b62bfda38dbf14123e9976420af63a10a1f47f",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ptt-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "bb47d8e5a494338fe5802d4d604a9747d397f0ca296c4084cf42e252b316946f",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ptt-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "0bcf1c5c144d504db065da356f4e49aa26c406e98042491f7cb46397de3b5907",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ptt-maintenance-lab/ptt-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/ptt-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "f2873d27bc6a7013f08b3de5fb77a29df6e6c517e1a02d6f7c18a739d6acd16d",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/radio-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "9ce75c400fe06e72ff5e30e77739f1df3910f55521ceb91b137edf8f8bd93b91",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/radio-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "2c252936221ba0c7011dd46dbc7c1b9376290c5392110ea5fb002bf930286b21",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/radio-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "5ad910c602d89897d7d926f62aed196f55e7c85d3be56aec8120e7255438ebd5",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/radio-maintenance-lab/radio-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/radio-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "d7d9b8929d96a0c04a4eb6efbfcbc98f53dcb2ab412a4377d5f0a94b124c7ff8",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-maintenance-lab/NuGet.Config",
+      "http_status": 200,
+      "sha256": "9508cae5f76364f56e80eb97cb16493977243cf38e5cca6284e3d74f83b20a2c",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "3ee9b5975234344bd14bdcacf6bc13ad73168155e0c82ee98e372c49ff630ef2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "8f52294ebe19aa7ebf7d731cfe50361b17e00c30acd8dd988115840fd0515841",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "9dd482ce570562910240787ca4ce1d361fe826df7de9259fc7b62a65e0a2ff8a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-maintenance-lab/reliability-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "cf74028182661816f30c04dbf341d3487b3209b5673fcf41aef2c3538e149adc",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "e163935f7a1a5c582f4721d7fe422d0161f142d868c28bda693a4dbf7f64f65d",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-race-lab.py",
+      "http_status": 200,
+      "sha256": "6dcbb5ec6372fbae70d06aec041c225472b594565a22bcf96ffd1604cfbabfe5",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/reliability-timeline-lab.py",
+      "http_status": 200,
+      "sha256": "6151b620b77946f1ce132c5eca6ad11f1ddb621f85f2e64bff34d651be85a69b",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/satellite-maintenance-lab/Lab.csproj",
+      "http_status": 200,
+      "sha256": "199965fda9f51346aecced6f579b49326518d08f6b361be05a848e6ac08c9703",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/satellite-maintenance-lab/NuGet.Config",
+      "http_status": 200,
+      "sha256": "7d59a339f0f6022f0710d690fe52e2a0f868519847651f6c10f6c9ff1bd7213a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/satellite-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "c61df47ea72258ee5dbb82dd95ff11b71faef661d85db48bc7a4a2035309c93f",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/satellite-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "bfea15e1c6f4c50ba8be0c1435b28511d95c79c7e229241d6bc91c97f3ab190a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/satellite-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "9eb493002cf14c234b6e76ee15211702cc29c3cb6da9f076c256bac75844cbb1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/satellite-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "f7c58cf2bda6df41bc22ee0116c0a72410f7359388d590a4df2d69d520b034e5",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/security-maintenance-lab/NuGet.Config",
+      "http_status": 200,
+      "sha256": "7d59a339f0f6022f0710d690fe52e2a0f868519847651f6c10f6c9ff1bd7213a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/security-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "33048e03c02a48dae7e2a1431ded7f5fbd828fbae7a483e7d8a733952b268baa",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/security-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "ebcc5c1358984d051c348c228c544d715aeddf886df93544aa488c2061b522fe",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/security-maintenance-lab/SecurityMaintenanceLab.csproj",
+      "http_status": 200,
+      "sha256": "199965fda9f51346aecced6f579b49326518d08f6b361be05a848e6ac08c9703",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/security-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "5ce0c716ae1264e6c77bafaeef2fc619afadcb93f589ea09e98739d0e6afcc70",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/security-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "219cd357c286a88f64e18bc70309767f1241dc2a459766b15acaeb70a2bf394e",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/serial-loopback.py",
+      "http_status": 200,
+      "sha256": "0cc306d221d11a9358e96d17e48607026bfea8017168e885a810eda26bc9f914",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/serial-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "4b132d73c26ab0e799518f2c073d85693577280e1edab9ed03a4531d15696eb6",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/serial-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "4b0f28e1e07ac7e601deee9a2ac643b3126641b9ff5677504bbba2fd2715d45d",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/serial-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "09cbc4ae2563503ea161efe85bcf251fc3d16fb663e7102ee9bde60aeec4abce",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/serial-maintenance-lab/serial-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/serial-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "ea221c5a96f8ce36f04d22e76ab0cb56179c8c5ef313b2102b8a2197b085b404",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/socket-tcp-lab.py",
+      "http_status": 200,
+      "sha256": "1cb47e1e9d67bc76bc1eac24522091519a0ae5adf2e674d976864605a3f82c94",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/socket-udp-lab.py",
+      "http_status": 200,
+      "sha256": "6be6ea7d1c9adb2355605a909dbcc081c6efdbc2f9a8586bbb69d8349a955a10",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/sockets-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "3077cd2528d82a37e201a5ea22a52832e21923e77bf15ed8af42eaecaad976c1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/sockets-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "9ab1582bc5445c30d52ad6dafb56ffc45541c5efad8eb72948762ebae2f9083c",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/sockets-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "7122aa8bc636c7e172548c750bc5cdfffab8f02768878ba1b7070ffa8227c94e",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/sockets-maintenance-lab/sockets-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/sockets-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "3669317ba3f098855bf4731eb6c43b3b795b4bb35ccf2727a5fcca76c89a9c50",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/systems-maintenance-lab/NuGet.Config",
+      "http_status": 200,
+      "sha256": "7d59a339f0f6022f0710d690fe52e2a0f868519847651f6c10f6c9ff1bd7213a",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/systems-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "c9912c66ed9077e12fb13e97691cee3ea8b6a3a41a7368033044897e2604b431",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/systems-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "d639d25750a3f82750caf561a12a0ca99bae261867d85408a1a8e9c7db4cd902",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/systems-maintenance-lab/SystemsMaintenanceLab.csproj",
+      "http_status": 200,
+      "sha256": "199965fda9f51346aecced6f579b49326518d08f6b361be05a848e6ac08c9703",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/systems-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "76ff4a2d46e8085034c4f1acc7f3221c5d84461ce643339aecfebcc50786f6d2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/systems-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "0f05e17ce459c8371e9cbde4f01594b5b4c0c3665b0c14e6ea3403ef93a30f86",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/troubleshooting-maintenance-lab/NuGet.Config",
+      "http_status": 200,
+      "sha256": "9508cae5f76364f56e80eb97cb16493977243cf38e5cca6284e3d74f83b20a2c",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/troubleshooting-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "6ecc52ed28b9da1a1e6d596dec9585e12eb749c21676e574dedae129c2870811",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/troubleshooting-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "8bd879db790f6e21c14441d1222ab69a32c5e4a867d247790bb891d1a28fa44b",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/troubleshooting-maintenance-lab/TroubleshootingMaintenanceLab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/troubleshooting-maintenance-lab/expected-output.txt",
+      "http_status": 200,
+      "sha256": "05e39939096a0768ede99bab0390cea0cf0afca390d377ad598d30422b889c32",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/troubleshooting-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "df4a017e7c2503e9753a8674ff6bd9eba4220828b9ba27006204dc7e2c03b4d1",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/voip-maintenance-lab/Program.cs",
+      "http_status": 200,
+      "sha256": "fdca3a28a9dfc245a6690498d92085b91a9046d13ccd6670c6009f8f54ec87b3",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/voip-maintenance-lab/README.md",
+      "http_status": 200,
+      "sha256": "2211e7b5547d555cd992c7b29bc3e41fbe3d31d6c12db580a3be039e92d8380c",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/voip-maintenance-lab/voip-maintenance-lab.csproj",
+      "http_status": 200,
+      "sha256": "38e201f047792df530db8c7d157c2b6b19d1ed2e4134dba5da5c59e97d3b0da2",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/voip-maintenance-lab.zip",
+      "http_status": 200,
+      "sha256": "7e11097f294924ad489e94e5d9f82652fe3d8505449a272657546b92bd1476eb",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/voip-tone-lab.py",
+      "http_status": 200,
+      "sha256": "d6eb0eb2fa31cb1290612351893564461c21115fd7a83921e28de93ab323a7e8",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-first-capture.pcap",
+      "http_status": 200,
+      "sha256": "8a00d27cce02233fba1b987ec29eebe49c78a36b80863015294a42c7e850119f",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-maintenance-generator.py",
+      "http_status": 200,
+      "sha256": "81cc8f1770abd61805e2ba5dc0ee995507e4865a651e3262cfa3a623c975c968",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-maintenance-logs.csv",
+      "http_status": 200,
+      "sha256": "caeb34d58ff1f159b24beec26ab667843a32da08065d179449a82ad5d3f75074",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-maintenance-manifest.json",
+      "http_status": 200,
+      "sha256": "7f4fcde8307c8a0588260ffc38184909d51e3f6df446f5a7c1613117bb7d6a76",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-maintenance-mixed.pcap",
+      "http_status": 200,
+      "sha256": "9fc8c7810024c3cd2734876d44e63c1af775d5ba1fdceb0be63e4c67283d0efb",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-maintenance-receiver.pcap",
+      "http_status": 200,
+      "sha256": "4f4f9455b82d0d88e8860781b0bb20d963225f8b783f8aa1e7457cbe4eb43f12",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-maintenance-truncated.pcap",
+      "http_status": 200,
+      "sha256": "b42bfc58a30a1be39a74f4c28a378804171ae83e316f19b77f8cf498d37b5383",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-maintenance-verify.py",
+      "http_status": 200,
+      "sha256": "d9a867295741dff0c10e7f1497bbedf9641a2f2b9ce35b327d575752c702e740",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-sip-rtp.pcap",
+      "http_status": 200,
+      "sha256": "d0649f8e5183c4e60027ff700fa4325fc2823c72004438f2551b3943be8fe99c",
+      "matches_source": true
+    },
+    {
+      "path": "assets/labs/wireshark-tcp-cases.pcap",
+      "http_status": 200,
+      "sha256": "6210fcf8e0f621f194a61f2cc1492dae9e722a4f0b9e2943b0156af3404b96a9",
+      "matches_source": true
+    },
+    {
+      "path": "content/catalog.json",
+      "http_status": 200,
+      "sha256": "af963e8d0dc0bd408b23aaa4675e03317cfa3cd24a08fa8e3a074fba046b4872",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/big-picture--boundaries-and-contracts.json",
+      "http_status": 200,
+      "sha256": "16bf9cb640f1ffb9c58b1d04242860251bb2f8e4fa8247b9ec136ee86dd9f780",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/big-picture--control-and-audio.json",
+      "http_status": 200,
+      "sha256": "21a8d4b7f6c8b369263ddbbce11a438e399382f939e765b9114083f3c0a003ed",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/big-picture--system-maintenance-map.json",
+      "http_status": 200,
+      "sha256": "7655efd7d52e288af954500f44138020784590fa4b004a313145a6825dcc20f2",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/big-picture--trace-a-company-feature.json",
+      "http_status": 200,
+      "sha256": "67c03cc5cefe0c8f4d983c0d5b89261502d44d4dd6ddf736a99a3bbbc79c7162",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--dsp-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "a18cd6e115bea6484d4636b9bf48095fb755d7f674c9d6ca8fa10e5384c5a536",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--filters-and-delay.json",
+      "http_status": 200,
+      "sha256": "3407b2bd8399155e508d7f4c53003aa0e81fd6bd6a01713e4591b613992c7480",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--iq-and-baseband.json",
+      "http_status": 200,
+      "sha256": "ab6dc5b4dcc01c1858afa7a7b2d8f151c4e51289cee28c8428b29bfa2691218b",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--noise-and-snr.json",
+      "http_status": 200,
+      "sha256": "3439abaabcec493737468bf6185c725410972e27ab845c4bdfd0ec31e67903d5",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--sampling-and-aliasing.json",
+      "http_status": 200,
+      "sha256": "73419fc80c5bbdc76713a876f864e5cc60f419e89febbc95a30bf45bee38452a",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--sdr-intro.json",
+      "http_status": 200,
+      "sha256": "6d0528350969d5f3a3fb4b812bfaff1cb0373a76ff719bcbe501d16c4050148d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--symbols-coding-and-ber.json",
+      "http_status": 200,
+      "sha256": "67d5733ede6a4d2bae064d6d2415e2982d1b99c451399267bb81189e8f97d829",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/dsp--time-frequency.json",
+      "http_status": 200,
+      "sha256": "0561c7b5b00c99015064eff1677933810fe105471a86be4bf19995557e46a235",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--audio-and-device-boundaries.json",
+      "http_status": 200,
+      "sha256": "3e57bacb338042166290f244e46e0a8156ff0af19d670cd23795f9301bb2c995",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--commands-and-events.json",
+      "http_status": 200,
+      "sha256": "4727af968b8cc333f4691e7e54301b54c3e69998f63aa38bf57b9d0932e7cc58",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--correlate-evidence.json",
+      "http_status": 200,
+      "sha256": "3b9af0b9b01feb5006d0835afba37b1d1c99efc32f381fdcdda3b9ef03189752",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--errors-and-recovery.json",
+      "http_status": 200,
+      "sha256": "9cc5c008c336fbc16453271ff85215e3ad93e4f191c24859bd2b7fbf4fb7f307",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--integration-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "1b1a8bd766b67f7949d6a3965567d7aeea82ed1ab6120e59c958a9dfeb366160",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--layers-and-ownership.json",
+      "http_status": 200,
+      "sha256": "a92d55be1cce047139d56fa3bc9afaf38967338e011fe27b348cf5bb4f0c3757",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--read-an-icd.json",
+      "http_status": 200,
+      "sha256": "43c0ed6dfeb691aed19b4750fa7f52d9dbf87143699b8b487edc69f4c2789de9",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--sessions-and-state.json",
+      "http_status": 200,
+      "sha256": "9bf5c27c3a5907784ff9b0530d6cfb8dd057991147192cffdc1887203b920c9e",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/integration--trace-an-action.json",
+      "http_status": 200,
+      "sha256": "5bb7201baf34a84cf6ec843cc367790b0cebe9dffecf88dee4f405ae34a5e449",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--addresses-and-ports.json",
+      "http_status": 200,
+      "sha256": "45f88c2c3ba4b35d23c756058afb116c48e3bf7b178d39acdbc4e726b86b0317",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--dns-dhcp-nat.json",
+      "http_status": 200,
+      "sha256": "43136079c3e636d23b32cb5a20376af5a222c6f3c4004513213c478ab76ea879",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--ethernet-vlan.json",
+      "http_status": 200,
+      "sha256": "fa626a8611a59bbed50cf5d39c8549028a64d6622450effc70ff0d93f653444b",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--mtu-qos.json",
+      "http_status": 200,
+      "sha256": "6dd84984adb45169d8f7fdb61ac159535b0e72dc4062e0d8c62ba7a347e37e8d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--multicast.json",
+      "http_status": 200,
+      "sha256": "eb18edd751393d69dd3ac9e4a41266b709040c54ff381e8db1d6fed9e07418bd",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--network-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "ec2a5600a6fdd07c8d49705d96ae8a2bbef580bcda231c44bbf28b5a72d1dd58",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--one-conversation.json",
+      "http_status": 200,
+      "sha256": "2c0135768407626d0418d93418e1d508c7610bd23a21cc27380e0f5cc15659c1",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--performance.json",
+      "http_status": 200,
+      "sha256": "af1880fc3de3169487e60f333ce4739d59aec317f1261b4bde83439445656261",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--routes.json",
+      "http_status": 200,
+      "sha256": "a46f89b25cbc8beead75f25ceb86f49cf843811546f352f57fdef8a03b14e70e",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/networking--tcp-udp.json",
+      "http_status": 200,
+      "sha256": "6a971561a66238d6d607a3406544bbe4619c87e7b15eb414a4a3cce246ea9687",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ozeki--calls-and-events.json",
+      "http_status": 200,
+      "sha256": "a715598471b5ab7d3988d5187666181a5b4d66fdd309ac4bd91852fca79e486c",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ozeki--documentation-and-version.json",
+      "http_status": 200,
+      "sha256": "8e80e9eb2505f8113dbba4a9546b8dba2d8a180e8ce23a865ede73aca6b599c4",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ozeki--evidence-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "3a6be407da85239c488fa9db8a4f7ea7b623965b35f51c5311694857783ae43c",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ozeki--lifecycle-and-events.json",
+      "http_status": 200,
+      "sha256": "cacfbedf8b49b2998df7618afb5d560a84dff68e5336d678ff7f516f41303e65",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ozeki--media.json",
+      "http_status": 200,
+      "sha256": "1d0782d7e0f941b9839ffe32b016a7286b54cb8bda7513bf585d636d2a595011",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ozeki--read-a-call.json",
+      "http_status": 200,
+      "sha256": "fa1a569e1cd1b7ee0eb06b76bd8c27bf23494a7fd0d87ee6b194b4cbafd3707e",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ozeki--registration.json",
+      "http_status": 200,
+      "sha256": "b3b618c7b41a09371afd8d06d7e271432117d2e6b3ed75d8087a7d2abb65bc86",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--audio-timing.json",
+      "http_status": 200,
+      "sha256": "9dc6c9c991b31cce7f9723bdf393c158f5e5f5f3f0f82a25a87746fbe4030e4d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--busy-and-grant.json",
+      "http_status": 200,
+      "sha256": "5f991419355aa33926121a28a0b4e43d371e5392ff8752e7a63b5d73d2f4d8d2",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--interface-box.json",
+      "http_status": 200,
+      "sha256": "a8c3a9e1dc8c454606d623247df8cd4486c80292d286c7acff5d2a3dd0af3fe7",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--observability-and-logs.json",
+      "http_status": 200,
+      "sha256": "3b86971bddc4b333b0e10c7ead5cf97ba4f837f6f468f55dc1cfad93575b8202",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--press-to-tx.json",
+      "http_status": 200,
+      "sha256": "3ff248d8e7f1162864aa6bee2710f18fb6c6d481aca7356864284a354492b79d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--ptt-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "de9125017688e88972f62f756c1209e9140e2adacc7070351c86daf17e6eae42",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--release-and-recovery.json",
+      "http_status": 200,
+      "sha256": "ef661a0066664c8cd97a62ef20f86367937969cbc2ce931f9b887db777c75331",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/ptt--state-machine.json",
+      "http_status": 200,
+      "sha256": "dbfba6fb0d414e97842af7260232a2f6089176bbfbc2042fee9607ce64f37c38",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--duplex-and-repeater.json",
+      "http_status": 200,
+      "sha256": "a012259f2333f00f0dd89ebd8c44c0e68e48881145687e6c27cad41650b6874b",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--measurements-and-logs.json",
+      "http_status": 200,
+      "sha256": "a7b314d4ab27626c5ac99024f41b6019fd83ddc40558af6359e12d806e61cfd5",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--modulation-and-coding.json",
+      "http_status": 200,
+      "sha256": "851662e69cbb84e268a8b368d520b4a9c840241d9099580649361f6620e940df",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--parameters.json",
+      "http_status": 200,
+      "sha256": "4214cdc48fb4fca5a68bb70a2f14ec5504ac9cc765e78d413636f3f4b12103f4",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--radio-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "7ce2b4daaca919d96536b77893bbada767f9c1392e3786f2f5977789188b1ad7",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--rf-chain-and-antenna.json",
+      "http_status": 200,
+      "sha256": "6a337316c14f69ff4a44725372225a0233fe82479067d942824bdd80dc90dc4b",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--rssi-snr.json",
+      "http_status": 200,
+      "sha256": "3babac64ba9dc8d968fb19c453b8fddee111e673cae9d325d8981c399a55d539",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/radio--tx-rx-path.json",
+      "http_status": 200,
+      "sha256": "cbd969beb931a03e1eb6f9c4b137424e161f48b169b16bfefa92e808b73ccae2",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--async-event-loops.json",
+      "http_status": 200,
+      "sha256": "c27a8acebde74c20aab7ef8b67a5e345b33cedc9a915333fc12cbdc9f6917b1d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--concurrency.json",
+      "http_status": 200,
+      "sha256": "c292f2012340f5b52d67f7c6b9c3498a33f73b7206656302323eae50ad318c88",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--event-ordering.json",
+      "http_status": 200,
+      "sha256": "5db2aaa062428aaa3b1809aef92be9fb167abdd2b9268a5220bb0b6836df874e",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--liveness-and-recovery.json",
+      "http_status": 200,
+      "sha256": "d1c0c15db4b5629ef8d924acc93843e8d038ec85a519118f8a0dcf567445fbd0",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--observability-and-load.json",
+      "http_status": 200,
+      "sha256": "a04fe6557d8d7f67e17a8b33fb330de8f7b02183313fabccb0873b117dba13a7",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--queues-and-backpressure.json",
+      "http_status": 200,
+      "sha256": "e352f9a4def9a652aaea3489fbaa66f1107d441023ea6f0b38f8495aeee29bba",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--reliability-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "456a692a1e2559decb0e795b85d95ff8aeb2f687847eaf8e56703e0a9b721488",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--retries-and-idempotency.json",
+      "http_status": 200,
+      "sha256": "7847f6b3488611c315fd620b7c569d6441e27173a85bbc00cf9bb27aa3c2cb60",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/reliability--timeouts.json",
+      "http_status": 200,
+      "sha256": "96a8f576e233c274612e227be01b61b948f1b45d3a17456d6aa2acd6e3adc7ee",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/satellite--failover.json",
+      "http_status": 200,
+      "sha256": "24a3d457dcde5211b8385df1cebd5c61226baf60157b01fcabe163e82510b352",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/satellite--health-and-selection.json",
+      "http_status": 200,
+      "sha256": "bc3105064de257422251b1aee030cec624ab1d0903dd6085f8e180407c837b3c",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/satellite--latency.json",
+      "http_status": 200,
+      "sha256": "09d8fad4850d42a9389c096cef1c6d2e115fd1675fce6908ab164526303a7067",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/satellite--link-quality-and-capacity.json",
+      "http_status": 200,
+      "sha256": "22a3f8217c8719464f0c61bf10da110adca434e0c3c1e4082f1893949b3dc16b",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/satellite--satellite-path-and-budget.json",
+      "http_status": 200,
+      "sha256": "8109525ca2423f8ea81a19d37f009842dd93dfc86825d044e9f74a66be08a228",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/satellite--satellite-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "9746f4fd4285ed3b32fe678a2c5b1f20dc38e905e2563a2abaf6fefedf3fb696",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/satellite--transport-and-queues.json",
+      "http_status": 200,
+      "sha256": "d2020f0bbbc4dc17d16c12559bce95fc59e80fec8ba75e2828e63954b36a862c",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/security--audit-and-least-privilege.json",
+      "http_status": 200,
+      "sha256": "97da96f8abeed56eb8ed005ea556af25a6db61483eefc424257f8f9fa86c449c",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/security--auth.json",
+      "http_status": 200,
+      "sha256": "a044727b3aa8de33d083dbaedb4694391466266617f52bc1ac3a80fdb252662d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/security--input-and-replay.json",
+      "http_status": 200,
+      "sha256": "3767636b4c113979008d02652899d658c45617bfc9bad2e821f9978cb7eafcf4",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/security--keys-and-secrets.json",
+      "http_status": 200,
+      "sha256": "99403bff47a65da591cb076a02747543beb9352136fdb4ab4ef68827b2fbb3e7",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/security--secure-media-and-tunnels.json",
+      "http_status": 200,
+      "sha256": "595a2e57fff0be885c23e83c7e3e1cb3b8978b204da37c1809481faae677abab",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/security--security-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "e689825b861ea4160922d69e15ac9828bc180093d77ac8e32a606980396c0715",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/security--tls-and-certificates.json",
+      "http_status": 200,
+      "sha256": "2aefb581cf1611e8df25f180f7429d3df5aa48b3ca8c3a80080d06e4528048e6",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/serial--electrical-and-wiring.json",
+      "http_status": 200,
+      "sha256": "7227ef223d98da4bec7db4ea160d8422c30a5e897f346a7973d741b9ae848238",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/serial--frame-and-timing.json",
+      "http_status": 200,
+      "sha256": "0a6c03fd64b156a172b7d23d45c587fd23d37acb5a72c397208be0656724650e",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/serial--other-interfaces.json",
+      "http_status": 200,
+      "sha256": "d3a0f7d10acbb95c91ae27dcfb913b6f672891c4515dbd60976b8543b9372bb6",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/serial--serial-layers.json",
+      "http_status": 200,
+      "sha256": "62952c73ea20d16ecfb70a6f7dd8885eba6f612ff87d380d85326225b367a39a",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/serial--serial-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "19fbd25a302b20f1fca1fbe1b7d91c2e508ef71c97d79d82ecbd046eb58f817d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/serial--tools-and-loopback.json",
+      "http_status": 200,
+      "sha256": "b140b10f87175aef30ba61b0ba87cf44180a3ba00acfa5b22df9ef32f50ad902",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/serial--uart-settings.json",
+      "http_status": 200,
+      "sha256": "d3df80e94c8a79fb72974dac03a5d128c315270cb3b22c5bd3d7d599cb969c6b",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--binary-protocols.json",
+      "http_status": 200,
+      "sha256": "7fed47aeb67f4957a543801ca25163057d47def7e653977364eaf472cb9da63e",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--disconnect-and-reconnect.json",
+      "http_status": 200,
+      "sha256": "1e5cea43f206faa9e8d5691c5012cb256adf9d4a7f6351e190c247d50adb1c5a",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--logs-and-debugging.json",
+      "http_status": 200,
+      "sha256": "d9f785f4e21371ffd5b10773b4b09a27a7ece478a2cfb3ae82d9d14040b93a1a",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--message-boundaries.json",
+      "http_status": 200,
+      "sha256": "48da9f85b771ef0b0f036733e93a5b54eb97951eb4bb02d2590d766673852af2",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--socket-flow.json",
+      "http_status": 200,
+      "sha256": "92e192947d8163a527784f7d90451ff74e5ad7a4a04bd88d99c7bb21f4271cce",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--socket-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "c00e51dd5b7a29b15762dcb49d75de228b8ccf46a00a4fa597660d1533161677",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--tcp-udp-apis.json",
+      "http_status": 200,
+      "sha256": "755d23bdf6ab0b11f45be4a2d6696ccbd1723918c747ade70d90bba09c0f6a1d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/sockets--timeouts-and-readiness.json",
+      "http_status": 200,
+      "sha256": "8a2c61170c5804f93614d2044885c452249dfaf9960e8d98ab0e596ea5b2e942",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--devices-and-audio.json",
+      "http_status": 200,
+      "sha256": "b63d17a060cfa35e4e6a95637beaa0c889de4a9d42a5cf9fdfac4e17516a821d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--find-evidence.json",
+      "http_status": 200,
+      "sha256": "af35b07b22e16cf873d538a929755fcc8a241f85e999701eb508db7dfea0a017",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--logs-and-time.json",
+      "http_status": 200,
+      "sha256": "7130748630cedf386247c6b007443aa37c4d80a44f0ac1eab1ebed319a8e9143",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--network-endpoints.json",
+      "http_status": 200,
+      "sha256": "9e1d51f3929f098359bd29abfe9cae3a923b07f07c1a0b4585d33b45e6144534",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--processes-threads-handles.json",
+      "http_status": 200,
+      "sha256": "ff3df15be1bc605864cff7a4afec36750af7bbb695d4123922d31503e06784c2",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--resource-pressure.json",
+      "http_status": 200,
+      "sha256": "aef287f62497f2435d4e76a01045dd815ea134100de22bad702ea4126d88f7a8",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--services-and-startup.json",
+      "http_status": 200,
+      "sha256": "8f83acd1e6a7aa4282e7f06d18784cced38812677fd286e394db12fdcd64875d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/systems--systems-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "e2de0c900ad9450585cdb44b89e6820bf49f32c63bed8d28d647f26078f572b7",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/troubleshooting--cross-layer-cases.json",
+      "http_status": 200,
+      "sha256": "819c88e53103f6464bed6cc9614fd71b417e89d919bed602b847f630c4cd71fc",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/troubleshooting--evidence.json",
+      "http_status": 200,
+      "sha256": "298f57b7048c0b7c7ba53ac7b4590b6b8072ad0ff81f4800fa85521c77079c1f",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/troubleshooting--fix-and-regression.json",
+      "http_status": 200,
+      "sha256": "a9542cfa5d554a0cc3d3af689a1237064b72b34420b410f239cf2586f39cf4f8",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/troubleshooting--one-way-audio.json",
+      "http_status": 200,
+      "sha256": "89780612f331d88c513ace9461b6386c140c3c0821a48d41dee185e29240da5a",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/troubleshooting--reproduce-and-control.json",
+      "http_status": 200,
+      "sha256": "5a778ea2f2312d1b3bf1621e7c5378ea78a2fad9fb0541865881f879ab316bb1",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/troubleshooting--timeline-and-causality.json",
+      "http_status": 200,
+      "sha256": "74c149ede0cf14bf960ad55169207382c708bff0ba41f3934227eb439caf3cac",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--audio-path.json",
+      "http_status": 200,
+      "sha256": "e6a265de8f8fe524a4a63fd1f067eeea7611c196d42bc086c40e062506c0f2da",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--call-vs-audio.json",
+      "http_status": 200,
+      "sha256": "21781f9942ecb8992cd8fa2da30ce5323ce98daa6c2ce123cfd8a3e8804ed5cf",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--codecs-packetization.json",
+      "http_status": 200,
+      "sha256": "2e41961624e5fbac578a1d85412de0f2a33dd02e9bb97bffbdaca9ae74e20a8f",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--jitter-and-quality.json",
+      "http_status": 200,
+      "sha256": "27b9587806b068806f99899c8aac93c16b58246582a6da7c96d2838177cd71d4",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--rtp-rtcp.json",
+      "http_status": 200,
+      "sha256": "e71ae0ccfcc8252217508b44ee56dadd8401d4d1488162bc20b88b2cd1f65a07",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--sdp-offer-answer.json",
+      "http_status": 200,
+      "sha256": "d62f454308c4219d7ce52823a15712ca71450cedf93d550d74d63b86941203b2",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--sip-call-flow.json",
+      "http_status": 200,
+      "sha256": "cc19ff7bb25a8a3daafb5f116dd3629a9ef81410a21aae0e8379a5be4cccc2cb",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--sip-roles-registration.json",
+      "http_status": 200,
+      "sha256": "4ebf074c618cb66be3d1917878410d487de806ec7a4d02f8221d510daf2ac288",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/voip--voip-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "b53c98e61d89db1a42be6e66972edc3b1db1a5735134931f92b648e913979342",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--evidence-and-logs.json",
+      "http_status": 200,
+      "sha256": "6539adc2938173da58d6df63c87080e2d86d88568562f27e23de4ebea98c08ef",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--filters.json",
+      "http_status": 200,
+      "sha256": "adc9598ab94feac6096a27172a7be232a0bb983c5869cd88f08a469681ea029b",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--first-capture.json",
+      "http_status": 200,
+      "sha256": "b8c069b40d59222358f0792db975d41d4c72df9c18210e90c02ed45dc00e108c",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--packet-panes.json",
+      "http_status": 200,
+      "sha256": "2f284b154dc43ed4e983cfa27ab1e6962ea31a99dc0ad78d0a4f660a8a230d7c",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--rtp-analysis.json",
+      "http_status": 200,
+      "sha256": "69846e3247257c7bf31796275a48e17c1b2a4a27368895515f0b482166445060",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--sip-rtp.json",
+      "http_status": 200,
+      "sha256": "6dd1b3fa623716ec64dd3d3e2bdf15923f4b8006d078d2216a035b867df78294",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--streams-statistics.json",
+      "http_status": 200,
+      "sha256": "5af286dc0c503a07afbfc107b5e6d2f9916fbd4671a0216580acc06c1c7b322d",
+      "matches_source": true
+    },
+    {
+      "path": "content/lessons/wireshark--tcp-troubleshooting.json",
+      "http_status": 200,
+      "sha256": "59d67399409fd43bc43cffe4c2eb6eaee8d4dfe38c7d200d4fb594448b22fbfb",
+      "matches_source": true
+    },
+    {
+      "path": "favicon.svg",
+      "http_status": 200,
+      "sha256": "e707244a3ffb4a899b9e62d170792fb63be5586808d03acd1ca9f951907ea065",
+      "matches_source": true
+    },
+    {
+      "path": "index.html",
+      "http_status": 200,
+      "sha256": "e8c14bf460a302469787d3f83934a0abaea6733d198cca2e69e02fa665e5e48c",
+      "matches_source": true
+    },
+    {
+      "path": "styles.css",
+      "http_status": 200,
+      "sha256": "3547f2baeb02710d7321b6871ebf9ac1e0b8d4c93f677fe02a65d67b014f29a8",
+      "matches_source": true
+    }
+  ],
+  "scope": "All visible docs files, fetched with commit query and compared byte-for-byte. Repository review documents are outside Pages docs."
+}

@@ -1,0 +1,24 @@
+{
+  "browser": "Chromium",
+  "mobile_lessons": 126,
+  "widths": [
+    1440,
+    390
+  ],
+  "javascript_errors": [],
+  "checks": [
+    "search",
+    "progress persistence",
+    "answer disclosure",
+    "mobile navigation",
+    "overflow",
+    "diagram decoding and original-image links",
+    "unavailable content",
+    "teaching preview entry and edition navigation",
+    "inline understanding checks"
+  ],
+  "checked_at_utc": "2026-10-03T16:11:42.318599+00:00",
+  "base_url": "https://jason033.github.io/ICS_learning/",
+  "published_content_commit": "1cddfda5579344987d1186fe0f659fac61824927",
+  "scope": "Functional browser regression of 126 readable pages; the three new lessons include preview entry, edition navigation and inline explanation checks. Learner comprehension is not tested."
+}

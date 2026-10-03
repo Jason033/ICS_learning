@@ -92,7 +92,7 @@
 
 第一輪三項訪談與硬體深度補充已完成，學習終點、起點與入口方式已有明確依據。新的教學方案覆蓋16個獨立主題及可選共同基礎；硬體深度已按軟體維護目的調整。三篇連續網路入門已完成，網站另設新版入口與閱讀順序，其餘123篇明示舊版參考、待重編。
 
-作者與另一位審查者全文閱讀，整合方親自連讀三篇及練習、檢查圖文，並處理故事一致、前置依賴、進位用途及本地網路措辭。具體發現、修正及驗證界線見[整合審查](reader-review.md)。網站與資料檢查均通過，數值及SVG已核對；手機、桌面圖表已人工檢視。結構清單和瀏覽器報告只保存證據，不作學習品質的替代。
+作者與另一位審查者全文閱讀，整合方親自連讀三篇及練習、檢查圖文，並處理故事一致、前置依賴、進位用途及本地網路措辭。具體發現、修正及驗證界線見[整合審查](reader-review.md)。網站與資料檢查均通過，數值及SVG已核對；手機、桌面圖表已人工檢視。新版已發布至[公開網站](https://jason033.github.io/ICS_learning/)，288個公開教材與資源檔與提交版本逐檔一致，126篇可讀頁的公開瀏覽功能巡查通過；其中新版試讀為三篇，其餘為舊版參考。結構清單和瀏覽器報告只保存證據，不作學習品質的替代。
 
 目標讀者尚未完成實際試讀，因此這次只能說教材已具備連續解說及自身前置，不能說已證明使用者學會或已完成全站重製。下一步以這組試讀觀察能否說明角色、數值表示與正常來回，再修正剩餘薄弱處；後續展開目的地址、交付與程式閱讀，各獨立主題按同一教學原則重編。
 
@@ -104,8 +104,9 @@
 | [authoring-standard.md](authoring-standard.md) | 如何寫出連續教材，分工審查哪些事情，資料如何維護。 |
 | [reader-review.md](reader-review.md) | 三篇有沒有突然跳概念，發現什麼、怎麼修，哪些仍未證明。 |
 | `*-author-review.md`、`*-peer-review.md` | 作者與交叉審查者各自實讀範圍、來源核對及處理狀態。 |
+| [verification.json](verification.json) | 資料、導航、數值及SVG邊界的整合檢查。 |
 | [browser-verification.json](browser-verification.json) | 本機功能與手機版的實際瀏覽結果。 |
 | [structure-inventory.json](structure-inventory.json) | 全站資料格式與舊／新版清單，不是教學深度分數。 |
-| [publication-verification.json](publication-verification.json)、[public-browser-verification.json](public-browser-verification.json) | 新版本發布後的檔案一致性與公開站功能，發布後補入實測結果。 |
+| [publication-verification.json](publication-verification.json)、[public-browser-verification.json](public-browser-verification.json) | 新版本已發布的檔案一致性與公開站功能實測；不證明學習效果。 |
 
 本資料夾保存本次需求調查、教學設計、教材審查與驗證。先前的篇數及發布驗收另存歷史資料，不回寫成新版成果。

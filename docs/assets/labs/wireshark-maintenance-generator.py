@@ -98,5 +98,5 @@ for name,rr,trunc in [('wireshark-maintenance-mixed.pcap',[r for r in records if
  for n,r in enumerate(rr,1):manifest['frames'].append(dict(file=name,frame=n,time_relative=r['t']-rr[0]['t'],wire_time=r['t'],captured_len=min(64,len(r['data'])) if trunc else len(r['data']),original_len=len(r['data']),**{k:v for k,v in r.items() if k not in ['data','t']}))
 Path('wireshark-maintenance-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
 rows=[['host','clock','time_seconds','request','stage','detail'],['client','relative',.118,'q17','SEND','13 bytes'],['server','relative',.121,'q17','PARSE','GET'],['server','relative',.151,'q17','COMPLETE','READY'],['client','relative',.166,'q17','DISPLAY','READY'],['client','relative',.418,'q18','SEND','13 bytes'],['server','relative',.421,'q18','PARSE','GET'],['server','relative',.425,'q18','QUEUE','depth=8'],['client','relative',.918,'q18','TIMEOUT','deadline=500ms'],['server','relative',1.105,'q18','COMPLETE','READY; reply failed closed session']]
-with open('wireshark-maintenance-logs.csv','w',newline='') as f:csv.writer(f).writerows(rows)
+with open('wireshark-maintenance-logs.csv','w',newline='') as f:csv.writer(f, lineterminator="\n").writerows(rows)
 print(json.dumps(manifest['files'],indent=2))

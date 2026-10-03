@@ -1,0 +1,164 @@
+{
+  "intro": "RTP 封包能讓你觀察音訊資料的連續性與時間線；RTCP 提供接收與統計回報。但封包欄位不是耳朵，只有在正確抓包點與足夠資料下才有解釋力。",
+  "plan": [
+    {
+      "label": "建立基礎概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀教學例子",
+      "minutes": 14
+    },
+    {
+      "label": "對照證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能讀 RTP 序號、時間戳、SSRC、Payload Type。",
+    "能區分 RTP 與 RTCP 的用途。",
+    "能正確描述合成 PCAP 缺少序號 302 的限制。"
+  ],
+  "sections": [
+    {
+      "heading": "RTP 每筆有哪些線索",
+      "paragraphs": [
+        "RTP Sequence Number 讓同一來源的封包有順序線索；Timestamp 標示媒體時間；SSRC 標示同步來源；Payload Type 依 profile／SDP 解釋負載格式。",
+        "序號不是電話號碼，時間戳不是電腦日期。換一個方向或 SSRC，不應把兩條序列硬接在一起。"
+      ],
+      "table": {
+        "caption": "讀 RTP 標頭時先問",
+        "headers": [
+          "欄位",
+          "能幫助什麼",
+          "不能直接證明"
+        ],
+        "rows": [
+          [
+            "Sequence Number",
+            "觀察連續性",
+            "缺口在哪一台設備發生"
+          ],
+          [
+            "Timestamp",
+            "對照媒體時間",
+            "主機時鐘日期"
+          ],
+          [
+            "SSRC",
+            "分開同步來源",
+            "使用者真實身分"
+          ],
+          [
+            "Payload Type",
+            "按協商辨識編碼",
+            "解碼一定成功"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "20 ms 的示範算式",
+      "paragraphs": [
+        "在 8000 Hz 的 RTP 音訊時鐘下，20 ms 相當於 160 個時間戳單位。如果每包恰好含連續 20 ms 媒體，下一包 timestamp 常增加 160。",
+        "這是教學條件，不是任何兩包都必差 160；靜音抑制、封包化時間、丟包或重新開始會改變觀測。"
+      ]
+    },
+    {
+      "heading": "合成檔的雙向序列",
+      "paragraphs": [
+        "A→B 有 seq 100～104；B→A 有 300、301、303、304，各有不同 SSRC。此檔沒有 B→A 的 302。",
+        "只能說在這份擷取資料中沒收錄 302；可能沒送、途中未到、抓包漏掉或觀測窗不完整，不能單憑缺口定位網路故障。"
+      ],
+      "code": {
+        "title": "Lab-Call-A：兩個方向不能混算",
+        "text": "A→B: SSRC 0x11111111, seq 100 101 102 103 104\nB→A: SSRC 0x22222222, seq 300 301 303 304\nB→A seq 302：此合成檔未收錄"
+      }
+    },
+    {
+      "heading": "RTCP 做回報，不載同樣的音訊",
+      "paragraphs": [
+        "RTCP 伴隨 RTP 提供控制與接收品質資訊，如 Sender Report、Receiver Report。接收報告可帶封包遺失及 interarrival jitter 等統計，解讀時還要看測量區間與接收者位置。",
+        "沒有看到 RTCP 不代表 RTP 一定無效；此合成 PCAP 沒有 RTCP 封包，所以不能練習讀實際 RTCP 報告。"
+      ]
+    },
+    {
+      "heading": "Jitter 數值與主觀感受不同",
+      "paragraphs": [
+        "RTP／RTCP 的 interarrival jitter 是依封包到達與時間戳估算的變動，並非「人耳感到的抖動分數」，也不能單獨等同端到端延遲。",
+        "樣本很少時統計不穩定。若要判斷實際通話，還要看接收端緩衝、晚到丟棄、解碼與主觀或設備觀測。"
+      ]
+    },
+    {
+      "heading": "抓包位置決定結論範圍",
+      "paragraphs": [
+        "發送端抓到 302、接收端沒抓到，較支持兩觀測點之間有缺口，但仍要排除抓包漏記與時鐘差。只在一端抓到的封包，不會自動證明另一端應用已收到。",
+        "合成 PCAP 適合練欄位；實際診斷需在允許的環境選正確介面與觀測點，並保護通話資料。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【欄位】RTP 時間戳是系統日期嗎？",
+      "answer": "不是；它標示媒體取樣時間。"
+    },
+    {
+      "question": "【算式】8000 Hz、20 ms 對應多少 timestamp 單位？",
+      "answer": "160。"
+    },
+    {
+      "question": "【分流】A→B seq 104 和 B→A seq 300 可接成一條嗎？",
+      "answer": "不能；方向及 SSRC 不同。"
+    },
+    {
+      "question": "【缺口】這份 PCAP 沒 302，可斷言網路丟包嗎？",
+      "answer": "不能；只能說此檔沒有收錄。"
+    },
+    {
+      "question": "【用途】RTCP 與 RTP 主要差別？",
+      "answer": "RTP 載即時媒體；RTCP 提供相關控制與統計回報。"
+    },
+    {
+      "question": "【限制】合成檔有 RTCP 報告可讀嗎？",
+      "answer": "沒有；此檔只含 SIP 和 RTP。"
+    },
+    {
+      "question": "【PT】Payload Type 需結合什麼解讀？",
+      "answer": "RTP profile 及本次 SDP 協商。"
+    },
+    {
+      "question": "【品質】RTCP jitter 高能單獨證明使用者聽到斷續嗎？",
+      "answer": "不能；需接收緩衝、晚到、解碼與播放證據。"
+    }
+  ],
+  "recap": [
+    "RTP 標頭給連續性與媒體時間線索。",
+    "RTCP 是接收與控制回報。",
+    "缺序號只先描述觀測缺口，不直接宣判根因。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3550：RTP 與 RTCP",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550"
+    },
+    {
+      "label": "IETF RFC 3551：RTP 音訊 Payload Type",
+      "url": "https://www.rfc-editor.org/rfc/rfc3551"
+    },
+    {
+      "label": "Wireshark 官方指南：VoIP Calls",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載合成 SIP／RTP 練習檔",
+      "path": "./assets/labs/wireshark-sip-rtp.pcap",
+      "description": "16 筆完全合成封包；含 7 筆 SIP 與 9 筆 RTP，沒有錄製人聲或公司流量。"
+    }
+  ]
+}

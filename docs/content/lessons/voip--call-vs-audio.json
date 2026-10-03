@@ -1,0 +1,175 @@
+{
+  "intro": "VoIP 把「安排一通電話」與「傳送聲音」分成不同工作。先用虛構 Lab-Call-A 看全貌：SIP 管通話控制，SDP 說明預期媒體條件，RTP 載媒體；它不是公司系統的拓撲。",
+  "plan": [
+    {
+      "label": "建立基礎概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀教學例子",
+      "minutes": 14
+    },
+    {
+      "label": "對照證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 10
+    }
+  ],
+  "goals": [
+    "能把通話控制、媒體宣告與實際音訊分開。",
+    "能用已知／未知描述「接通但沒聲音」。",
+    "能指出兩個方向的音訊都需獨立確認。"
+  ],
+  "sections": [
+    {
+      "heading": "一通電話至少有三條觀察線",
+      "paragraphs": [
+        "SIP 是建立、修改與結束會話的訊號；SDP 常放在 SIP 訊息本文，描述媒體位址、Port 與格式；RTP 傳送音訊等即時資料。",
+        "控制訊號經過的設備與媒體封包的路徑可能不同。Lab-Call-A 畫的是最小教學模型，實際 Proxy、媒體伺服器或加密機制要看系統文件。"
+      ],
+      "flow": [
+        "SIP：要不要建立通話？",
+        "SDP：預期音訊送去哪、用什麼格式？",
+        "RTP：該觀測點有沒有媒體封包？",
+        "音訊裝置：使用者是否真的聽見？"
+      ],
+      "image": {
+        "src": "./assets/diagrams/voip-evidence-path.svg",
+        "alt": "SIP 控制、SDP 媒體宣告、雙向 RTP、端點音訊處理分成不同證據層。",
+        "caption": "Lab-Call-A 虛構模型；每一層需要自己的觀測。"
+      }
+    },
+    {
+      "heading": "收到 200 OK 不等於聽到聲音",
+      "paragraphs": [
+        "若 INVITE 得到 200 OK 且發出 ACK，可支持這段 SIP 建立流程完成；還要看 SDP 是否匹配、RTP 是否出現、封包能否解碼與裝置有沒有播放。",
+        "同樣是 200 OK，也可能是 REGISTER、OPTIONS 或 BYE 的回覆；要用 CSeq 方法看它回答哪個請求。"
+      ],
+      "table": {
+        "caption": "各層可支持的結論",
+        "headers": [
+          "觀測",
+          "最多能支持",
+          "還缺什麼"
+        ],
+        "rows": [
+          [
+            "200 OK (INVITE) 與 ACK",
+            "本段 SIP 建立訊號完成",
+            "媒體是否可用"
+          ],
+          [
+            "SDP 寫有 m=audio",
+            "宣告了音訊條件",
+            "實際 RTP 是否走到"
+          ],
+          [
+            "接收端有 RTP",
+            "該點看到媒體封包",
+            "可否解碼與播放"
+          ],
+          [
+            "使用者聽見",
+            "此次播放路徑可用",
+            "另一方向是否可用"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "聲音有兩個方向",
+      "paragraphs": [
+        "A 能聽到 B，需要 B 錄到並送出、A 收到並播放；B 能聽到 A，則是另一條方向。雙方都顯示 InCall，仍可能只有一個方向有媒體。",
+        "遇到「無聲」先問誰聽不到誰。這會決定先查哪個發送端、哪個接收端，避免把兩條路混在一起。"
+      ]
+    },
+    {
+      "heading": "讀一份合成練習檔",
+      "paragraphs": [
+        "同一份合成 PCAP 有 7 筆 SIP 與 9 筆 RTP。A 是 192.0.2.10，B 是 198.51.100.20，這些是文件保留位址，沒有公司流量。",
+        "它能讓你練習分辨控制和媒體；RTP 負載是固定靜音教學位元組，不能拿來測人耳音質。"
+      ],
+      "code": {
+        "title": "Lab-Call-A 的最短證據表",
+        "text": "A → B: INVITE\nB → A: 200 OK (INVITE)\nA → B: ACK\nA ↔ B: RTP（兩個方向各自觀察）"
+      }
+    },
+    {
+      "heading": "怎麼描述一個不完整的觀測",
+      "paragraphs": [
+        "若只有 SIP 200 OK，寫「這個 INVITE 收到肯定回覆，媒體與播放未知」；若有 A→B RTP，也只能說該抓包點看得到這方向的媒體。",
+        "不把資料量、SIP 成功或 UI 顯示直接當成人耳感受；下一步要選會縮小未知範圍的觀測。"
+      ]
+    },
+    {
+      "heading": "本主題的學習邊界",
+      "paragraphs": [
+        "本主題用標準文件與合成紀錄建立通用讀法，之後可以單獨回到 Wireshark 或 Ozeki 主題練工具和 SDK。沒有規定必須先完成其他主題。",
+        "真實公司產品使用哪個 SDK、Codec、Proxy、RTP 端點及音訊設備，沒有授權規格與實測就保持未知。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【分工】SIP、SDP、RTP 各在做什麼？",
+      "answer": "SIP 管會話控制，SDP 描述媒體條件，RTP 承載即時媒體。"
+    },
+    {
+      "question": "【證據】INVITE 的 200 OK 可以保證有聲音嗎？",
+      "answer": "不能；仍需 RTP、解碼與播放證據。"
+    },
+    {
+      "question": "【方法】BYE 的 200 OK 與 INVITE 的 200 OK 一樣嗎？",
+      "answer": "不一樣；要看 CSeq 所列的方法。"
+    },
+    {
+      "question": "【方向】A 聽不到 B，先查哪個發送方向？",
+      "answer": "先查 B→A 的媒體送出、到達與 A 端播放。"
+    },
+    {
+      "question": "【宣告】SDP 寫 40002 可保證 40002 有收到 RTP 嗎？",
+      "answer": "不能；只是預期媒體端點。"
+    },
+    {
+      "question": "【封包】看到 A→B RTP，可推 B 人耳聽到了嗎？",
+      "answer": "不能；還需 B 端接收、解碼與播放。"
+    },
+    {
+      "question": "【素材】合成 PCAP 的 payload 能測真實語音品質嗎？",
+      "answer": "不能；它不含錄製人聲。"
+    },
+    {
+      "question": "【結論】只有 200 OK/ACK，應如何寫？",
+      "answer": "SIP 建立訊號有證據；媒體與使用者實際聽見仍未知。"
+    }
+  ],
+  "recap": [
+    "通話控制、媒體位置、媒體封包與可聽結果是不同層。",
+    "兩方向音訊分開查。",
+    "只對實際觀測到的步驟下結論。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3261：SIP 的角色、訊息、交易與對話",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261"
+    },
+    {
+      "label": "IETF RFC 8866：SDP 欄位",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866"
+    },
+    {
+      "label": "IETF RFC 3550：RTP 與 RTCP",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載合成 SIP／RTP 練習檔",
+      "path": "./assets/labs/wireshark-sip-rtp.pcap",
+      "description": "16 筆完全合成封包；含 7 筆 SIP 與 9 筆 RTP，沒有錄製人聲或公司流量。"
+    }
+  ]
+}

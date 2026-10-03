@@ -95,8 +95,15 @@
     {
       "id": "voip", "title": "VoIP 與聲音", "icon": "◍", "summary": "理解 SIP、SDP、RTP、Codec 與聲音收送。",
       "chapters": [
-        {"id": "call-vs-audio", "title": "通話建立與聲音傳送", "summary": "分開看訊號流程與音訊流程。", "status": "planned"},
-        {"id": "audio-path", "title": "從麥克風到喇叭", "summary": "理解取樣、編碼與播放。", "status": "planned"}
+        {"id": "call-vs-audio", "title": "通話建立與聲音傳送", "summary": "先分清 SIP、SDP、RTP 與實際聽見。", "minutes": 50, "status": "ready", "contentType": "full"},
+        {"id": "sip-roles-registration", "title": "SIP 角色與註冊", "summary": "理解帳號、UA、Registrar、Proxy 與 REGISTER。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "sip-call-flow", "title": "一通 SIP 電話的流程", "summary": "讀 INVITE、回應、ACK、BYE 與 CSeq。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "sdp-offer-answer", "title": "SDP 與媒體協商", "summary": "從 c=、m= 與 Codec 對照預期音訊端點。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "rtp-rtcp", "title": "RTP／RTCP 與封包判讀", "summary": "讀序號、時間戳、SSRC 與接收報告。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "audio-path", "title": "從麥克風到喇叭", "summary": "理解 ADC、PCM、DAC 與兩個方向的音訊路徑。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "codecs-packetization", "title": "Codec 與封包化", "summary": "算取樣數、位元率與每包音訊時間。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "jitter-and-quality", "title": "抖動緩衝與音質", "summary": "區分延遲、遺失、晚到、回音與音量問題。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "voip-troubleshooting", "title": "VoIP 整合除錯練習", "summary": "用虛構雙端證據排查無聲與斷續。", "minutes": 65, "status": "ready", "contentType": "full"}
       ]
     },
     {

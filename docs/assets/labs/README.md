@@ -1,6 +1,6 @@
 # 教學練習檔
 
-本資料夾放三種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環，以及 Socket 本機 TCP／UDP 練習。全部不含公司資料，也沒有真實設備的設定。
+本資料夾放四種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環、Socket 本機 TCP／UDP 練習，以及 VoIP 音訊取樣練習。全部不含公司資料，也沒有真實設備的設定。
 
 ## Wireshark 合成封包
 
@@ -25,3 +25,9 @@
 `socket-tcp-lab.py` 與 `socket-udp-lab.py` 只使用 Python 標準函式庫，伺服器綁在 `127.0.0.1`，Port 由作業系統自動分配，不連外部網路。兩個腳本都交換虛構的 `STATUS?` 與 `OK,READY`；前者在兩端使用 2-byte 大端序長度前綴、限制內容最多 1024 bytes，並示範分兩次呼叫 `sendall` 後仍應依長度讀取；後者示範 `sendto`／`recvfrom` 和回覆來源檢查。它們不模擬封包遺失或真實設備狀態。
 
 在下載檔所在資料夾執行 `python3 socket-tcp-lab.py` 和 `python3 socket-udp-lab.py`；Windows 可用 `py socket-tcp-lab.py` 和 `py socket-udp-lab.py`。預期都印出請求、回覆和「本機範例通過」。若本機政策禁止啟動回環服務，可直接閱讀對應教材及練習；腳本成功不代表公司系統的 Socket、SDK 或設備也相同。
+
+## VoIP 主題的音訊取樣
+
+`voip-tone-lab.py` 使用 Python 標準函式庫合成一秒鐘的 440 Hz 教學音，印出 8 kHz、16-bit、單聲道 PCM 的樣本數、原始資料量與每 20 ms 的分幀數。直接執行 `python3 voip-tone-lab.py` 不會建立檔案；加上 `--write-wav` 才會在目前資料夾產生 `voip-tone-lab.wav`，若同名檔已存在則拒絕覆寫。Windows 可改用 `py voip-tone-lab.py`。
+
+這個腳本不讀麥克風、不連網，也**沒有**實作 G.711、G.729、RTP 或通話；它只驗證教材裡的取樣與原始 PCM 算式。VoIP 章節另沿用本資料夾的合成 `wireshark-sip-rtp.pcap` 觀察 SIP、SDP 與 RTP；其負載為固定教學位元組，不可當成真人語音或品質測試。

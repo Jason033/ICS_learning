@@ -1,0 +1,187 @@
+{
+  "intro": "最後把 SIP、SDP、RTP 與端點音訊串成一張可查證的地圖。以下八個案例全是虛構；結論只到證據支持的位置，不當成公司已知故障。",
+  "plan": [
+    {
+      "label": "建立基礎概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀教學例子",
+      "minutes": 14
+    },
+    {
+      "label": "對照證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 25
+    }
+  ],
+  "goals": [
+    "能依通話階段找第一個缺少證據的位置。",
+    "能分辨接通無聲、單向音訊與斷續的不同檢查。",
+    "能寫出外行也能看懂的已知、未知、下一步。"
+  ],
+  "sections": [
+    {
+      "heading": "先建立基準：哪一段正常？",
+      "paragraphs": [
+        "最小對照：REGISTER 有最終結果；INVITE→200 OK→ACK；SDP 宣告雙向媒體；兩方向有 RTP；兩端解碼和播放；使用者回報可聽。不同服務不一定需要 REGISTER。",
+        "先記同一次通話的 Call-ID、時間、方向、端點與觀測點。抓包和 log 不同步時，先標時間誤差，不用毫秒差硬推順序。"
+      ],
+      "flow": [
+        "帳號／路由",
+        "SIP 建立",
+        "SDP 預期",
+        "雙向 RTP",
+        "解碼／播放",
+        "使用者觀測"
+      ]
+    },
+    {
+      "heading": "案例 A：REGISTER 只看到 401",
+      "paragraphs": [
+        "UA log 有 REGISTER、收到 401；沒有後續 REGISTER 或最終 200。這不足以說帳密錯，因為可能尚未進行正常驗證流程。",
+        "下一步查是否送出帶驗證資料的第二次 REGISTER、伺服器最終回覆及原因；敏感欄位要遮蔽。"
+      ]
+    },
+    {
+      "heading": "案例 B：接通訊號沒有完成",
+      "paragraphs": [
+        "A 送 INVITE，B 回 180 Ringing，之後抓包窗結束；沒有看到最終回覆或 ACK。此檔只證明進到暫時回覆階段。",
+        "先擴大擷取時間窗並查兩端 SIP 紀錄；不能把 180 當接通，也不能單憑缺 200 判定哪一端故障。"
+      ]
+    },
+    {
+      "heading": "案例 C：SIP 完成，但 SDP 端點寫錯",
+      "paragraphs": [
+        "INVITE／200／ACK 齊全。A 收到的 answer 宣告媒體端點 B:40002，但 B 實際此時只監聽 B:41002；沒有 B 端 RTP 接收紀錄。",
+        "先核對正式 SDP、當次 Port 分配及 B 端實際綁定；若不一致，再追產生 SDP 的配置。不先改防火牆或 Codec。"
+      ]
+    },
+    {
+      "heading": "案例 D：單向無聲，只有一方向 RTP",
+      "paragraphs": [
+        "雙方確認通話已建立，接收端 B 抓到 A→B RTP，接收端 A 沒看到 B→A；已知 B 可觀測到來自 A 的媒體，但 A 方向缺證據。",
+        "下一步查 B 是否送 B→A RTP、A 的抓包點是否正確，再沿途比對；不能只看 SIP 200 OK 宣稱雙向媒體正常。"
+      ]
+    },
+    {
+      "heading": "案例 E：雙向 RTP 都有，A 仍無聲",
+      "paragraphs": [
+        "A 端可見 B→A RTP，A 的解碼器 log 記格式不符；A 使用者聽不到 B。",
+        "優先核對本次 SDP 的 PT／Codec 與實際 payload、解碼錯誤來源；若修復解碼仍無聲，再查喇叭與音量。看見 RTP 並非已可播放。"
+      ]
+    },
+    {
+      "heading": "案例 F：兩向都有，聲音斷續",
+      "paragraphs": [
+        "B 的接收紀錄顯示部分封包到達晚於播放期限而被捨棄；發送端數量與 B 抓包數量相同。",
+        "可先確認 jitter buffer 配置、實際到達變化和端到端延遲；此例不是單純「網路丟掉那些封包」。"
+      ]
+    },
+    {
+      "heading": "案例 G：靜音時封包變少",
+      "paragraphs": [
+        "通話前半段有規律 RTP；安靜時語音 PT 封包減少，SDP 與端點設定顯示 VAD／DTX 啟用。",
+        "這可能是預期省流量行為，先做有聲測試並核對 CN／時間戳與接收端播放；不能只按固定每秒 50 包判故障。"
+      ]
+    },
+    {
+      "heading": "案例 H：接通後仍顯示舊狀態",
+      "paragraphs": [
+        "SIP、SDP、兩方向 RTP、兩端播放測試均有證據，畫面仍顯示「未接通」。",
+        "下一步查應用狀態事件與 UI 更新路徑；此案例的第一個未證實環節在畫面狀態映射，不是立即調網路。"
+      ]
+    },
+    {
+      "heading": "寫成可交接的結論",
+      "paragraphs": [
+        "先說「本次通話的哪個觀測點看到了什麼」，再說「因此支持到哪一步」，最後列「尚不知道什麼及下一個檢查」。",
+        "例如案例 E：「A 端已收到 B→A RTP，但解碼器回格式錯誤，A 無聲；優先核對 SDP 協商格式與實際 payload。尚未證明喇叭有問題。」"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【A】首次 REGISTER 401 可直接定義帳密錯誤嗎？",
+      "answer": "不能；看後續帶驗證資料的請求與最終回覆。"
+    },
+    {
+      "question": "【B】180 Ringing 足以說已接通嗎？",
+      "answer": "不足；還需最終回覆與 ACK 等當次訊號證據。"
+    },
+    {
+      "question": "【C】SDP Port 與實際監聽不同，先核對什麼？",
+      "answer": "核對正式 SDP、當次綁定 Port 與產生媒體端點的配置。"
+    },
+    {
+      "question": "【D】A 沒看到 B→A RTP，下一個觀測點？",
+      "answer": "先查 B 是否送出與 A 抓包位置，再對照路徑。"
+    },
+    {
+      "question": "【E】A 收到 RTP 但解碼器報格式錯，優先查什麼？",
+      "answer": "核對 SDP 的 PT／Codec 和實際 payload。"
+    },
+    {
+      "question": "【F】包到了卻晚到被丟，能說「網路完全沒送達」嗎？",
+      "answer": "不能；查到達變化、播放期限與緩衝。"
+    },
+    {
+      "question": "【G】VAD 開啟時安靜期少 RTP 一定故障嗎？",
+      "answer": "不一定；核對有聲段、CN、時間戳與接收播放。"
+    },
+    {
+      "question": "【H】媒體可用而 UI 未更新，第一個缺口在哪？",
+      "answer": "查應用狀態事件到 UI 的映射與更新。"
+    },
+    {
+      "question": "【結論】只有 INVITE 200／ACK 與 SDP，應保留哪個未知？",
+      "answer": "RTP 是否實際到兩端、能否解碼播放及使用者有沒有聽見。"
+    }
+  ],
+  "recap": [
+    "先按 SIP、SDP、RTP、端點播放逐段查。",
+    "單向音訊一定要說清誰聽不到誰。",
+    "結論包含證據、界線與下一項檢查。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3261：SIP 的角色、訊息、交易與對話",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261"
+    },
+    {
+      "label": "IETF RFC 8866：SDP 欄位",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866"
+    },
+    {
+      "label": "IETF RFC 3264：SDP Offer／Answer",
+      "url": "https://www.rfc-editor.org/rfc/rfc3264"
+    },
+    {
+      "label": "IETF RFC 3550：RTP 與 RTCP",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550"
+    },
+    {
+      "label": "IETF RFC 7874：WebRTC 端點音訊處理、AGC 與回音控制",
+      "url": "https://www.rfc-editor.org/rfc/rfc7874"
+    },
+    {
+      "label": "Wireshark 官方指南：VoIP Calls",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載合成 SIP／RTP 練習檔",
+      "path": "./assets/labs/wireshark-sip-rtp.pcap",
+      "description": "16 筆完全合成封包；含 7 筆 SIP 與 9 筆 RTP，沒有錄製人聲或公司流量。"
+    },
+    {
+      "label": "下載本機取樣練習程式",
+      "path": "./assets/labs/voip-tone-lab.py",
+      "description": "標準函式庫；計算 8 kHz／16-bit 單聲道取樣與 20 ms 分幀，可選擇在本機產生教學 WAV。"
+    }
+  ]
+}

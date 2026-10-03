@@ -1,0 +1,154 @@
+{
+  "intro": "SDP 是媒體條件的說明書，不是媒體已送達的證明。本章用合成檔的 A、B 兩端讀出 IP、Port 與 PCMU，練習「預期路徑」和「實際路徑」對照。",
+  "plan": [
+    {
+      "label": "建立基礎概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀教學例子",
+      "minutes": 14
+    },
+    {
+      "label": "對照證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能從 c=、m=、a=rtpmap 讀出媒體端點與格式。",
+    "能解釋 offer／answer 的基本協商。",
+    "能分清 SDP 宣告、RTP 可見與人耳有聲。"
+  ],
+  "sections": [
+    {
+      "heading": "先找 SDP 在哪個 SIP 訊息裡",
+      "paragraphs": [
+        "常見情況是 INVITE 附 offer、200 OK (INVITE) 附 answer；也可能有其他合法交換時序。先確認這通話實際在哪筆訊息中有 SDP。",
+        "合成檔中，A 的 INVITE 有 SDP，B 的 200 OK (INVITE) 有 SDP。不能用 BYE 的 200 OK 去找本次最初的媒體協商。"
+      ]
+    },
+    {
+      "heading": "c= 與 m= 合起來看",
+      "paragraphs": [
+        "c= 指連線地址；m=audio 40000 RTP/AVP 0 表示一條 audio 媒體，Port 40000、RTP/AVP profile、Payload Type 0。若 media 層另有 c=，需按 SDP 作用範圍解讀，不能只看第一個 c=。",
+        "合成檔 A 宣告 192.0.2.10:40000，B 宣告 198.51.100.20:40002。因此預期 A→B 送向 B:40002，B→A 送向 A:40000。"
+      ],
+      "code": {
+        "title": "依合成檔整理的兩份簡化 SDP",
+        "text": "A offer: c=IN IP4 192.0.2.10\n         m=audio 40000 RTP/AVP 0\n         a=rtpmap:0 PCMU/8000\nB answer: c=IN IP4 198.51.100.20\n          m=audio 40002 RTP/AVP 0\n          a=rtpmap:0 PCMU/8000"
+      }
+    },
+    {
+      "heading": "Payload Type 和 Codec 的關係",
+      "paragraphs": [
+        "此 RTP/AVP profile 的 PT 0 是 PCMU/8000 的靜態指派；動態 PT 通常需按該次 SDP 的 a=rtpmap 對照，不能記住一個數字就套所有通話。",
+        "PCMU/8000 指 G.711 μ-law 的 RTP 時鐘率 8000 Hz。只從 SDP 能看預期格式，不能證明端點已正常編碼或解碼。"
+      ]
+    },
+    {
+      "heading": "Offer／Answer 比「兩份清單相同」更具體",
+      "paragraphs": [
+        "Offer 提議媒體流與可接受格式；answer 表達接受或拒絕及自己的端點。讀者要比較同一 m= 行的媒體類型、Port、profile、Payload Type 與方向屬性。",
+        "若某 m= 行在 answer 的 Port 為 0，依 offer／answer 規則表示該媒體流被拒絕；不能再期待它按 offer 的 Port 傳送。"
+      ],
+      "table": {
+        "caption": "合成檔的預期媒體路徑",
+        "headers": [
+          "方向",
+          "發送端",
+          "目的端"
+        ],
+        "rows": [
+          [
+            "A → B",
+            "192.0.2.10:40000",
+            "198.51.100.20:40002"
+          ],
+          [
+            "B → A",
+            "198.51.100.20:40002",
+            "192.0.2.10:40000"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "方向屬性也要讀",
+      "paragraphs": [
+        "sendrecv 表示可雙向，sendonly／recvonly／inactive 限制該媒體流方向；解讀方向時要站在宣告者的角度。缺省行為與版本要依標準及實際 SDP 判讀。",
+        "一端宣告 recvonly 並非那端「會送但不收」。若畫錯方向，排查單向無聲就會查反。"
+      ]
+    },
+    {
+      "heading": "把預期與可見封包對照",
+      "paragraphs": [
+        "合成檔可查到 A:40000 → B:40002 和反向 RTP；這能支持這個擷取點看到了符合 SDP 端點的流量。",
+        "仍要查接收程式、Codec、音訊裝置與人耳觀測。真實環境若有 NAT／中繼，抓包位址也可能與端點對外宣告不同，不能只按這個直接端點例子推定。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【欄位】m=audio 40000 RTP/AVP 0 中 Port 是多少？",
+      "answer": "40000。"
+    },
+    {
+      "question": "【位址】A offer 的 c= 指什麼？",
+      "answer": "宣告的媒體連線地址；本例為 192.0.2.10。"
+    },
+    {
+      "question": "【方向】A→B RTP 的目的端點按 answer 是？",
+      "answer": "198.51.100.20:40002。"
+    },
+    {
+      "question": "【Codec】PT 0 在此 profile 是什麼？",
+      "answer": "PCMU；合成 SDP 亦明示 PCMU/8000。"
+    },
+    {
+      "question": "【動態 PT】可以把 101 在所有通話都當成同一 Codec 嗎？",
+      "answer": "不能；需看該次 SDP 的 a=rtpmap。"
+    },
+    {
+      "question": "【拒絕】answer 的 m= Port 0 通常表示什麼？",
+      "answer": "該媒體流被拒絕。"
+    },
+    {
+      "question": "【方向】宣告 sendonly 的一方只收不送嗎？",
+      "answer": "不是；從宣告者角度表示送出方向。"
+    },
+    {
+      "question": "【證據】SDP 宣告兩向能證明兩向 RTP 都到了嗎？",
+      "answer": "不能；要看實際媒體觀測。"
+    }
+  ],
+  "recap": [
+    "c=、m=、格式與方向屬性要一起看。",
+    "Offer／Answer 說明預期媒體，不是實際送達。",
+    "動態 Payload Type 要按該次 SDP 對照。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 8866：SDP 欄位",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866"
+    },
+    {
+      "label": "IETF RFC 3264：SDP Offer／Answer",
+      "url": "https://www.rfc-editor.org/rfc/rfc3264"
+    },
+    {
+      "label": "IETF RFC 3551：RTP 音訊 Payload Type",
+      "url": "https://www.rfc-editor.org/rfc/rfc3551"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載合成 SIP／RTP 練習檔",
+      "path": "./assets/labs/wireshark-sip-rtp.pcap",
+      "description": "16 筆完全合成封包；含 7 筆 SIP 與 9 筆 RTP，沒有錄製人聲或公司流量。"
+    }
+  ]
+}

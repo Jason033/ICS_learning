@@ -1,0 +1,134 @@
+{
+  "intro": "電話能不能被找得到，往往先涉及 SIP 帳號與註冊。本章讀通用 SIP 角色和 REGISTER，不把教學拓撲套到公司的實際 PBX 或 SDK。",
+  "plan": [
+    {
+      "label": "建立基礎概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀教學例子",
+      "minutes": 14
+    },
+    {
+      "label": "對照證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能區分 UA、Registrar、Proxy 的職責。",
+    "能說明 REGISTER 成功的範圍。",
+    "能讀 401 驗證挑戰與最終回覆，不把每個 401 當故障。"
+  ],
+  "sections": [
+    {
+      "heading": "三種角色各回答一個問題",
+      "paragraphs": [
+        "User Agent（UA）是發起或接收 SIP 請求的端點；Registrar 接收 REGISTER，維護帳號到 Contact 的綁定；Proxy 可轉送 SIP 請求。",
+        "這是邏輯角色，同一產品可能兼任多個角色。Registrar 不是麥克風，Proxy 也不一定在 RTP 媒體路徑上。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/voip-sip-roles.svg",
+        "alt": "UA 把 REGISTER 送到 Registrar，通話請求可經 Proxy 轉送；媒體路徑獨立標示。",
+        "caption": "角色關係的虛構示意，並非任何公司部署圖。"
+      }
+    },
+    {
+      "heading": "帳號與 Contact 不同",
+      "paragraphs": [
+        "帳號位址例如 sip:alice@example.invalid 是邏輯名稱；Contact 指目前能到達此 UA 的聯絡位址。REGISTER 是請 Registrar 建立或更新這個綁定。",
+        "成功綁定不能保證對方有音訊裝置、能撥通所有號碼或 RTP 可達。實際路由與認證取決於服務規格。"
+      ]
+    },
+    {
+      "heading": "一段虛構註冊交換",
+      "paragraphs": [
+        "UA 送 REGISTER；Registrar 可能先回 401 挑戰；UA 帶合法憑證摘要再送 REGISTER；伺服器回 200 OK。這是常見的驗證情境，不是每套系統都一定如此。",
+        "若 401 後沒有後續成功，先查驗證設定與伺服器回覆；若最終有 200 OK，不能把最初 401 單獨當成註冊失敗。"
+      ],
+      "flow": [
+        "REGISTER（首次）",
+        "401 挑戰（若要求驗證）",
+        "REGISTER（帶驗證資料）",
+        "200 OK（本次綁定成功）"
+      ],
+      "code": {
+        "title": "虛構紀錄：看最後結果",
+        "text": "10:00:00 REGISTER sip:example.invalid\n10:00:00 401 Unauthorized\n10:00:01 REGISTER Authorization: [遮蔽]\n10:00:01 200 OK (REGISTER)"
+      }
+    },
+    {
+      "heading": "有效期限與重新註冊",
+      "paragraphs": [
+        "註冊綁定有期限，UA 可能在到期前更新。一次 200 OK 只能說當時的 REGISTER 成功，過一段時間後要查綁定是否仍有效。",
+        "若收到呼叫失敗，先看時段、帳號、Contact 和服務回覆；不能只引用前一天的一次成功紀錄。"
+      ]
+    },
+    {
+      "heading": "Proxy 與媒體路徑不可混為一談",
+      "paragraphs": [
+        "SIP 邀請可能經 Proxy 轉送；SDP 可宣告與 Proxy 不同的媒體端點。若另有媒體中繼或 SBC，實際 RTP 路徑又可能改變。",
+        "因此「SIP 伺服器可達」不能直接推出「雙向 RTP 可達」。要用當次 SDP 和媒體觀測確認。"
+      ]
+    },
+    {
+      "heading": "按證據排查註冊狀態",
+      "paragraphs": [
+        "看 UA 是否真的送 REGISTER、Registrar 回什麼、最後是否有 200 OK、Contact 與有效期限、是否有後續失效。",
+        "若程式只記「Register() 已呼叫」，還缺 SIP 回覆或 SDK 狀態事件；若抓不到封包，先確認觀測位置。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【角色】REGISTER 主要送給哪種角色？",
+      "answer": "Registrar；服務可能由同一產品兼任其他角色。"
+    },
+    {
+      "question": "【角色】Proxy 一定承載 RTP 嗎？",
+      "answer": "不一定；它的 SIP 轉送角色與媒體路徑分開。"
+    },
+    {
+      "question": "【身分】帳號位址與 Contact 一樣嗎？",
+      "answer": "不一樣；前者是邏輯名稱，後者描述目前可聯絡端點。"
+    },
+    {
+      "question": "【401】首次 401 後再 200，最終結果是？",
+      "answer": "該次經驗證的 REGISTER 得到 200；首次 401 可是正常挑戰。"
+    },
+    {
+      "question": "【證據】REGISTER 200 能保證麥克風可用嗎？",
+      "answer": "不能；註冊與音訊裝置不同。"
+    },
+    {
+      "question": "【時間】昨天註冊成功能證明現在仍有效嗎？",
+      "answer": "不能；需查期限、刷新與當前狀態。"
+    },
+    {
+      "question": "【失敗】程式呼叫 Register() 可證明伺服器已接受嗎？",
+      "answer": "不能；要看回覆／事件。"
+    },
+    {
+      "question": "【下一步】有 SIP 連線而雙向無聲，應先再查什麼？",
+      "answer": "查本次 SDP、RTP 兩方向與端點音訊路徑。"
+    }
+  ],
+  "recap": [
+    "Registrar 管註冊綁定，Proxy 管 SIP 轉送，角色可能同機。",
+    "401 挑戰要放在完整交換裡看。",
+    "註冊成功與通話音訊是分開的結果。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3261：SIP 的角色、訊息、交易與對話",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261"
+    },
+    {
+      "label": "IETF RFC 8866：SDP 欄位",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866"
+    }
+  ]
+}

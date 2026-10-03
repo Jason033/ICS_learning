@@ -1,0 +1,163 @@
+{
+  "intro": "本章用合成電話紀錄讀一次典型 SIP 建立與結束。訊息順序要和方法、CSeq、Call-ID 一起看；這不是所有通話分支的完整清單。",
+  "plan": [
+    {
+      "label": "建立基礎概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀教學例子",
+      "minutes": 14
+    },
+    {
+      "label": "對照證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能依序解讀 INVITE、100、180、200、ACK、BYE。",
+    "能區分 transaction 和 dialog 的入門概念。",
+    "能判斷 CANCEL 與 BYE 適用於哪一階段。"
+  ],
+  "sections": [
+    {
+      "heading": "先用 Call-ID 與 CSeq 對齊紀錄",
+      "paragraphs": [
+        "Call-ID 幫助關聯同一通呼叫；CSeq 含序號和方法，辨認 200 OK 是回答 INVITE 還是 BYE。方向、時間和 From／To tag 也能幫助追蹤。",
+        "只看到兩筆 200 OK，不能自動說「接通兩次」。合成檔最後一個 200 OK 回的是 BYE。"
+      ]
+    },
+    {
+      "heading": "最小建立流程",
+      "paragraphs": [
+        "A 發 INVITE，B 回 100 Trying、180 Ringing、200 OK (INVITE)，A 發 ACK。100 表示處理中；180 表示被叫方可提醒響鈴；200 是肯定回覆，ACK 對這次成功 INVITE 完成確認。",
+        "180 不證明實體電話真的響。真實系統可能有 183、驗證、轉接或多個被叫分支，本章先學正常直接端點例子。"
+      ],
+      "flow": [
+        "A → B INVITE",
+        "B → A 100 Trying",
+        "B → A 180 Ringing",
+        "B → A 200 OK (INVITE)",
+        "A → B ACK"
+      ]
+    },
+    {
+      "heading": "結束與未接通時撤銷",
+      "paragraphs": [
+        "已建立的通話可用 BYE 請求結束，對方可回 200 OK (BYE)。當初始 INVITE 仍在等待最終回覆時，可用 CANCEL 嘗試取消；兩者不是同義詞。",
+        "CANCEL 並非保證剛好在對方接通前生效；若最終回覆已到，需要依實際對話狀態處理，不能用 CANCEL 取代 BYE。"
+      ]
+    },
+    {
+      "heading": "OPTIONS 是詢問能力，不是打電話",
+      "paragraphs": [
+        "OPTIONS 可探詢對端支援的方法或能力，收到 200 OK 表示這個 OPTIONS 請求得到肯定回覆。",
+        "不能把 OPTIONS 200 OK 當成 REGISTER 完成、INVITE 接通或 RTP 有聲。"
+      ],
+      "table": {
+        "caption": "同樣 200 OK，含意隨方法改變",
+        "headers": [
+          "CSeq 方法",
+          "可支持",
+          "不保證"
+        ],
+        "rows": [
+          [
+            "REGISTER",
+            "該次註冊請求被接受",
+            "能撥通或有聲"
+          ],
+          [
+            "INVITE",
+            "該次邀請獲肯定回覆",
+            "媒體與裝置可用"
+          ],
+          [
+            "OPTIONS",
+            "能力詢問有回應",
+            "建立了通話"
+          ],
+          [
+            "BYE",
+            "結束請求有回應",
+            "先前音質良好"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "Transaction 與 Dialog 的白話差別",
+      "paragraphs": [
+        "Transaction 可先當成一個 SIP 請求及其回覆處理；Dialog 是兩端 UA 之間可持續的 SIP 關係，包含後續的會話內請求。它們不是「一次封包」與「一整台設備」的關係。",
+        "實際識別 dialog 需 Call-ID、兩端 tag 等資訊；相同 Call-ID 不足以辨識每個可能的分支。ACK 對 2xx INVITE 的處理有特別規則，這裡不把所有 ACK 都說成同一個 transaction。"
+      ]
+    },
+    {
+      "heading": "用合成 PCAP 核對順序",
+      "paragraphs": [
+        "開啟檔案，篩選 sip，應見七筆：INVITE、100、180、200 (INVITE)、ACK、BYE、200 (BYE)。按時間、方向和 CSeq 核對。",
+        "若工具無法自動列出 VoIP Calls，仍可直接讀原始 SIP；只有這份合成檔的順序是已知，不能拿來套所有現場呼叫。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【順序】INVITE 的 200 OK 後通常看到哪個確認訊息？",
+      "answer": "ACK。"
+    },
+    {
+      "question": "【CSeq】如何分辨最後的 200 OK 是回答什麼？",
+      "answer": "看 CSeq 的方法；合成檔最後回答 BYE。"
+    },
+    {
+      "question": "【180】180 Ringing 能證明對方喇叭真的響嗎？",
+      "answer": "不能；它是訊號回覆。"
+    },
+    {
+      "question": "【CANCEL】對仍等待最終回覆的初始 INVITE 可用什麼？",
+      "answer": "CANCEL 嘗試撤銷。"
+    },
+    {
+      "question": "【BYE】已建立通話通常用什麼結束？",
+      "answer": "BYE。"
+    },
+    {
+      "question": "【OPTIONS】OPTIONS 200 能證明通話已接通嗎？",
+      "answer": "不能；只回應能力詢問。"
+    },
+    {
+      "question": "【Dialog】只靠 Call-ID 能總是唯一辨認每個分支嗎？",
+      "answer": "不能；還需兩端 tag 等。"
+    },
+    {
+      "question": "【觀測】自動 VoIP Calls 沒列出，應先做什麼？",
+      "answer": "用 sip 篩選並逐筆核對原始訊息與解析設定。"
+    }
+  ],
+  "recap": [
+    "Call-ID、CSeq、方向與時間一起看。",
+    "建立、能力詢問、註冊與結束的 200 OK 意義不同。",
+    "CANCEL 與 BYE 用在不同階段。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3261：SIP 的角色、訊息、交易與對話",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261"
+    },
+    {
+      "label": "Wireshark 官方指南：VoIP Calls",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載合成 SIP／RTP 練習檔",
+      "path": "./assets/labs/wireshark-sip-rtp.pcap",
+      "description": "16 筆完全合成封包；含 7 筆 SIP 與 9 筆 RTP，沒有錄製人聲或公司流量。"
+    }
+  ]
+}

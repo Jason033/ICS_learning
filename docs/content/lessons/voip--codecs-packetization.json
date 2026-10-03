@@ -1,0 +1,167 @@
+{
+  "intro": "Codec 決定怎麼表示聲音；每包裝多久的音訊，會影響每秒封包數與標頭負擔。本章以 8 kHz 的教學條件算清楚，避免把「Codec 名稱」「位元率」「封包總流量」混在一起。",
+  "plan": [
+    {
+      "label": "建立基礎概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀教學例子",
+      "minutes": 14
+    },
+    {
+      "label": "對照證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能算 20 ms 的樣本數、PCM bytes 與 G.711 payload bytes。",
+    "能區分 G.711、G.729 與原始 16-bit PCM。",
+    "能指出封包化時間的延遲與負擔取捨。"
+  ],
+  "sections": [
+    {
+      "heading": "Codec 不是一個音量旋鈕",
+      "paragraphs": [
+        "Codec 編碼器把樣本轉成約定的位元流，接收端需相容的解碼器。此主題介紹 G.711 μ-law／A-law 和 G.729 作為常見歷史語音格式例子；真實產品是否支援仍看 SDP 與設備文件。",
+        "PCMU（G.711 μ-law）在 RTP/AVP 的靜態 PT 為 0、時鐘 8000 Hz；G.729 靜態 PT 為 18，但也要按實際 profile 與協商解讀。"
+      ]
+    },
+    {
+      "heading": "把三種速率放在同一條算式",
+      "paragraphs": [
+        "8 kHz、16-bit 單聲道原始 PCM：每秒 8000×16=128 kbit。G.711 語音 payload 常為每樣本 8 bit，因此 64 kbit/s。G.729 典型語音編碼為 8 kbit/s。",
+        "這些是編碼位元率，未含 RTP、UDP、IP、Ethernet 等標頭；另外功能如 VAD、FEC 或不同封包化會改變實際傳輸量。"
+      ],
+      "table": {
+        "caption": "教學條件下的語音資料量，不含網路標頭",
+        "headers": [
+          "格式",
+          "位元率",
+          "20 ms 代表的資料量"
+        ],
+        "rows": [
+          [
+            "16-bit PCM，8 kHz 單聲道",
+            "128 kbit/s",
+            "320 bytes"
+          ],
+          [
+            "G.711，8 kHz",
+            "64 kbit/s",
+            "160 bytes"
+          ],
+          [
+            "G.729，8 kbit/s",
+            "8 kbit/s",
+            "約 20 bytes／20 ms，依打包規則"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "每 20 ms 一包的計算",
+      "paragraphs": [
+        "8000 samples/s × 0.020 s = 160 個樣本。一秒有 1000/20=50 個 20 ms 時槽；若每時槽一包，就約 50 包/s。",
+        "對 G.711，160 個 8-bit 編碼樣本是 160 bytes payload。對 16-bit 原始 PCM 是 320 bytes；不能把兩者混成同一數字。"
+      ],
+      "code": {
+        "title": "三個要自己重算的數字",
+        "text": "8000 samples/s × 0.020 s = 160 samples\n160 samples × 2 bytes = 320 bytes (16-bit raw PCM)\n160 samples × 1 byte = 160 bytes (G.711 payload)"
+      }
+    },
+    {
+      "heading": "封包越短，標頭次數越多",
+      "paragraphs": [
+        "10 ms 一包時，相同一秒媒體約 100 包；20 ms 一包約 50 包。每包都有標頭，短包會增加每秒標頭次數，也可能降低每包等待累積的音訊時間。",
+        "實際總頻寬與延遲還受傳輸協定、鏈路層、加密、緩衝與處理時間影響。不能只用 Codec 位元率當整條網路需求。"
+      ]
+    },
+    {
+      "heading": "ptime 是預期封包化時間線索",
+      "paragraphs": [
+        "SDP 的 a=ptime 可表示偏好的每包音訊時間；實際 RTP 時間戳差、封包數與 payload 大小要和它互相核對。",
+        "沒有看到 a=ptime 不代表一定 20 ms；要從格式與實際封包或設備設定查證。"
+      ]
+    },
+    {
+      "heading": "VAD 會讓靜音期不是固定 50 包/s",
+      "paragraphs": [
+        "若啟用 Voice Activity Detection（VAD）和 Discontinuous Transmission（DTX），靜音時可能少送語音包，改送 Comfort Noise（CN）資訊。",
+        "因此「一秒少於 50 個 RTP」不一定是網路丟包；要看時間戳、PT、SDP、端點設定與語音活動。本機 tone 腳本不做 VAD 或 Codec 編碼。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【數量】8 kHz、20 ms 有多少樣本？",
+      "answer": "160 個。"
+    },
+    {
+      "question": "【PCM】16-bit 原始單聲道 20 ms 幾 bytes？",
+      "answer": "320 bytes。"
+    },
+    {
+      "question": "【G.711】相同條件下 payload 約幾 bytes？",
+      "answer": "160 bytes。"
+    },
+    {
+      "question": "【G.729】8 kbit/s 的 20 ms 理論編碼量約幾 bytes？",
+      "answer": "20 bytes；實際需看打包與模式。"
+    },
+    {
+      "question": "【封包】20 ms 一包，一秒約幾包？",
+      "answer": "50 包。"
+    },
+    {
+      "question": "【總頻寬】64 kbit/s G.711 可當 Ethernet 總流量嗎？",
+      "answer": "不能；未含各層標頭與額外傳輸。"
+    },
+    {
+      "question": "【ptime】缺 a=ptime 就能確定是 20 ms 嗎？",
+      "answer": "不能；需看實際封包與設定。"
+    },
+    {
+      "question": "【VAD】靜音時封包變少必然是網路丟包嗎？",
+      "answer": "不一定；可能是 VAD／DTX，需更多證據。"
+    }
+  ],
+  "recap": [
+    "取樣數、原始 PCM、Codec payload 和線路總流量分開算。",
+    "20 ms、8 kHz 是 160 樣本。",
+    "封包數還受 ptime、VAD 與實際模式影響。"
+  ],
+  "sources": [
+    {
+      "label": "IETF RFC 3551：RTP 音訊 Payload Type",
+      "url": "https://www.rfc-editor.org/rfc/rfc3551"
+    },
+    {
+      "label": "ITU-T G.711：語音 PCM 規格",
+      "url": "https://www.itu.int/ITU-T/recommendations/rec.aspx?rec=g.711"
+    },
+    {
+      "label": "ITU-T G.729：8 kbit/s 語音編碼",
+      "url": "https://www.itu.int/rec/T-REC-G.729/en"
+    },
+    {
+      "label": "IETF RFC 8866：SDP 欄位",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866"
+    },
+    {
+      "label": "IETF RFC 3389：Comfort Noise、VAD 與 DTX",
+      "url": "https://www.rfc-editor.org/rfc/rfc3389"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載本機取樣練習程式",
+      "path": "./assets/labs/voip-tone-lab.py",
+      "description": "標準函式庫；計算 8 kHz／16-bit 單聲道取樣與 20 ms 分幀，可選擇在本機產生教學 WAV。"
+    }
+  ]
+}

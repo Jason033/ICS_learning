@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 350" role="img" aria-labelledby="title desc">
+<title id="title">VoIP 通話的四層證據</title><desc id="desc">SIP 通話控制、SDP 媒體宣告、雙向 RTP 與端點播放各需要獨立確認。</desc>
+<rect width="850" height="350" rx="18" fill="#f3f7fa"/>
+<g font-family="sans-serif" fill="#193246"><text x="30" y="42" font-size="25" font-weight="700">Lab-Call-A：從接通到聽見</text><text x="35" y="88" font-size="19">SIP</text><text x="35" y="155" font-size="19">SDP</text><text x="35" y="222" font-size="19">RTP</text><text x="35" y="289" font-size="19">播放</text></g>
+<g font-family="sans-serif" font-size="18" fill="#193246"><rect x="135" y="60" width="660" height="43" rx="8" fill="#dcebee"/><text x="156" y="88">INVITE → 200 OK → ACK：控制訊號完成</text><rect x="135" y="127" width="660" height="43" rx="8" fill="#e6e1f4"/><text x="156" y="155">c= 位址、m=audio Port、Codec：預期媒體路徑</text><rect x="135" y="194" width="660" height="43" rx="8" fill="#dcebee"/><text x="156" y="222">A→B 與 B→A：兩方向各查封包是否可見</text><rect x="135" y="261" width="660" height="43" rx="8" fill="#e6e1f4"/><text x="156" y="289">解碼、裝置輸出、人耳：逐段查證</text></g>
+<path d="M455 104v20M455 171v20M455 238v20" stroke="#497382" stroke-width="3" marker-end="url(#arrow)"/><defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z" fill="#497382"/></marker></defs>
+</svg>

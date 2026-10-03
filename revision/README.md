@@ -28,3 +28,5 @@
 三組交叉審查巡查全83篇的目標、段落與題目，全文複審30篇代表章，另補讀特定段落。審查不是全83篇每個段落逐句二次複審；已發現的算式、單位、前提與詞形問題均由另一作者讀回確認修正。
 
 審稿紀錄：[基礎／串列／無線電／可靠性](peer-review-foundations.md)、[封包／VoIP／Socket](peer-review-network-group.md)、[Ozeki／整合／PTT](peer-review-api-group.md)。
+
+公開站188檔逐檔比對一致，83篇公開瀏覽檢查通過，見[發布驗證](publication-verification.json)與[公開瀏覽結果](public-browser-verification.json)。

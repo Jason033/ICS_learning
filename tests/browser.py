@@ -35,8 +35,14 @@ def main():
 
         def lesson(topic, chapter):
             page.goto(f"{base}#/lesson/{topic}/{chapter}")
-            page.wait_for_selector(".lesson-section")
-            assert page.locator(".exercise-card").count() >= 8
+            expected_chapter = next(c for t in catalog["topics"] if t["id"] == topic
+                                    for c in t["chapters"] if c["id"] == chapter)
+            # A hash change can leave the previous lesson visible while fetch runs.
+            # Wait for this chapter, rather than accepting any old section in the DOM.
+            page.wait_for_function("title => document.querySelector('.lesson-header h1')?.textContent === title",
+                                   arg=expected_chapter["title"])
+            expected_lesson = json.loads((ROOT / f"docs/content/lessons/{topic}--{chapter}.json").read_text())
+            assert page.locator(".exercise-card").count() == len(expected_lesson["exercises"])
             assert page.locator("a[download][href='#']").count() == 0
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), f"page overflow: {topic}/{chapter}"
 

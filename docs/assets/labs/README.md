@@ -1,6 +1,6 @@
 # 教學練習檔
 
-本資料夾放五種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環、Socket 本機 TCP／UDP 練習、VoIP 音訊取樣，以及虛構 API 事件追蹤。全部不含公司資料，也沒有真實設備的設定。
+本資料夾放六種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環、Socket 本機 TCP／UDP 練習、VoIP 音訊取樣，虛構 API 事件追蹤，以及可靠性與並行處理的純本機示範。全部不含公司資料，也沒有真實設備的設定。
 
 ## Wireshark 合成封包
 
@@ -37,3 +37,9 @@
 `integration-trace-lab.py` 是 Python 標準函式庫寫的虛構 `DemoCtrl-A` 模擬器，不連網、不存檔、不呼叫 SDK 或實體設備，也不使用公司原始碼。它用虛擬時間列出 View→Controller→Adapter→虛構設備的五種案例：`success`、`timeout`、`late`、`duplicate`、`stale-session`。其中 `ACK accepted` 只表示教學模型接受處理；只有相符的狀態事件才可在此模型中確認 READY。晚到或舊 Session 事件的處理規則是此腳本的示範策略，不代表真實產品。
 
 下載後執行 `python3 integration-trace-lab.py` 可看全部案例；Windows 可使用 `py integration-trace-lab.py`。若只想比較一個情境，可加 `--case timeout` 等參數。數字是固定教材時間，不是設備性能或通用逾時設定；任何公司元件關係仍須用授權程式碼和版本相符文件查證。
+
+## 可靠性與並行處理主題的純本機示範
+
+`reliability-timeline-lab.py` 使用固定的虛擬毫秒列出逾時但晚完成、逾時且未送達、重送、同會話亂序與有限容量佇列五種情況。執行 `python3 reliability-timeline-lab.py` 看全部；`--case queue-growth` 可只看排隊。它沒有真實等待、不連網，不會呼叫設備；數字只供練算式。
+
+`reliability-race-lab.py` 用 Python 標準函式庫的 `Barrier` 固定兩個執行緒先讀到同一個舊值，示範兩次加一卻只得到 1，再用 `Lock` 包住完整的讀改寫得到 2。執行 `python3 reliability-race-lab.py`；Windows 可用 `py` 取代 `python3`。它示範一種刻意安排的交錯，不是效能測試，也不能證明公司程式有相同競爭。

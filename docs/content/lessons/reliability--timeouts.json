@@ -1,0 +1,159 @@
+{
+  "intro": "本主題用虛構的 Lab-A 狀態查詢與「啟動一次」操作，學會在斷訊時區分已知、未知與可安全採取的動作。第一篇先讀三條時間線，不假設任何公司的實際逾時值。",
+  "goals": [
+    "分清單次等待逾時與整筆操作的總期限。",
+    "說出逾時後遠端結果為何可能未知。",
+    "在重連後確認新的會話和權威狀態。"
+  ],
+  "sections": [
+    {
+      "heading": "逾時到底代表什麼",
+      "paragraphs": [
+        "逾時是本地計時器在期限內沒有收到符合條件的證據；它不是遠端「沒有執行」的證明。先問等待的是連線建立、請求回覆、完成事件，還是使用者畫面更新。",
+        "例如 0 ms 發出「啟動一次」、50 ms 等待到期、70 ms 設備才完成；50 ms 時只能記「本地尚未確認」。不同層各有自己的時鐘與期限。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/reliability-deadlines.svg",
+        "alt": "請求、單次等待、總期限與晚到完成事件的虛構時間線"
+      }
+    },
+    {
+      "heading": "單次逾時與整筆期限",
+      "paragraphs": [
+        "假設每次等待 100 ms，允許重試兩次，且每次前等待 50 ms；若不設總期限，使用者可能等到 400 ms 以上，還沒算連線與程式處理。",
+        "整筆期限從操作開始計算，重試與退避都佔用其中時間；每次嘗試的剩餘時間不得超過總期限。範例數字只為算式，不是建議設定。"
+      ],
+      "table": {
+        "caption": "三種時間各回答不同問題",
+        "headers": [
+          "時間",
+          "回答的問題",
+          "到期時能說什麼"
+        ],
+        "rows": [
+          [
+            "連線逾時",
+            "通道是否及時建立",
+            "這次未建立可用通道"
+          ],
+          [
+            "回覆逾時",
+            "指定回覆是否及時出現",
+            "結果可能未知"
+          ],
+          [
+            "整筆期限",
+            "使用者能等到何時",
+            "停止等待並保留未確認狀態"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "選時間要看真實觀測",
+      "paragraphs": [
+        "把正常與尖峰時段的延遲、設備處理時間、排隊等待和網路變動分開記錄。用最低延遲當逾時門檻會誤判正常慢請求；設得無限長又會讓故障卡住。",
+        "可用單調時鐘計算經過時間，避免系統時鐘調整影響本地期限；跨機器時間戳仍需檢查對時與精度。具體門檻要從已授權的產品要求和實測決定。"
+      ]
+    },
+    {
+      "heading": "三條虛構時間線",
+      "paragraphs": [
+        "A：0 ms 送出，20 ms 收到完成，屬已確認成功。B：0 ms 送出，50 ms 逾時，70 ms 才完成；50 ms 時未知。C：0 ms 送出，50 ms 逾時，遠端從未收到；結果也是本地未確認，但原因不同。",
+        "單看本地 timeout，B 與 C 無法區分。補遠端接收紀錄、請求 ID 或權威狀態查詢，才能把未知縮小。"
+      ]
+    },
+    {
+      "heading": "重連不是完成證據",
+      "paragraphs": [
+        "TCP 重新連線只證明新通道可用，不自動恢復驗證、訂閱、進行中的請求或設備狀態。先記新舊連線／會話 ID，再查各層恢復條件。",
+        "若舊請求的事件晚到，不能因為現在連線正常就把它當新請求的回覆。從下一篇開始會處理安全重試與去重。"
+      ]
+    },
+    {
+      "heading": "自己跑時間線",
+      "paragraphs": [
+        "下載教學腳本執行 `python3 reliability-timeline-lab.py`，先比較 `timeout-late` 與 `timeout-no-delivery`：本地 50 ms 的表象相同，遠端結果不同。Windows 可改用 `py`。",
+        "腳本使用固定虛擬毫秒，不會真的等待 50 ms，也不連網。先自己寫出每條時間線在 50 ms 的已知、未知、下一個查證點，再看輸出。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【時間線】0 ms 送出、50 ms timeout、70 ms 完成；50 ms 能判定未執行嗎？",
+      "answer": "不能；50 ms 只知道期限內未收到完成證據。70 ms 的完成是否屬同一請求仍要核對 ID。"
+    },
+    {
+      "question": "【分類】連線建立、API accepted、設備完成，能共用一個「成功」欄嗎？",
+      "answer": "不宜；三者是不同觀測層，應分欄記錄。"
+    },
+    {
+      "question": "【算式】100 ms 嘗試三次、兩段各 50 ms 等待，至少要多久才跑完？",
+      "answer": "至少 400 ms，尚未算其他處理時間；若整筆期限小於此值，後續嘗試必須被截斷。"
+    },
+    {
+      "question": "【證據】B 晚完成與 C 沒送達在本地都有 timeout，下一個最有用的證據？",
+      "answer": "同一請求 ID 的遠端接收／完成紀錄或權威狀態查詢。"
+    },
+    {
+      "question": "【時鐘】本機經過時間用會因校時而跳動的牆上時鐘理想嗎？",
+      "answer": "不理想；本地期限應以單調時鐘計算。"
+    },
+    {
+      "question": "【重連】Connect OK 是否等於訂閱及未完成工作也恢復？",
+      "answer": "不等於；需逐項確認會話、訂閱、待定請求及權威狀態。"
+    },
+    {
+      "question": "【估值】教學 50 ms 可直接拿去設定公司設備嗎？",
+      "answer": "不可；門檻需依產品契約及實際延遲、尖峰與故障測試決定。"
+    },
+    {
+      "question": "【表述】只有本地 timeout 時最嚴謹的工單描述？",
+      "answer": "在指定期限內未收到所需回覆；遠端是否處理仍未知，待以請求 ID 和權威狀態核對。"
+    }
+  ],
+  "recap": [
+    "逾時是證據不足的本地判斷。",
+    "單次嘗試與整筆期限要分開。",
+    "重連後需重新確認狀態。"
+  ],
+  "sources": [
+    {
+      "label": "AWS Builders’ Library：Timeouts, retries, and backoff with jitter",
+      "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"
+    },
+    {
+      "label": "Python 官方文件：time.monotonic",
+      "url": "https://docs.python.org/3/library/time.html#time.monotonic"
+    },
+    {
+      "label": "AWS Builders’ Library：Making retries safe with idempotent APIs",
+      "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載純本機教學腳本",
+      "path": "./assets/labs/reliability-timeline-lab.py",
+      "description": "固定虛擬時間示範晚到、未送達、重複、亂序與積壓；不連網。"
+    }
+  ],
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀例子與圖",
+      "minutes": 15
+    },
+    {
+      "label": "判讀時間線",
+      "minutes": 13
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ]
+}

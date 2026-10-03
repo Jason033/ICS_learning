@@ -1,0 +1,160 @@
+{
+  "intro": "同時有畫面、SDK 回呼、網路接收與背景工作時，兩段程式可能讀寫同一份狀態。本篇從最小的「兩人改同一數字」示範競爭狀態，再看 Lock、Semaphore、Condition 與死結。",
+  "goals": [
+    "重建讀取→修改→寫回的競爭時間線。",
+    "知道鎖、號誌、條件通知各解決什麼。",
+    "辨認死結及跨執行緒更新畫面的風險。"
+  ],
+  "sections": [
+    {
+      "heading": "Thread 與 Process 是工作執行單位",
+      "paragraphs": [
+        "同一 Process 內的 Thread 通常共享記憶體，容易共用狀態也容易互相干擾；不同 Process 有較強的位址空間分隔，交換資料要經過明確通道。作業系統與語言細節會不同。",
+        "本章的問題不是「多執行緒一定快」，而是兩件事交錯時共享狀態是否保持正確。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/reliability-race.svg",
+        "alt": "兩個工作都讀到零，各加一後都寫回一，遺失一次更新"
+      }
+    },
+    {
+      "heading": "一步一步看遺失更新",
+      "paragraphs": [
+        "共享 count=0。A 讀到 0；B 讀到 0；A 算 1 並寫回；B 也算 1 並寫回。兩次操作後結果是 1，預期卻是 2。",
+        "`count += 1` 在概念上含讀、加、寫，不能因為它是一行就推定整段不可分割。實際語言和執行環境需查其同步保證。"
+      ]
+    },
+    {
+      "heading": "Lock 保護一段不該交錯的操作",
+      "paragraphs": [
+        "把讀、改、寫放入同一把 mutex／Lock 保護的臨界區，A 完成才輪到 B。鎖要保護所有讀寫該不變條件的路徑，不是只包其中一行。",
+        "鎖住後避免在內部做長時間 I/O 或等待外部回呼，否則其他工作被堵住；先確認共享資料所有權，能用訊息傳遞就不一定要共用可變狀態。"
+      ]
+    },
+    {
+      "heading": "Semaphore 與 Condition 用途不同",
+      "paragraphs": [
+        "Semaphore 可限制同時使用某資源的工作數，例如最多兩個 I/O 操作；它不會自動保護任意共享變數。Condition 是讓工作在某個條件未成立時等待、成立後被通知，醒來還要重新檢查條件。",
+        "Producer／Consumer 常用有界 queue 交接工作：來源入隊，處理端出隊，容量與停止方式要明確。Python 的 `queue.Queue` 可作本機示範，但公司的語言或 SDK 可能不同。"
+      ],
+      "table": {
+        "caption": "工具與問題對照",
+        "headers": [
+          "工具",
+          "常見目的",
+          "常見誤用"
+        ],
+        "rows": [
+          [
+            "Lock",
+            "保護共享狀態的不變條件",
+            "只保護寫入不保護讀改寫"
+          ],
+          [
+            "Semaphore",
+            "限制同時使用數",
+            "以為它自動消除資料競爭"
+          ],
+          [
+            "Condition",
+            "等待某條件改變",
+            "醒來不重查條件"
+          ],
+          [
+            "Queue",
+            "在工作間交接資料",
+            "沒有容量與結束政策"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "死結是彼此等對方",
+      "paragraphs": [
+        "A 拿著鎖 1 等鎖 2；B 拿著鎖 2 等鎖 1，就可能兩邊都不前進。可用固定取鎖順序、縮短持鎖範圍與明確逾時／監控降低風險。",
+        "若只看到畫面卡住，先看執行緒堆疊、各鎖持有者和等待關係，不要把「CPU 低」等同於沒有問題。"
+      ]
+    },
+    {
+      "heading": "跑可重現的競爭示範",
+      "paragraphs": [
+        "`python3 reliability-race-lab.py` 用同步點固定 A 與 B 的讀取順序，所以每次都能看到未保護結果 1，再看 Lock 保護後結果 2。",
+        "這是刻意安排的教學交錯，不測效能；在產品裡要靠可重現的事件序列和共享狀態不變條件定位。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【競爭】A、B 都讀 0 並各加一，可能最後是？",
+      "answer": "可能是 1，因為兩者都把依舊值算出的 1 寫回。"
+    },
+    {
+      "question": "【鎖】只把最後寫回包 Lock，讀和計算不包，保證正確？",
+      "answer": "不保證；整個讀→改→寫需依同一保護規則。"
+    },
+    {
+      "question": "【號誌】Semaphore(2) 表示什麼？",
+      "answer": "最多兩個持有者同時進入受控資源區，依具體用法；不自動保護任意變數。"
+    },
+    {
+      "question": "【條件】Condition 被通知醒來後能假設條件必然仍成立？",
+      "answer": "不能；在持有對應鎖時重新檢查條件，通常用迴圈。"
+    },
+    {
+      "question": "【死結】A 拿 1 等 2、B 拿 2 等 1 是什麼？",
+      "answer": "形成循環等待，可能死結。"
+    },
+    {
+      "question": "【CPU】程序 CPU 低且畫面不動，可排除執行緒卡住？",
+      "answer": "不能；可能是鎖、I/O 或條件等待。"
+    },
+    {
+      "question": "【共用】不同 Process 預設共用同一 Python 變數？",
+      "answer": "不會；需明確的程序間通道或共享機制。"
+    },
+    {
+      "question": "【示範】腳本每次顯示 1 是 Python 真實排程一定如此嗎？",
+      "answer": "不是；腳本用同步點刻意固定交錯來教學。"
+    }
+  ],
+  "recap": [
+    "競爭要看操作的交錯，不看程式表面行數。",
+    "Lock、Semaphore、Condition 各有用途。",
+    "死結可從等待關係定位。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方文件：threading",
+      "url": "https://docs.python.org/3/library/threading.html"
+    },
+    {
+      "label": "Python 官方文件：queue",
+      "url": "https://docs.python.org/3/library/queue.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載純本機教學腳本",
+      "path": "./assets/labs/reliability-race-lab.py",
+      "description": "固定同步點展示遺失更新，以及用 Lock 保護後的結果。"
+    }
+  ],
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀例子與圖",
+      "minutes": 15
+    },
+    {
+      "label": "判讀時間線",
+      "minutes": 13
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 20
+    }
+  ]
+}

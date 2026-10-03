@@ -1,0 +1,168 @@
+{
+  "intro": "最後把前八篇放進八個獨立的虛構故障。每題先找第一個未被證實的步驟，再提一個能區分至少兩種原因的檢查；所有設備名、時間與結果都是教學資料。",
+  "goals": [
+    "從多條時間線找第一個證據缺口。",
+    "將重試、排隊、亂序與死結分別定位。",
+    "把已知、未知、下一步寫成維護者可用的短結論。"
+  ],
+  "sections": [
+    {
+      "heading": "案例 A：逾時但可能已啟動",
+      "paragraphs": [
+        "0 ms 送 START(id=7)；50 ms 本地 timeout；70 ms 遠端完成紀錄出現 id=7。這能證明 50 ms 時結果未知、70 ms 時原請求已完成，但仍要確認該紀錄的來源與權威性。",
+        "下一步不是立即重送 START，而是先查目前狀態與同 ID 的結果；若已做，避免第二次副作用。"
+      ]
+    },
+    {
+      "heading": "案例 B：重試造成過載",
+      "paragraphs": [
+        "正常 10 件／秒，故障時每件最多重試兩次；下游只能處理 12 次／秒。若三次嘗試全用滿，約 30 次／秒進來，queue 必增。",
+        "先查實際嘗試量與 SDK 是否另有重試，再設限與退避；只放大 timeout 可能讓隊伍更長。"
+      ]
+    },
+    {
+      "heading": "案例 C：心跳失聯但工作仍完成",
+      "paragraphs": [
+        "12:00:00 起三個心跳無回，12:00:03 同會話工作完成事件仍到達。可確定心跳路徑失敗或延遲，不能直接判定整台設備死亡。",
+        "比較心跳與工作使用的 queue、回呼執行緒與期限，再看實際工作結果是否權威。"
+      ]
+    },
+    {
+      "heading": "案例 D：排隊使畫面落後",
+      "paragraphs": [
+        "每秒 8 個可重取狀態進來，只處理 5 個，十秒後積壓變多，畫面逐漸顯示落後的舊值。應先量 queue 年齡、深度與最新狀態來源。",
+        "若產品允許狀態合併可考慮只留最新；若是操作結果則不能套同一丟棄政策。"
+      ]
+    },
+    {
+      "heading": "案例 E：舊事件蓋新狀態",
+      "paragraphs": [
+        "A Session 的 Ready 在 B Session 已顯示 Busy 後才被處理。第一個缺口是畫面更新時有沒有驗證世代與狀態版本。",
+        "補 callback 的來源 Session、排隊時間與權威查詢；不能只按收到順序套用。"
+      ]
+    },
+    {
+      "heading": "案例 F：兩個回呼同改計數",
+      "paragraphs": [
+        "兩個 callback 都讀到 count=0、各寫回 1，紀錄卻有兩次完成。先查共享狀態的讀改寫保護，而不是懷疑遠端漏報。",
+        "修正可選明確所有權、事件序列化或適當的 Lock；測試要能固定交錯並檢查不變條件。"
+      ]
+    },
+    {
+      "heading": "案例 G：CPU 低但服務不動",
+      "paragraphs": [
+        "Thread A 持鎖 X 等 Y，Thread B 持鎖 Y 等 X；CPU 低、queue 增長、心跳回呼晚到。先擷取執行緒堆疊與鎖等待關係。",
+        "若堆疊驗證是循環等待，統一取鎖順序並縮短持鎖範圍；不要靠無限重啟掩蓋。"
+      ]
+    },
+    {
+      "heading": "案例 H：取消等待卻仍完成",
+      "paragraphs": [
+        "使用者 50 ms 按取消，UI 顯示取消；100 ms 遠端完成同一請求。第一個缺口是 UI 的「取消」指停止等待，還是遠端確認撤銷。",
+        "修正訊息語意，記取消請求與遠端確認兩層；若操作不可撤銷，要顯示結果未確認並查狀態。"
+      ]
+    },
+    {
+      "heading": "統一答題格式",
+      "paragraphs": [
+        "每個案例都寫四句：觀察到什麼；尚不能證明什麼；兩種可能原因；哪個檢查最能區分它們。這能避免把一行 timeout 或一個燈號寫成全系統結論。",
+        "可重跑時間線及競爭腳本來練 A、D、E、F；其他案例以文字紀錄為練習。實際工作只用授權資料與版本相符文件映射。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【A】50 ms timeout 後可直接再 START 嗎？",
+      "answer": "不能；先查 id=7 的權威結果與當前狀態，70 ms 紀錄提示第一次可能已完成。"
+    },
+    {
+      "question": "【B】每秒 10 件、最多 3 次嘗試、下游容量 12 次／秒，最壞是否可能積壓？",
+      "answer": "可能；約 30 次／秒的嘗試超過 12，先查實際重試層與嘗試量。"
+    },
+    {
+      "question": "【C】心跳漏回但工作事件仍到，能宣告設備死掉？",
+      "answer": "不能；應比較心跳與工作路徑及其觀測時間。"
+    },
+    {
+      "question": "【D】狀態可重取與操作結果可採同一 drop-oldest 規則？",
+      "answer": "不能；要依資料語意及產品契約。"
+    },
+    {
+      "question": "【E】B Session 後收到 A Session Ready，第一個檢查？",
+      "answer": "畫面更新有無驗證 Session／generation 與事件版本。"
+    },
+    {
+      "question": "【F】兩個 callback 都讀 0、最後 1，問題可能在？",
+      "answer": "共享狀態讀改寫的競爭，需檢查同步或所有權。"
+    },
+    {
+      "question": "【G】CPU 低且兩執行緒互等鎖，下一個證據？",
+      "answer": "擷取執行緒堆疊、持鎖者與等待圖，確認循環等待。"
+    },
+    {
+      "question": "【H】UI 顯示取消但遠端完成，應怎麼描述？",
+      "answer": "本地等待已取消，但遠端撤銷是否成功未知／實際已完成；分別記錄取消請求與遠端結果。"
+    },
+    {
+      "question": "【綜合】要寫一段可交接的故障結論至少有什麼？",
+      "answer": "現象與時間、已證實的層、未確認的結果、可區分原因的下一個檢查及所用 ID／版本。"
+    }
+  ],
+  "recap": [
+    "先定位第一個證據缺口。",
+    "用能區分原因的檢查縮小未知。",
+    "虛構答案不能替代公司文件與實測。"
+  ],
+  "sources": [
+    {
+      "label": "AWS Builders’ Library：Timeouts, retries, and backoff with jitter",
+      "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"
+    },
+    {
+      "label": "AWS Builders’ Library：Making retries safe with idempotent APIs",
+      "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
+    },
+    {
+      "label": "Google SRE：Addressing Cascading Failures",
+      "url": "https://sre.google/sre-book/addressing-cascading-failures/"
+    },
+    {
+      "label": "Python 官方文件：threading",
+      "url": "https://docs.python.org/3/library/threading.html"
+    },
+    {
+      "label": "Python 官方文件：queue",
+      "url": "https://docs.python.org/3/library/queue.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載純本機教學腳本",
+      "path": "./assets/labs/reliability-timeline-lab.py",
+      "description": "重跑逾時、重複、亂序、佇列案例。"
+    },
+    {
+      "label": "下載純本機教學腳本",
+      "path": "./assets/labs/reliability-race-lab.py",
+      "description": "重跑固定交錯的遺失更新案例。"
+    }
+  ],
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀例子與圖",
+      "minutes": 15
+    },
+    {
+      "label": "判讀時間線",
+      "minutes": 13
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 25
+    }
+  ]
+}

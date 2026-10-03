@@ -42,7 +42,7 @@ for (const topic of catalog.topics) {
   }
 }
 assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 74);
+assert.equal(readyCount, 83);
 assert.equal(catalog.topics[0].chapters.length, 10);
 for (const chapter of catalog.topics[0].chapters) {
   assert.equal(chapter.contentType, 'full');
@@ -162,6 +162,21 @@ for (const chapter of integrationTopic.chapters) {
   integrationExerciseCount += lesson.exercises.length;
 }
 assert.equal(integrationExerciseCount, 73);
+
+const reliabilityTopic = catalog.topics.find((topic) => topic.id === 'reliability');
+assert.equal(reliabilityTopic.chapters.length, 9);
+assert.equal(reliabilityTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 510);
+let reliabilityExerciseCount = 0;
+for (const chapter of reliabilityTopic.chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `reliability--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
+  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
+  reliabilityExerciseCount += lesson.exercises.length;
+}
+assert.equal(reliabilityExerciseCount, 73);
 
 const elements = new Map();
 function element(selector) {
@@ -362,7 +377,23 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /練習 09/);
 
+  context.location.hash = '#/topic/reliability';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /#\/lesson\/reliability\/timeouts/);
+  assert.match(element('#main').innerHTML, /#\/lesson\/reliability\/reliability-troubleshooting/);
+  context.location.hash = '#/lesson/reliability/timeouts';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /reliability-deadlines\.svg/);
+  assert.match(element('#main').innerHTML, /reliability-timeline-lab\.py/);
   context.location.hash = '#/lesson/reliability/concurrency';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /reliability-race-lab\.py/);
+  assert.match(element('#main').innerHTML, /練習 08/);
+  context.location.hash = '#/lesson/reliability/reliability-troubleshooting';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /練習 09/);
+
+  context.location.hash = '#/lesson/systems/find-evidence';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這篇教材尚未開放/);
 

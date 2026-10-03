@@ -1,0 +1,123 @@
+{
+  "intro": "非同步常讓單一執行緒照顧很多等待中的任務，但它仍可能被一段阻塞程式卡住。本篇用畫面事件、SDK 回呼與網路接收作概念模型，學會找出真正的阻塞點。",
+  "goals": [
+    "區分非同步等待與同時使用多個執行緒。",
+    "看懂事件迴圈被 CPU 工作或同步等待阻塞的後果。",
+    "理解回呼更新 UI 需遵守平台執行緒規則。"
+  ],
+  "sections": [
+    {
+      "heading": "非同步是把等待時間還給別人",
+      "paragraphs": [
+        "例如等待網路回覆時，程式用 `await` 暫停這項工作，讓事件迴圈處理其他就緒事件。這和開一條新執行緒不是同義詞。",
+        "程式能在等待 I/O 時做其他事，不表示單條 CPU 密集工作會自己變快；也不表示所有函式都會自動讓出控制權。"
+      ]
+    },
+    {
+      "heading": "事件迴圈像一位輪流服務的櫃檯員",
+      "paragraphs": [
+        "若一個 callback 在事件迴圈中同步睡 2 秒，其他計時器、畫面更新與網路回呼可能被拖延；使用非阻塞 API、合適的工作執行器或獨立工作單位要依框架選擇。",
+        "觀察「收到資料時間」「排入回呼時間」「開始處理時間」「處理完成時間」；若接收快但開始處理慢，問題可能在本地 queue 或執行緒。"
+      ]
+    },
+    {
+      "heading": "Callback 到達不等於狀態處理完",
+      "paragraphs": [
+        "SDK callback 可能在 SDK 管理的執行緒上執行，也可能由框架事件迴圈派送；具體規則要查使用版本文件。把 callback 寫入 queue 後，還要看消費者何時處理。",
+        "不要在未知執行緒規則下直接改 UI 控制項。一般會透過平台指定的 UI 派送機制更新畫面，但要以實際 UI 框架的執行緒契約為準。"
+      ]
+    },
+    {
+      "heading": "取消與逾時要知道任務是否停止",
+      "paragraphs": [
+        "使用者按取消、等待逾時，不一定代表底層 I/O 或設備操作已中止。要查取消訊號可否傳入、下游是否承認取消，以及已完成副作用如何回報。",
+        "沒有取消契約時，UI 可停止等待並顯示「結果未確認」，不能把它變成「已取消成功」。"
+      ]
+    },
+    {
+      "heading": "Producer／Consumer 可隔開接收與處理",
+      "paragraphs": [
+        "接收端把已驗證的事件放入有界 queue，處理端按序消費；可避免在 SDK callback 裡做耗時工作，但 queue 滿了仍需背壓或明確拒收。",
+        "如果同一事件被兩個 consumer 同時處理，共享狀態仍需同步或所有權設計；queue 並不自動解決順序與競爭。"
+      ]
+    },
+    {
+      "heading": "一段虛構 UI 時間線",
+      "paragraphs": [
+        "0 ms 收到事件、1 ms 排入 UI 派送、2 ms UI 開始同步處理大型檔案直到 502 ms；100 ms 的「畫面未更新」其實可能是 UI 工作堵塞，不是遠端沒送。",
+        "下一步看 UI 執行緒堆疊和事件入隊／出隊時間；同時查遠端事件 ID，避免把兩個原因混在一起。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【async】`await` 一定建立新執行緒？",
+      "answer": "不一定；常見事件迴圈是在等待時讓其他任務執行。"
+    },
+    {
+      "question": "【阻塞】事件迴圈 callback 同步忙 2 秒，其他事件會怎樣？",
+      "answer": "可能被延後，需依框架與執行位置確認。"
+    },
+    {
+      "question": "【回呼】SDK callback 一定在 UI 執行緒？",
+      "answer": "不能假設；查該 SDK 與 UI 框架的執行緒契約。"
+    },
+    {
+      "question": "【取消】畫面停止等待能證明設備操作取消？",
+      "answer": "不能；需下游取消確認或查權威結果。"
+    },
+    {
+      "question": "【紀錄】資料已收到但畫面晚更新，應補哪些時間？",
+      "answer": "接收、回呼入隊、處理開始與畫面更新時間。"
+    },
+    {
+      "question": "【queue】把 callback 放 queue 後就永不需要鎖？",
+      "answer": "不一定；多個消費者或其他共享狀態仍可能競爭。"
+    },
+    {
+      "question": "【CPU】非同步 I/O 能讓純 CPU 計算自動變快？",
+      "answer": "不能；需要不同的排程或執行方式。"
+    },
+    {
+      "question": "【UI】虛構案例 100 ms 未更新可直接怪遠端？",
+      "answer": "不能；事件已在 0 ms 到達，應先查 UI 阻塞。"
+    }
+  ],
+  "recap": [
+    "非同步處理等待，不保證沒有阻塞。",
+    "回呼與 UI 更新要查平台執行緒契約。",
+    "取消等待不等於取消遠端副作用。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方文件：asyncio conceptual overview",
+      "url": "https://docs.python.org/3/howto/a-conceptual-overview-of-asyncio.html"
+    },
+    {
+      "label": "Microsoft Learn：C# events",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "Python 官方文件：queue",
+      "url": "https://docs.python.org/3/library/queue.html"
+    }
+  ],
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀例子與圖",
+      "minutes": 15
+    },
+    {
+      "label": "判讀時間線",
+      "minutes": 13
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ]
+}

@@ -1,0 +1,134 @@
+{
+  "intro": "事件未必照你看到的順序發生。重送、晚到、不同執行緒與重連都會讓舊資訊看似新資訊；本篇用請求 ID、會話世代與序號整理事件。",
+  "goals": [
+    "辨認重複、亂序與跨會話舊事件。",
+    "區分請求 ID、事件序號與事件發生時間。",
+    "在缺少排序契約時保留未知並查權威狀態。"
+  ],
+  "sections": [
+    {
+      "heading": "先釐清三種「順序」",
+      "paragraphs": [
+        "實際事件發生順序、送達順序與畫面處理順序可能不同。A 先發生、B 後發生，不表示程式先收到 A；不同來源的時鐘也未必同步。",
+        "虛構案例：版本 41=Ready 在 20 ms 產生卻 70 ms 才到；版本 42=Busy 在 40 ms 產生、50 ms 到。若 70 ms 無條件套用 41，畫面就從 Busy 倒退到 Ready。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/reliability-ordering.svg",
+        "alt": "版本四十一晚於版本四十二送達，舊狀態不可覆蓋新狀態"
+      }
+    },
+    {
+      "heading": "請求 ID 用於配對，序號用於排序",
+      "paragraphs": [
+        "request ID 將操作、回覆、重試與紀錄串起來；sequence number 在有契約的範圍內比較先後；session／generation ID 可辨認重連前後。它們解決不同問題。",
+        "序號只在定義好的來源與會話內比較；跨來源、重啟、回繞或遺漏需按產品規格處理。不能看到數字較大就判定全系統較新。"
+      ]
+    },
+    {
+      "heading": "重複事件未必代表重複執行",
+      "paragraphs": [
+        "同一結果可能因重新訂閱、重送或回呼重入而出現兩次；兩個事件也可能代表兩次不同操作。先比 ID、事件類型、版本與遠端紀錄。",
+        "處理端可把已處理 ID 記在適當生命週期內，重複時避免重複更新；但記錄多久、持久化與跨重啟語意仍要依真實契約設計。"
+      ]
+    },
+    {
+      "heading": "重連要防舊世代事件",
+      "paragraphs": [
+        "新 Session 建立後，舊 Session 的回呼可能仍排在本地 queue。處理事件前先核對 generation，舊世代事件不能直接改新會話狀態。",
+        "若遠端事件沒有 Session 欄位，可在本地回呼訂閱時帶上世代標籤；若連這也做不到，需使用權威查詢或顯示「未確認」，不能憑猜測套用。"
+      ]
+    },
+    {
+      "heading": "時間戳只能補強，不能單獨保證",
+      "paragraphs": [
+        "本地接收時間可用來建立觀測順序；遠端事件時間需要時鐘同步與精度資訊。時鐘被校正、緩衝轉送或跨機器，都可能讓表面時間順序錯亂。",
+        "先確認同一來源是否有版本號或單調序號。若沒有排序保證，寧可記錄衝突與查目前權威狀態，避免用時間戳隨意覆蓋。"
+      ]
+    },
+    {
+      "heading": "練習三筆事件",
+      "paragraphs": [
+        "E1：session A、seq 41、Ready、70 ms 收到。E2：session A、seq 42、Busy、50 ms 收到。E3：session B、seq 1、Ready、90 ms 收到。",
+        "在 70 ms，E1 比已套用的 E2 舊；在 90 ms，E3 屬新 Session，但仍需核對 Session B 的訂閱與狀態契約。數值只示範比較範圍。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【亂序】先收到 seq 42，再收到同 Session 的 41，41 可覆蓋嗎？",
+      "answer": "若契約定義此序號單調且屬同來源，41 較舊，不應覆蓋 42。"
+    },
+    {
+      "question": "【ID】request ID 的主要用途？",
+      "answer": "配對同一操作的嘗試、回覆與紀錄，不一定代表事件全域順序。"
+    },
+    {
+      "question": "【跨會話】session A 的 seq 999 與 B 的 seq 1 可直接比大小？",
+      "answer": "不可；先看序號的比較範圍和會話契約。"
+    },
+    {
+      "question": "【重複】同一事件兩次 callback 能證明設備執行兩次嗎？",
+      "answer": "不能；可能是重送或重新訂閱，需要遠端操作紀錄。"
+    },
+    {
+      "question": "【時間】兩台未對時電腦的牆上時間可當絕對順序？",
+      "answer": "不能；需檢查同步與精度，優先用同來源序號。"
+    },
+    {
+      "question": "【缺序】看到 41、43 而沒有 42，一定代表網路丟包？",
+      "answer": "不一定；可能沒收錄、過濾、另一路徑或序號語意不同。"
+    },
+    {
+      "question": "【舊回呼】新 Session 後舊回呼排隊到達，先檢查？",
+      "answer": "核對本地世代標籤及事件 Session；未匹配不應直接更新新狀態。"
+    },
+    {
+      "question": "【未知】沒有 ID、序號或排序契約時應怎樣報告？",
+      "answer": "標註事件衝突與未知，查權威狀態及原始紀錄，不憑到達時間猜結果。"
+    }
+  ],
+  "recap": [
+    "到達順序不等於發生順序。",
+    "ID、序號與會話世代用途不同。",
+    "缺少契約時以權威查詢縮小未知。"
+  ],
+  "sources": [
+    {
+      "label": "AWS Builders’ Library：Making retries safe with idempotent APIs",
+      "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
+    },
+    {
+      "label": "Microsoft Learn：C# events",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "Python 官方文件：threading",
+      "url": "https://docs.python.org/3/library/threading.html"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載純本機教學腳本",
+      "path": "./assets/labs/reliability-timeline-lab.py",
+      "description": "列出舊版本晚到、跨會話事件和重複送達。"
+    }
+  ],
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "讀例子與圖",
+      "minutes": 15
+    },
+    {
+      "label": "判讀時間線",
+      "minutes": 13
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ]
+}

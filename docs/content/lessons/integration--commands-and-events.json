@@ -1,0 +1,176 @@
+{
+  "intro": "一次方法呼叫可能很快返回，結果卻晚到。本章用 DemoCtrl-A 的固定虛擬時間示範同步返回、Callback、事件與 Polling 如何各自提供不同觀測。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能分清呼叫返回、命令接受、設備結果。",
+    "能指出 Callback／事件和 Polling 的接收路徑。",
+    "能用 request_id 避免晚到與重複事件錯配。"
+  ],
+  "sections": [
+    {
+      "heading": "四種「收到」不要混為一談",
+      "paragraphs": [
+        "函式返回表示本機方法結束；Adapter 記送出表示它嘗試外送；Accepted 可能只是接收方接受處理；完成事件或狀態查詢才接近結果。每層語意仍以真實文件為準。",
+        "若協定是 HTTP，202 Accepted 在 RFC 9110 中表示已接受處理但尚未完成；DemoCtrl-A 並非 HTTP，這裡只借它示範「接受不等於完成」的區別。"
+      ],
+      "table": {
+        "caption": "DemoCtrl-A 的四個觀測點",
+        "headers": [
+          "觀測",
+          "此模型可支持",
+          "仍未知"
+        ],
+        "rows": [
+          [
+            "方法返回",
+            "本地呼叫結束",
+            "遠端是否收到"
+          ],
+          [
+            "SEND 記錄",
+            "Adapter 嘗試送",
+            "對端是否處理"
+          ],
+          [
+            "ACK accepted",
+            "模擬接收方接受",
+            "最後狀態"
+          ],
+          [
+            "StatusReport READY",
+            "本模型回報 READY",
+            "其他設備或音訊結果"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "Callback 與事件都是回來的路，但訂閱方式不同",
+      "paragraphs": [
+        "Callback 常是呼叫時提供一個函式，之後由提供者呼叫；事件常是先訂閱來源，來源發生狀態時通知訂閱者。不同 SDK 可能同時提供兩者。",
+        "光看到註冊了 handler，不代表事件一定出現；要查事件來源、觸發條件、執行緒及解除訂閱。"
+      ],
+      "flow": [
+        "View 操作",
+        "Controller 請求",
+        "Adapter 外送",
+        "同步回覆／Accepted",
+        "Callback 或事件",
+        "Controller 更新狀態"
+      ]
+    },
+    {
+      "heading": "Polling 是自己定期問",
+      "paragraphs": [
+        "若沒有推送事件，程式可能定期查狀態，再比較新舊結果。Polling 間隔影響觀測速度；快輪詢不保證設備更快完成。",
+        "查實際計時器、何時停止輪詢、錯誤後是否繼續及重連後是否重新建立。不要把輪詢結果誤記成設備主動推送。"
+      ]
+    },
+    {
+      "heading": "每筆請求有自己的識別碼",
+      "paragraphs": [
+        "q17 的 Accepted 和 q17 的 StatusReport 才能較可靠地配對；如果多筆同時進行，單看「最後一個事件」容易更新錯畫面。",
+        "若真實協定沒有 request_id，就要用文件允許的端點、時序、會話等欄位謹慎比對，並承認可能無法唯一歸因。"
+      ]
+    },
+    {
+      "heading": "晚到與重複事件",
+      "paragraphs": [
+        "練習程式的 late 案例在 50 ms 先逾時，80 ms 才有 READY 事件；duplicate 案例 20、25 ms 各有一次同內容事件。教學程式對晚到事件要求查新狀態，對重複事件只記一次。",
+        "這是教學程式的明確策略，不代表所有產品都應丟掉晚到事件。真實系統應按協定的版本、時序與去重規則實作。"
+      ]
+    },
+    {
+      "heading": "一段可讀的偽程式",
+      "paragraphs": [
+        "先把「開始請求」與「完成事件」畫成兩個函式；UI 狀態更新只能依經驗證的事件或查詢結果，不依 `Send()` 的返回猜。",
+        "C# 的 async／await 只決定如何等待 Task；Task 完成代表什麼業務意義，仍由 API 契約定義。"
+      ],
+      "code": {
+        "title": "教學偽碼，不是公司 API",
+        "text": "id = new_request_id()\nAdapter.Send(GetStatus, id)   # 此處返回不等於 READY\nOnStatusReport(event):\n    if event.request_id == id and valid_session(event):\n        Controller.Confirm(event.state)"
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【返回】Send() 沒報錯可證明設備已 Ready 嗎？",
+      "answer": "不能；還需狀態事件或權威查詢。"
+    },
+    {
+      "question": "【202】HTTP 202 的主要語意？",
+      "answer": "已接受處理，但尚未完成；僅用於 HTTP 範例。"
+    },
+    {
+      "question": "【Callback】能用方法呼叫返回代替 callback 結果嗎？",
+      "answer": "不能；兩者發生時機與語意不同。"
+    },
+    {
+      "question": "【Polling】輪詢是設備主動推送嗎？",
+      "answer": "不是；是客戶端定期詢問。"
+    },
+    {
+      "question": "【關聯】兩筆同時操作為何要 request_id？",
+      "answer": "避免把回覆／事件配到錯的一筆。"
+    },
+    {
+      "question": "【late】50 ms 逾時、80 ms 事件，能說 50 ms 時設備沒做嗎？",
+      "answer": "不能；當時結果未知。"
+    },
+    {
+      "question": "【duplicate】兩次相同事件等於設備執行兩次嗎？",
+      "answer": "不一定；需查事件與執行紀錄。"
+    },
+    {
+      "question": "【async】await 完成是否固定代表設備動作完成？",
+      "answer": "不一定；要看該 API 的 Task 契約。"
+    }
+  ],
+  "recap": [
+    "同步返回與非同步結果分開讀。",
+    "Callback、事件和 Polling 的資料來源不同。",
+    "關聯 ID、Session 與產品規則決定如何處理晚到和重複。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "Microsoft Learn：C# async／await 與 Task",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/asynchronous-programming/"
+    },
+    {
+      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
+      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
+    },
+    {
+      "label": "IETF RFC 9110：HTTP 202 Accepted 與 200 OK 的語意（HTTP 範例適用）",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載虛構 API 事件追蹤程式",
+      "path": "./assets/labs/integration-trace-lab.py",
+      "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    }
+  ]
+}

@@ -109,8 +109,15 @@
     {
       "id": "integration", "title": "ICS／RCS 與廠商 API", "icon": "◇", "summary": "學會閱讀文件、追程式呼叫與事件回報。",
       "chapters": [
-        {"id": "trace-an-action", "title": "追查一次操作的程式路徑", "summary": "從畫面操作找到實際呼叫與回報。", "status": "planned"},
-        {"id": "read-an-icd", "title": "怎麼讀 API Manual 與 ICD", "summary": "辨認連線、命令、回覆與錯誤。", "status": "planned"}
+        {"id": "trace-an-action", "title": "追查一次操作的程式路徑", "summary": "從畫面操作找到實際呼叫與回報。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "layers-and-ownership", "title": "包裝層、物件關係與生命週期", "summary": "分清 View、控制邏輯、Adapter 與資源所有者。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "read-an-icd", "title": "怎麼讀 API Manual 與 ICD", "summary": "辨認版本、連線、欄位、回覆與錯誤。", "minutes": 60, "status": "ready", "contentType": "full"},
+        {"id": "commands-and-events", "title": "命令、回覆與事件", "summary": "比較同步返回、Callback、事件與 Polling。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "sessions-and-state", "title": "連線、驗證與狀態", "summary": "分開看 Transport、Session 與設備真實狀態。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "audio-and-device-boundaries", "title": "音訊與設備控制的分界", "summary": "沿控制鏈與音訊鏈找各自的觀測點。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "errors-and-recovery", "title": "錯誤、逾時與重連後恢復", "summary": "避免把未知結果與舊事件當成新狀態。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "correlate-evidence", "title": "跨層紀錄與證據對齊", "summary": "用請求 ID、時間與來源整理已知及未知。", "minutes": 55, "status": "ready", "contentType": "full"},
+        {"id": "integration-troubleshooting", "title": "整合程式除錯練習", "summary": "讀虛構程式與時間線，選第一個應補的證據。", "minutes": 65, "status": "ready", "contentType": "full"}
       ]
     },
     {

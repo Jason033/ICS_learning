@@ -1,0 +1,142 @@
+{
+  "intro": "網路接通、驗證成功、Session 有效、設備 Ready 與畫面顯示，是五個不同的問題。本章用虛構 Session S1／S2 理解重連前後怎麼重新驗證狀態。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能分開 Transport、驗證、Session、設備與 UI 狀態。",
+    "能辨認舊 Session 的事件不宜直接套到新會話。",
+    "能列出重連後需要重新確認的條件。"
+  ],
+  "sections": [
+    {
+      "heading": "先把五個狀態放在不同格子",
+      "paragraphs": [
+        "Transport 連上只表示通道可用；驗證通過表示身分被接受；Session 是本次交談的識別和有效期；設備回 READY 是設備宣告；UI 顯示則依其資料來源。",
+        "這些層次可能同時不同步。例如網路已重連，但應用 Session 還沒建立；畫面仍保留舊 READY，不代表設備現在 Ready。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/integration-state.svg",
+        "alt": "Transport、驗證、Session、設備狀態和 UI 顯示依序需要各自證據。",
+        "caption": "五層狀態檢查卡，具體產品可能不使用相同名稱。"
+      }
+    },
+    {
+      "heading": "Session ID 有版本範圍",
+      "paragraphs": [
+        "本機模型在連線重建後，Session 從 1 變成 2。若 20 ms 收到標成舊 Session 1 的 READY，教學程式不把它直接套到新 Session 2。",
+        "真實事件不一定含 Session ID；若沒有，可依文件規定的序號、連線世代或重新查狀態建立防護。不能由本模型推說公司協定有 Session 欄位。"
+      ]
+    },
+    {
+      "heading": "重連後應重新確認哪些事",
+      "paragraphs": [
+        "確認當前傳輸通道、驗證與 Session、需要的訂閱是否恢復、尚未完成請求的結果、設備權威狀態和 UI 是否由新資料更新。",
+        "不要只用 `Connect()` 成功讓畫面瞬間回到舊狀態；也不要假設舊請求沒有被執行。"
+      ],
+      "steps": [
+        "確認連線與驗證。",
+        "確認新 Session 或協定等價狀態。",
+        "重建必要事件訂閱或 Polling。",
+        "查詢設備權威狀態。",
+        "再更新使用者畫面。"
+      ]
+    },
+    {
+      "heading": "狀態名稱一定要附來源",
+      "paragraphs": [
+        "Ready、Busy、Connected 可能出現在網路、SDK、設備、音訊或 UI 層。寫 log 時加上 `source=adapter`、`source=device` 等；只寫 `state=Ready` 容易被誤讀。",
+        "若產品文件沒有定義某名稱，就標成未知的原文欄位；不能從字面推定它是 PTT 許可、音訊可聽或實體設備安全。"
+      ]
+    },
+    {
+      "heading": "驗證失敗和傳輸錯誤不同",
+      "paragraphs": [
+        "通道可連但驗證拒絕，應查憑證／權限／版本；連線根本未建時先查端點、服務與網路。從某一層錯誤直接跳到設備故障是不合理的。",
+        "真實錯誤碼要用對應版本文件解讀；教材不列通用的公司錯誤碼。"
+      ]
+    },
+    {
+      "heading": "DemoCtrl-A 的 stale-session 範例",
+      "paragraphs": [
+        "0 ms 送 q17、5 ms 收 accepted；12 ms 重連至 Session 2；20 ms 舊 Session 1 的 READY 才到；50 ms 本次等待逾時，現在狀態仍未知。",
+        "這只示範舊事件不應直接覆蓋新狀態。真正系統可能選擇其他安全策略，需看介面契約與權威狀態來源。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【層次】TCP 連上等於已通過應用驗證嗎？",
+      "answer": "不等於；需另看驗證結果。"
+    },
+    {
+      "question": "【層次】Session 有效可保證設備 Ready 嗎？",
+      "answer": "不能；要設備狀態證據。"
+    },
+    {
+      "question": "【顯示】UI 仍顯示 READY 可證明重連後設備現在 READY 嗎？",
+      "answer": "不能；可能是舊狀態。"
+    },
+    {
+      "question": "【重連】最先要重新核對哪幾層？",
+      "answer": "傳輸、驗證／Session、訂閱、權威狀態與 UI。"
+    },
+    {
+      "question": "【舊事件】Session 1 的事件可無條件套用 Session 2 嗎？",
+      "answer": "不能；要依協定驗證新舊關係。"
+    },
+    {
+      "question": "【名稱】`Connected` 可單獨解釋成「有人聽見聲音」嗎？",
+      "answer": "不能；需明確來源與定義。"
+    },
+    {
+      "question": "【分因】能連但驗證失敗，先查哪類資料？",
+      "answer": "查憑證／權限／版本與伺服器拒絕原因。"
+    },
+    {
+      "question": "【Lab】stale-session 案例結論為何未知？",
+      "answer": "新 Session 沒取得可用的新狀態回報，舊事件不直接套用。"
+    }
+  ],
+  "recap": [
+    "連線、驗證、Session、設備與 UI 是不同層。",
+    "重連後重新確認權威狀態。",
+    "舊事件的關聯範圍須按協定驗證。"
+  ],
+  "sources": [
+    {
+      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
+      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
+    },
+    {
+      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "IETF RFC 9110：HTTP 202 Accepted 與 200 OK 的語意（HTTP 範例適用）",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載虛構 API 事件追蹤程式",
+      "path": "./assets/labs/integration-trace-lab.py",
+      "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    }
+  ]
+}

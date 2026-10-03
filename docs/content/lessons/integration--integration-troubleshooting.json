@@ -1,0 +1,178 @@
+{
+  "intro": "最後用八個完全虛構的 DemoCtrl-A／教學程式案例練排查。它們不對應任何已知 ICS／RCS 部署；練習重點是根據第一個證據缺口選下一步，而不是背一張固定的公司架構圖。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 25
+    }
+  ],
+  "goals": [
+    "能對不同層的故障選正確觀測點。",
+    "能區分方法呼叫、接受、設備狀態與音訊結果。",
+    "能保留 RCSCall／iCallAPI 等待查名稱的界線。"
+  ],
+  "sections": [
+    {
+      "heading": "先畫本題基準，不預設公司拓撲",
+      "paragraphs": [
+        "教學基準：View CLICK q17 → Controller VALIDATED → Adapter SEND → Accepted → StatusReport READY → UI 更新。音訊是另一條路。每個案例會刪掉或改變一個關鍵證據。",
+        "先標已知，再找第一個未證實的箭頭。練習腳本可重跑 success、timeout、late、duplicate、stale-session 五種時間線。"
+      ],
+      "flow": [
+        "View",
+        "Controller",
+        "Adapter",
+        "接受回覆",
+        "設備狀態",
+        "UI"
+      ]
+    },
+    {
+      "heading": "案例 A：畫面有點擊，控制器沒收到",
+      "paragraphs": [
+        "View 記 CLICK q17，找不到 Controller 入口紀錄；其他操作正常。現階段先查事件綁定、輸入條件與 log 是否遺漏。",
+        "不能直接說 SDK 或設備故障，因為尚未有跨到控制器的證據。"
+      ]
+    },
+    {
+      "heading": "案例 B：控制器有呼叫，但 Adapter 未外送",
+      "paragraphs": [
+        "Controller 記 VALIDATED q17，Adapter 記拒絕 `E_FORMAT`；沒有 SEND。先核對欄位型別、必填值、版本與轉換。",
+        "不能把這例寫成網路逾時；虛構錯誤碼只供教學，不是公司產品定義。"
+      ]
+    },
+    {
+      "heading": "案例 C：Accepted 後沒有完成事件",
+      "paragraphs": [
+        "Adapter 記 SEND、5 ms 收 Accepted、50 ms timeout；沒有可匹配的 StatusReport。結果未知。",
+        "下一步查 q17 在外部端的處理與權威狀態；若是有副作用命令，先別盲目重試。"
+      ]
+    },
+    {
+      "heading": "案例 D：完成事件到了，UI 仍舊",
+      "paragraphs": [
+        "Controller 已確認本次 q17 的 READY，但畫面仍顯示 Busy。先查 Controller→View 的事件派送、資料綁定與過期畫面快取。",
+        "不要退回宣稱設備沒回覆；但仍需確認 READY 的來源和時間。"
+      ]
+    },
+    {
+      "heading": "案例 E：重連後舊事件蓋住新狀態",
+      "paragraphs": [
+        "Session 2 已建立，卻用 Session 1 的晚到 READY 更新畫面；接著新 Session 回 Busy。",
+        "先查事件關聯與排序，畫面應按產品規則顯示權威新狀態；本機腳本的 stale-session 案例示範先隔離舊事件。"
+      ]
+    },
+    {
+      "heading": "案例 F：控制鏈可用但單向無聲",
+      "paragraphs": [
+        "設備狀態回 READY，B 端表示聽不到 A；未見 A→B 媒體接收紀錄。",
+        "先追 A 的音訊輸入與送出、媒體路徑及 B 端接收，而非只重複查 GetStatus。"
+      ]
+    },
+    {
+      "heading": "案例 G：同一個事件處理兩次",
+      "paragraphs": [
+        "一次外部回報導致 View 更新兩次；程式上可見兩次訂閱同一 handler，但還沒有設備發兩次的證據。",
+        "先查訂閱／解除訂閱生命週期與 handler 紀錄，再決定是本地重複處理還是外部重複事件。"
+      ]
+    },
+    {
+      "heading": "案例 H：只有名稱，沒有程式或文件",
+      "paragraphs": [
+        "有人說 `RCSCall`、`iCallAPI`、`vv_service`、`*19`、`*23` 和 `callarea`「一定」形成某個固定控制順序，但沒有版本相符的原始碼、文件或執行紀錄。",
+        "正確結論是關係未證實；列出要找的定義、呼叫、事件、介面文件與測試。不能把先前助手的整理圖當成證據。"
+      ]
+    },
+    {
+      "heading": "把結果寫給下一位維護者",
+      "paragraphs": [
+        "範例 C 可寫：「q17 已送出並收到 Accepted；50 ms 內沒有狀態回報，遠端結果未知。下一步查設備端 q17 處理和當前狀態。」",
+        "這比「API 壞了」更能指引工作。實際查公司資料時，只把取得授權且能確認的結果加入私有筆記，不複製進公開教材。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【A】View 有 CLICK、Controller 無紀錄，先查哪裡？",
+      "answer": "查 View 到 Controller 的事件綁定、條件與 log 完整性。"
+    },
+    {
+      "question": "【B】Adapter 本地 E_FORMAT、未 SEND，先查網路嗎？",
+      "answer": "不是；先查欄位轉換、必填資料與版本。"
+    },
+    {
+      "question": "【C】Accepted 後逾時，結果是失敗還是未知？",
+      "answer": "未知；先查遠端處理與權威狀態。"
+    },
+    {
+      "question": "【D】Controller 已確認而 UI 未更新，下一段是？",
+      "answer": "Controller 到 View 的派送、資料綁定及快取。"
+    },
+    {
+      "question": "【E】新 Session 收到舊 Session 事件，能直接套用嗎？",
+      "answer": "不能；需檢查關聯與權威新狀態。"
+    },
+    {
+      "question": "【F】READY 但 B 聽不到 A，先補什麼？",
+      "answer": "補 A→B 的音訊輸入、送出、路徑與 B 接收。"
+    },
+    {
+      "question": "【G】一個回報觸發兩次 handler，能直接斷言設備送兩次嗎？",
+      "answer": "不能；可能重複訂閱，先查來源與 handler 次數。"
+    },
+    {
+      "question": "【H】只有名稱和先前推測圖，能宣布公司實際架構嗎？",
+      "answer": "不能；需版本、定義、呼叫、事件及授權測試證據。"
+    },
+    {
+      "question": "【總結】整合報告的結尾應包含什麼？",
+      "answer": "已知的觀測、未證實的箭頭、下一個最能縮小範圍的檢查。"
+    }
+  ],
+  "recap": [
+    "從第一個證據缺口選下一步。",
+    "接受、完成、設備狀態與音訊結果要分開。",
+    "公司依賴關係未驗證前維持未知。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft Learn：Visual Studio 搜尋定義與參照",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/ide/writing-code-in-the-code-and-text-editor?view=visualstudio"
+    },
+    {
+      "label": "Microsoft Learn：除錯器 Call Stack 與斷點",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
+    },
+    {
+      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "NASA：介面管理與 ICD 的用途",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
+    },
+    {
+      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
+      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載虛構 API 事件追蹤程式",
+      "path": "./assets/labs/integration-trace-lab.py",
+      "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    }
+  ]
+}

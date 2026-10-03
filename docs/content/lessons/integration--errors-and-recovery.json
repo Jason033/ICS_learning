@@ -1,0 +1,160 @@
+{
+  "intro": "錯誤處理的目標不是把畫面改成綠色，而是保留已知、未知和可安全採取的下一步。本章用虛構錯誤碼與五種本機模擬情況比較，練習逾時、重試、晚到與重連。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能依錯誤發生層次選檢查。",
+    "能說明逾時後遠端結果可能未知。",
+    "能避免重連後由舊事件覆蓋新狀態。"
+  ],
+  "sections": [
+    {
+      "heading": "先分類錯誤在哪一層",
+      "paragraphs": [
+        "輸入驗證失敗、通道無法建立、身分被拒絕、Session 失效、命令格式錯、設備忙碌、等待結果逾時，各需要不同證據。",
+        "DemoCtrl-A 的 `E_AUTH`、`E_FORMAT`、`E_BUSY` 只是虛構文件卡例子，不是通用廠商錯誤碼；真實代碼必須查相符版本。"
+      ],
+      "table": {
+        "caption": "不同層的第一個檢查",
+        "headers": [
+          "現象",
+          "優先看",
+          "不宜直接判定"
+        ],
+        "rows": [
+          [
+            "無法連線",
+            "端點、服務、網路",
+            "帳密一定錯"
+          ],
+          [
+            "驗證被拒",
+            "憑證、權限、版本",
+            "設備一定忙"
+          ],
+          [
+            "格式錯",
+            "欄位、編碼、版本",
+            "網路慢"
+          ],
+          [
+            "結果逾時",
+            "請求／事件及遠端狀態",
+            "一定沒執行"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "方法返回錯誤也要看送出多少",
+      "paragraphs": [
+        "若本地驗證就拒絕，可能未外送；若 Adapter 送出後才報錯，遠端是否收到與執行可能未知。不同 API 的錯誤語意要按文件解釋。",
+        "不要把所有 exception 都當成可重試。驗證失敗與格式錯誤通常需要先修條件，盲目重試只會重複故障。"
+      ]
+    },
+    {
+      "heading": "逾時是「到期前沒拿到足夠證據」",
+      "paragraphs": [
+        "練習程式 timeout 案例：5 ms 收 accepted，50 ms 未等到有效狀態事件，標 `unknown`。這不證明遠端沒有處理。",
+        "若命令有副作用，重試前先查請求 ID 的權威結果或產品提供的查狀態方法；否則可能做兩次。"
+      ]
+    },
+    {
+      "heading": "晚到事件要看是否仍屬目前狀態",
+      "paragraphs": [
+        "late 案例 50 ms 逾時、80 ms 收到 READY；此教學程式不直接改 UI，而提示重新查當前狀態。這是保守的示例策略。",
+        "真正產品要看事件是否含序號、時間、Session 和完成語意；不能宣稱所有晚到事件都應丟棄或全部套用。"
+      ]
+    },
+    {
+      "heading": "重連後重新建立觀測",
+      "paragraphs": [
+        "stale-session 案例在 12 ms 換新 Session，20 ms 舊 Session 事件不能直接確認新狀態。重連後還應查事件訂閱、未完成請求、設備狀態和 UI 快取。",
+        "若回覆不帶 Session 標籤，就要看文件提供的關聯方式；若缺少關聯保證，結論維持不確定。"
+      ]
+    },
+    {
+      "heading": "做一份小型恢復紀錄",
+      "paragraphs": [
+        "記故障發生時間、最後已確認的層、待定請求、重連前後 Session／端點、重新訂閱與新狀態查詢結果。",
+        "這讓下一位維護者知道是「已恢復到哪一層」，而非只有 `Reconnect OK` 四個字。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【分類】格式錯應先重試還是查欄位和版本？",
+      "answer": "先查欄位、編碼與版本。"
+    },
+    {
+      "question": "【逾時】Accepted 後逾時可證明沒有執行嗎？",
+      "answer": "不能；遠端結果未知。"
+    },
+    {
+      "question": "【副作用】未知結果的操作可無條件重送嗎？",
+      "answer": "不可；先查請求 ID 或權威狀態與產品重試規則。"
+    },
+    {
+      "question": "【晚到】80 ms 的 READY 到了能無條件覆蓋所有當前畫面嗎？",
+      "answer": "不能；需核對 Session、時序與最新狀態。"
+    },
+    {
+      "question": "【舊事件】舊 Session 事件可直接確認新 Session 嗎？",
+      "answer": "不能；需產品契約或重新查證。"
+    },
+    {
+      "question": "【錯碼】`E_BUSY` 是公司統一錯誤碼嗎？",
+      "answer": "不是；它只存在於虛構文件卡。"
+    },
+    {
+      "question": "【恢復】Connect OK 後還要查什麼？",
+      "answer": "驗證、Session、事件訂閱、待定請求與權威狀態。"
+    },
+    {
+      "question": "【表述】timeout 最精確的說法？",
+      "answer": "在本次設定期限內沒有收到足夠的完成證據；遠端結果仍待確認。"
+    }
+  ],
+  "recap": [
+    "錯誤先按層分類。",
+    "逾時後不自動推定遠端未做。",
+    "重連後用新證據恢復狀態。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft Learn：C# async／await 與 Task",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/asynchronous-programming/"
+    },
+    {
+      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "Microsoft Learn：IDisposable 與資源所有權",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載虛構 API 事件追蹤程式",
+      "path": "./assets/labs/integration-trace-lab.py",
+      "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    }
+  ]
+}

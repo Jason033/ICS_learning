@@ -1,0 +1,170 @@
+{
+  "intro": "學習真實整合程式時，先選一次可以重現的操作，沿「畫面收到、控制邏輯處理、介接層送出、外部回覆、畫面更新」找證據。這裡的 DemoCtrl-A 是完全虛構的教學模型；使用者筆記中的 RCSCall／iCallAPI 只作待查名稱，不把先前整理出的箭頭當成已驗證架構。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能從一次畫面操作找到方法定義、呼叫點與事件訂閱。",
+    "能區分靜態程式呼叫圖與實際執行時間線。",
+    "能寫出每個箭頭需要哪種證據。"
+  ],
+  "sections": [
+    {
+      "heading": "先選一個小而可重現的動作",
+      "paragraphs": [
+        "教學動作是按「查狀態」，請求識別碼 q17。先記操作時間、所選對象和畫面變化，再找程式的按鈕事件處理器。不要一開始就猜整套公司系統由哪個物件控制。",
+        "若能看原始碼，可用全域搜尋與「尋找所有參照」定位方法；若沒有原始碼，只能先從 UI、日誌與廠商文件建立候選，不能假裝已看見呼叫關係。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/integration-trace.svg",
+        "alt": "虛構操作沿 View、Controller、Adapter、DemoCtrl-A 與事件回到 View，箭頭各需證據。",
+        "caption": "教學模型的追查路徑，不代表公司 View、RCSCall 或 iCallAPI 的實際連接。"
+      }
+    },
+    {
+      "heading": "由入口向下追「定義」與「呼叫者」",
+      "paragraphs": [
+        "找到 Click handler 後，看它呼叫哪個方法、傳什麼參數、收到什麼返回值；再進方法定義，重複追到介接邊界。IDE 的 Call Hierarchy／Find All References 可協助找靜態呼叫。",
+        "搜尋結果不一定包含反射、設定檔注入、委派或外部 DLL 內部執行。因此把「程式碼可見的呼叫」和「執行時確認的路徑」分開記。"
+      ],
+      "steps": [
+        "找一次操作的 UI 入口及綁定。",
+        "找下一個方法定義與所有呼叫者。",
+        "找 Adapter 或 SDK 的外部呼叫邊界。",
+        "找返回值、事件處理器及畫面更新。"
+      ]
+    },
+    {
+      "heading": "再從回報方向往上追",
+      "paragraphs": [
+        "若設備狀態靠事件回來，要搜尋事件名稱、訂閱位置、處理器與取消訂閱。若靠 Polling，則找定時查詢、比對與 UI 更新。",
+        "不能因方法 `Send()` 返回就說設備已 Ready；也不能因畫面變色就說設備真的切換。看畫面資料來源是否來自權威回報。"
+      ]
+    },
+    {
+      "heading": "靜態圖、執行紀錄、產品文件各有用途",
+      "paragraphs": [
+        "程式碼說「可能呼叫哪裡」；斷點與 Call Stack 說「這次執行到哪裡」；API Manual／ICD 說「按文件應如何互動」；遠端 log 說「另一端觀測到什麼」。",
+        "版本不同時，這些證據可能互相矛盾。先記程式 commit、SDK 版本、部署版本及測試時間，不能拿另一版本文件填空。"
+      ],
+      "table": {
+        "caption": "三類證據的範圍",
+        "headers": [
+          "材料",
+          "能支持",
+          "仍未知"
+        ],
+        "rows": [
+          [
+            "靜態原始碼",
+            "存在某呼叫或分支",
+            "本次是否走到"
+          ],
+          [
+            "斷點／本機 log",
+            "本次走到哪個本機節點",
+            "外部設備是否處理"
+          ],
+          [
+            "ICD／手冊",
+            "預期介面語意",
+            "現場版本是否吻合"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "DemoCtrl-A 的一次基準路徑",
+      "paragraphs": [
+        "本機練習在 0 ms 記 View CLICK、Controller VALIDATED、Adapter SEND；5 ms 模擬 ACK accepted；20 ms 才收到虛構設備 EVENT state=READY。這些時間是固定教學安排，不是性能指標。",
+        "若只讀到前四行，最多知道送出流程收到接受回覆；20 ms 的狀態事件才是此模型中顯示 READY 的依據。"
+      ],
+      "code": {
+        "title": "本機模擬：不要跳過最後一段",
+        "text": "000ms View       CLICK GetStatus req=q17\n000ms Controller VALIDATED req=q17\n000ms Adapter    SEND GetStatus req=q17\n005ms Adapter    ACK accepted\n020ms FakeDevice EVENT state=READY"
+      }
+    },
+    {
+      "heading": "公司名稱只拿來當搜尋線索",
+      "paragraphs": [
+        "若授權程式裡真的有 RCSCall、iCallAPI 或 `vv_service`，先找定義、建立處、呼叫者、事件及版本；同名可能是類別、介面、包裝層或不同模組。",
+        "使用者筆記提到的 `*19`、`*23`、`callarea` 目前也只有名稱，不能推斷是撥碼、狀態或協定。未取得可分享的文件前，不把推測圖公開成公司事實。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【入口】追一次按鍵，第一個應找什麼？",
+      "answer": "該畫面操作綁定的 handler、發生時間與輸入對象。"
+    },
+    {
+      "question": "【搜尋】看到 RCSCall 字串就能確定它呼叫 Ozeki 嗎？",
+      "answer": "不能；需找實際定義、呼叫與版本證據。"
+    },
+    {
+      "question": "【靜態】Find All References 能證明這次真的走到該方法嗎？",
+      "answer": "不能；要斷點、Call Stack 或執行紀錄。"
+    },
+    {
+      "question": "【動態】斷點停在 Adapter Send 能證明設備已 Ready 嗎？",
+      "answer": "不能；還要對端回覆或狀態證據。"
+    },
+    {
+      "question": "【事件】回報到畫面的上行路徑要找什麼？",
+      "answer": "事件／Callback 或 Polling、處理器、狀態映射與畫面更新。"
+    },
+    {
+      "question": "【Lab】005ms ACK accepted 與 020ms EVENT READY 是同一層嗎？",
+      "answer": "不是；前者只表示接受，後者是這個虛構模型的狀態回報。"
+    },
+    {
+      "question": "【版本】為何要記部署版與 SDK 版？",
+      "answer": "不同版本的實作與文件可能不一致，不能混用。"
+    },
+    {
+      "question": "【未知】`*19` 的功能可從名字推定嗎？",
+      "answer": "不能；目前只有名稱，需查授權規格或程式與測試。"
+    }
+  ],
+  "recap": [
+    "從一個可重現操作沿雙向路徑追證據。",
+    "程式可見呼叫不等於本次實際執行。",
+    "公司名稱先當搜尋線索，不當已知架構。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft Learn：Visual Studio 搜尋定義與參照",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/ide/writing-code-in-the-code-and-text-editor?view=visualstudio"
+    },
+    {
+      "label": "Microsoft Learn：除錯器 Call Stack 與斷點",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
+    },
+    {
+      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載虛構 API 事件追蹤程式",
+      "path": "./assets/labs/integration-trace-lab.py",
+      "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    }
+  ]
+}

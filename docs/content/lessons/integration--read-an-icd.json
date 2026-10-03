@@ -1,0 +1,171 @@
+{
+  "intro": "遇到陌生廠商介面，先確認手上是什麼文件、適用哪個版本，再依「連線、欄位、時序、錯誤」讀。教材中的 DemoCtrl-A v1.0 是虛構的文件卡，不是任何產品可執行命令。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 20
+    }
+  ],
+  "goals": [
+    "能區分 SDK 手冊、API Manual、ICD、Protocol Specification。",
+    "能找出協定欄位、時序、錯誤、版本與雙方責任。",
+    "能發現文件欠缺的資訊並列成待查問題。"
+  ],
+  "sections": [
+    {
+      "heading": "四種文件回答不同問題",
+      "paragraphs": [
+        "SDK 手冊常教程式如何使用套件；API Manual 說方法、參數、回傳與事件；ICD 描述兩端界面的責任和條件；Protocol Specification 細述線上訊息格式與狀態規則。實際名稱不統一，要看內容而非封面。",
+        "OpenAPI 主要描述 HTTP API；AsyncAPI 可描述事件訊息。它們只是文件格式範例，不表示公司的設備使用 HTTP 或訊息平台。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/integration-document-check.svg",
+        "alt": "先核對文件版本，再依端點、欄位、時序、錯誤、驗證逐項讀取。",
+        "caption": "閱讀未知介面的檢查順序；不暗示 DemoCtrl-A 是真實產品。"
+      }
+    },
+    {
+      "heading": "先核版本和範圍",
+      "paragraphs": [
+        "看文件編號、修訂日期、適用韌體／SDK／協定版本、支援平台、變更紀錄與已知限制。兩份名稱相同但版本不同的文件不能直接拼起來。",
+        "若只拿到簡介而缺協定附錄，就不要猜命令碼或錯誤碼；把缺少的部分列出，向有權限的維護人員核對。"
+      ]
+    },
+    {
+      "heading": "把介面讀成六個問題",
+      "paragraphs": [
+        "誰先連？要認證嗎？如何建立 Session？命令欄位是什麼？同步回覆與非同步事件各表示什麼？錯誤和逾時怎麼處理？",
+        "再補上重連、版本相容、最大長度、字元編碼及安全要求。若文件沒寫，不可從一般慣例推定。"
+      ],
+      "table": {
+        "caption": "讀一份 ICD 時的空白查核表",
+        "headers": [
+          "要找的項目",
+          "要確認的具體問題",
+          "缺失時標記"
+        ],
+        "rows": [
+          [
+            "端點與傳輸",
+            "位址／Port／實體介面／方向",
+            "未知"
+          ],
+          [
+            "驗證與 Session",
+            "誰發起、憑證、有效期限",
+            "未知"
+          ],
+          [
+            "命令與回覆",
+            "欄位、型別、單位、Accepted 語意",
+            "未知"
+          ],
+          [
+            "事件與錯誤",
+            "來源、關聯 ID、超時與重送",
+            "未知"
+          ],
+          [
+            "版本",
+            "文件與產品版本對應",
+            "未知"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "DemoCtrl-A v1.0 虛構文件卡",
+      "paragraphs": [
+        "教學卡定義：`GetStatus(session_id=S1, request_id=q17)`；立即回 `Accepted(q17)`，若完成，之後可能回 `StatusReport(q17, READY)`。此設計只是讓你練分辨回覆層級。",
+        "文件若沒有說 `Accepted` 是何種程度的接受，就不能推定已執行。`READY` 在此模型是虛構狀態，也不證明音訊、射頻或任何外部動作。"
+      ],
+      "code": {
+        "title": "虛構 DemoCtrl-A v1.0，不可對實機發送",
+        "text": "REQUEST GetStatus {session_id: S1, request_id: q17}\nREPLY   Accepted  {request_id: q17}\nEVENT   StatusReport {request_id: q17, state: READY}\n# 傳輸方式、真實編碼與 Port：本教材未定義"
+      }
+    },
+    {
+      "heading": "規範用語要按原文件讀",
+      "paragraphs": [
+        "在採用 RFC 2119 等規範用語的文件中，MUST、SHOULD、MAY 含義不同；沒有宣告使用這套用語的文件，仍須看作者定義。",
+        "例如「事件 MAY arrive」不能寫成事件每次必到。若重試或順序規則沒寫，列成待查，不補成通用保證。"
+      ]
+    },
+    {
+      "heading": "做一次最小交叉驗證",
+      "paragraphs": [
+        "用與版本相符的公開或授權範例查方法簽章，再對照實際程式如何傳參、如何解析回覆，最後在可控測試環境比對 log。",
+        "NASA 的 ICD 概念可幫你理解文件目的；真正產品文件才定義該介面的欄位與責任。不要用此虛構卡去測未知設備。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【文件】API Manual 一定包含線路封包格式嗎？",
+      "answer": "不一定；可能需另查 Protocol Specification 或 ICD。"
+    },
+    {
+      "question": "【格式】OpenAPI 範例能證明公司設備用 HTTP 嗎？",
+      "answer": "不能；只是文件格式範例。"
+    },
+    {
+      "question": "【版本】SDK 版本與文件不符時能直接照範例呼叫嗎？",
+      "answer": "不應；先核對相容性和變更紀錄。"
+    },
+    {
+      "question": "【欄位】讀 ICD 至少確認哪些？",
+      "answer": "端點／傳輸、驗證／Session、欄位、回覆／事件、錯誤／逾時、版本。"
+    },
+    {
+      "question": "【語意】Accepted(q17) 能證明 READY 嗎？",
+      "answer": "不能；本模型另等 StatusReport。"
+    },
+    {
+      "question": "【語意】READY 能證明有音訊嗎？",
+      "answer": "不能；狀態名稱不等於音訊路徑證據。"
+    },
+    {
+      "question": "【用語】文件說 MAY 能寫成一定會發生嗎？",
+      "answer": "不能；先按文件的規範用語解讀。"
+    },
+    {
+      "question": "【缺件】文件沒有重連規則，應如何處理？",
+      "answer": "標成待查，不能自行編造公司行為。"
+    }
+  ],
+  "recap": [
+    "先辨文件種類和版本，再讀欄位與時序。",
+    "虛構文件卡不等於產品協定。",
+    "Accepted、狀態回報與業務結果各有範圍。"
+  ],
+  "sources": [
+    {
+      "label": "NASA：介面管理與 ICD 的用途",
+      "url": "https://www.nasa.gov/reference/6-3-interface-management/"
+    },
+    {
+      "label": "OpenAPI Initiative：HTTP API 描述規格（僅作文件類型範例）",
+      "url": "https://spec.openapis.org/oas/v3.1.2.html"
+    },
+    {
+      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
+      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
+    },
+    {
+      "label": "IETF RFC 2119：MUST、SHOULD、MAY 的規範用語",
+      "url": "https://www.rfc-editor.org/rfc/rfc2119"
+    }
+  ]
+}

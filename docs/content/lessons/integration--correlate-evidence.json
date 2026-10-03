@@ -1,0 +1,174 @@
+{
+  "intro": "一份好用的除錯紀錄，要讓沒在場的人看得出「哪次操作、哪條連線、哪個觀測點、什麼時間、最後證明到哪裡」。本章建立最小可交接的跨層證據格式。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能為每筆操作建立關聯欄位。",
+    "能在兩台機器時鐘可能不同時謹慎比較。",
+    "能寫出已知、未知、下一個檢查的白話結論。"
+  ],
+  "sections": [
+    {
+      "heading": "先固定「同一次」的識別",
+      "paragraphs": [
+        "可記 request_id、connection_id、session_generation、操作名稱、物件或目標 ID、來源層與時間。真實系統未必有全部欄位，要查是否真的能跨層傳遞。",
+        "不要把密碼、Token、真人語音或完整敏感 payload 放進公開練習與一般日誌；使用者若要檢視公司紀錄，需依授權規則遮蔽。"
+      ],
+      "table": {
+        "caption": "虛構追蹤欄位的用途",
+        "headers": [
+          "欄位",
+          "白話用途",
+          "例值"
+        ],
+        "rows": [
+          [
+            "request_id",
+            "認出同一次命令",
+            "q17"
+          ],
+          [
+            "connection_id",
+            "分開兩條通道",
+            "c1"
+          ],
+          [
+            "session_generation",
+            "區分重連前後",
+            "1／2"
+          ],
+          [
+            "source",
+            "知道誰說的",
+            "View／Adapter／Device"
+          ],
+          [
+            "stage",
+            "定位停在哪一步",
+            "ACK／EVENT／TIMEOUT"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "記「來源」比只記狀態更重要",
+      "paragraphs": [
+        "`state=READY` 若無來源，可能是 UI 快取、Controller 估計、SDK 事件或設備回報。把來源、原始欄位、轉換規則和顯示結果分開。",
+        "若 UI 與設備狀態矛盾，先核對哪個較新、哪個可被信任；不要只改畫面文字遮住缺口。"
+      ],
+      "image": {
+        "src": "./assets/diagrams/integration-evidence.svg",
+        "alt": "一次請求從畫面、程式、Adapter、外部回覆到 UI 更新形成證據階梯，每段只支持相應結論。",
+        "caption": "虛構證據階梯，任一箭頭缺紀錄就標未知。"
+      }
+    },
+    {
+      "heading": "多台時間戳不能直接相減",
+      "paragraphs": [
+        "記時區、時鐘來源、同步狀況與誤差；若兩台機器可能差數百毫秒，不能用 10 ms 的顯示先後推論事件順序。",
+        "先用共同 request_id、訊息內容摘要、端點及可確認的因果關係對照，再用對時後的時間輔助定位。"
+      ]
+    },
+    {
+      "heading": "從四筆紀錄寫出一段結論",
+      "paragraphs": [
+        "示例：View 點擊 q17；Controller 驗證通過；Adapter 記送出；5 ms 模擬 accepted；沒有狀態事件、50 ms timeout。",
+        "可寫：「本地已送出且收到接受回覆，但設定期限內沒有狀態確認。遠端最終結果未知；下一步查 q17 的設備端處理或權威狀態。」"
+      ],
+      "code": {
+        "title": "教學紀錄與白話結論",
+        "text": "000 View CLICK q17\n000 Adapter SEND q17\n005 Adapter ACK accepted q17\n050 Controller TIMEOUT q17\n結論：已接受；設備最後狀態未知。"
+      }
+    },
+    {
+      "heading": "Log、封包、斷點各回答一部分",
+      "paragraphs": [
+        "斷點能看本次程式值與 Call Stack；本地 log 能保留時間線；網路封包可顯示該觀測點傳輸資料；遠端 log 才接近對端處理。",
+        "如果通道加密，抓包可能看不到內部命令；不能因封包沒有可讀字串就認定程式沒送。"
+      ]
+    },
+    {
+      "heading": "交接給別人時少用神祕縮寫",
+      "paragraphs": [
+        "報告開頭先寫症狀與操作，再寫已知事實、仍缺的證據和下一個檢查。必要縮寫第一次出現時用白話解釋。",
+        "例如不要只寫「API timeout／SDK busy」。應寫清哪個 API、哪次請求、何時、收到什麼、對使用者造成什麼現象。"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【識別】只記時間不記 request_id 的風險？",
+      "answer": "多筆並行操作可能混在一起，跨層難配對。"
+    },
+    {
+      "question": "【來源】`READY` 沒 source 可直接當設備回覆嗎？",
+      "answer": "不能；可能是 UI 或程式快取。"
+    },
+    {
+      "question": "【時間】兩台時鐘未同步可直接比較 10 ms 順序嗎？",
+      "answer": "不能；先估誤差與因果關係。"
+    },
+    {
+      "question": "【證據】Adapter SEND 可證明設備執行嗎？",
+      "answer": "不能；仍需對端或權威狀態。"
+    },
+    {
+      "question": "【封包】加密時無可讀指令字串就能說沒送嗎？",
+      "answer": "不能；可能被加密。"
+    },
+    {
+      "question": "【安全】可以把 Token 原文放到公開練習嗎？",
+      "answer": "不能；應遮蔽敏感資料。"
+    },
+    {
+      "question": "【結論】ACK accepted 後 timeout，該寫設備失敗嗎？",
+      "answer": "不該；寫期限內無狀態確認，最終結果未知。"
+    },
+    {
+      "question": "【交接】一句好結論至少有哪些？",
+      "answer": "症狀、已知證據、仍未知與下一個檢查。"
+    }
+  ],
+  "recap": [
+    "關聯 ID、來源與版本讓跨層紀錄可讀。",
+    "時鐘誤差限制時間排序結論。",
+    "報告用白話寫已知、未知與下一步。"
+  ],
+  "sources": [
+    {
+      "label": "Python 官方：logging 的情境資訊",
+      "url": "https://docs.python.org/3/library/logging.html"
+    },
+    {
+      "label": "Microsoft Learn：除錯器 Call Stack 與斷點",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/debugger/how-to-use-the-call-stack-window?view=visualstudio"
+    },
+    {
+      "label": "AsyncAPI Initiative：事件訊息與 correlationId（僅作文件類型範例）",
+      "url": "https://www.asyncapi.com/docs/reference/specification/v3.0.0"
+    }
+  ],
+  "resources": [
+    {
+      "label": "下載虛構 API 事件追蹤程式",
+      "path": "./assets/labs/integration-trace-lab.py",
+      "description": "純本機虛擬時間模擬；不連網、不讀公司資料，含成功、逾時、晚到、重複與舊 Session 五種案例。"
+    }
+  ]
+}

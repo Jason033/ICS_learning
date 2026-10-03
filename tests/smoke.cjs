@@ -42,7 +42,7 @@ for (const topic of catalog.topics) {
   }
 }
 assert.equal(catalog.topics.length, 16);
-assert.equal(readyCount, 65);
+assert.equal(readyCount, 74);
 assert.equal(catalog.topics[0].chapters.length, 10);
 for (const chapter of catalog.topics[0].chapters) {
   assert.equal(chapter.contentType, 'full');
@@ -147,6 +147,21 @@ for (const chapter of voipTopic.chapters) {
   voipExerciseCount += lesson.exercises.length;
 }
 assert.equal(voipExerciseCount, 73);
+
+const integrationTopic = catalog.topics.find((topic) => topic.id === 'integration');
+assert.equal(integrationTopic.chapters.length, 9);
+assert.equal(integrationTopic.chapters.reduce((sum, chapter) => sum + chapter.minutes, 0), 510);
+let integrationExerciseCount = 0;
+for (const chapter of integrationTopic.chapters) {
+  assert.equal(chapter.contentType, 'full');
+  const lesson = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `integration--${chapter.id}.json`), 'utf8'));
+  assert.equal(lesson.plan.reduce((sum, part) => sum + part.minutes, 0), chapter.minutes);
+  assert(lesson.sections.length >= 6, `${chapter.id} 教學段落不足`);
+  assert(lesson.exercises.length >= 8, `${chapter.id} 練習不足`);
+  assert(lesson.sources.length >= 2, `${chapter.id} 缺少技術來源`);
+  integrationExerciseCount += lesson.exercises.length;
+}
+assert.equal(integrationExerciseCount, 73);
 
 const elements = new Map();
 function element(selector) {
@@ -326,7 +341,28 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /練習 09/);
 
+  context.location.hash = '#/topic/integration';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /#\/lesson\/integration\/trace-an-action/);
+  assert.match(element('#main').innerHTML, /#\/lesson\/integration\/integration-troubleshooting/);
+  context.location.hash = '#/lesson/integration/trace-an-action';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /integration-trace\.svg/);
+  assert.match(element('#main').innerHTML, /integration-trace-lab\.py/);
   context.location.hash = '#/lesson/integration/read-an-icd';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /integration-document-check\.svg/);
+  context.location.hash = '#/lesson/integration/sessions-and-state';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /integration-state\.svg/);
+  context.location.hash = '#/lesson/integration/correlate-evidence';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /integration-evidence\.svg/);
+  context.location.hash = '#/lesson/integration/integration-troubleshooting';
+  await vm.runInContext('renderRoute()', context);
+  assert.match(element('#main').innerHTML, /練習 09/);
+
+  context.location.hash = '#/lesson/reliability/concurrency';
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /這篇教材尚未開放/);
 

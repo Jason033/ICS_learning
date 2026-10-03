@@ -1,0 +1,157 @@
+{
+  "intro": "View、Controller、Adapter 是教學用的常見責任分工，不是公司程式已證實的三層。本章練習從物件建立、引用與釋放的證據讀出真正依賴關係，避免只看類別名稱就畫箭頭。",
+  "plan": [
+    {
+      "label": "建立概念",
+      "minutes": 12
+    },
+    {
+      "label": "閱讀程式與文件",
+      "minutes": 14
+    },
+    {
+      "label": "判讀證據",
+      "minutes": 14
+    },
+    {
+      "label": "練習與回顧",
+      "minutes": 15
+    }
+  ],
+  "goals": [
+    "能用白話解釋畫面、控制邏輯與介接邊界各可能負責什麼。",
+    "能查明一個物件誰建立、誰持有、誰釋放。",
+    "能辨認事件訂閱與資源清理的生命週期問題。"
+  ],
+  "sections": [
+    {
+      "heading": "用責任而不是類別名稱分層",
+      "paragraphs": [
+        "View 接受輸入並顯示；Controller 決定操作流程與狀態；Adapter 翻譯成外部 API 或設備協定。這只是分析用的參考框架。",
+        "實際程式可能把職責合在同一類，或由多個服務分擔。若找不到某層，不要為了圖好看硬補一個不存在的物件。"
+      ],
+      "table": {
+        "caption": "教學角色與要找的證據",
+        "headers": [
+          "角色",
+          "可能做的事",
+          "應核對"
+        ],
+        "rows": [
+          [
+            "View",
+            "按鍵、呈現狀態",
+            "事件綁定與資料來源"
+          ],
+          [
+            "Controller",
+            "驗證操作、維持狀態",
+            "方法分支與狀態轉換"
+          ],
+          [
+            "Adapter",
+            "呼叫 SDK 或編解碼",
+            "實際 API 呼叫與錯誤"
+          ],
+          [
+            "外部端",
+            "接收命令、回報事件",
+            "回覆與設備 log"
+          ]
+        ]
+      }
+    },
+    {
+      "heading": "物件圖和呼叫圖不是同一張",
+      "paragraphs": [
+        "「A 持有 B 欄位」是物件關係；「A 的方法某時呼叫 B」是呼叫關係；「B 事件觸發 A 的 handler」又是反方向關係。",
+        "要分別標出建立處、注入處、呼叫處及訂閱處。不能把 `RCSCall` 和 `iCallAPI` 名字排上下，就推得單向永久控制關係。"
+      ]
+    },
+    {
+      "heading": "誰建立，誰負責清理",
+      "paragraphs": [
+        "若某物件建立 Socket、音訊裝置或 SDK handler，需找誰持有其生命週期。C# 中實作 IDisposable 的型別通常由所有者在適當時機 Dispose；共用資源不能隨便由一個呼叫者關掉。",
+        "事件訂閱也會影響生命週期；重複訂閱可能重複處理，同時要注意是否有取消訂閱。具體清理方式以該 SDK 版本文件與程式碼為準。"
+      ]
+    },
+    {
+      "heading": "一次通話物件不等於整個客戶端",
+      "paragraphs": [
+        "像 Softphone、PhoneCall 這類名稱在某些 SDK 有明確意義，但公司包裝層的建立與共用方式必須查版本相符的原始碼。",
+        "要回答「一個軟體電話能有幾個通話物件」，先看該產品版本的建構、集合、事件與清理；不能把先前比喻直接變成實際設計。"
+      ]
+    },
+    {
+      "heading": "回呼執行緒也屬生命週期",
+      "paragraphs": [
+        "事件可能在 UI 執行緒或背景執行緒發出；畫面更新是否需要切回 UI 執行緒，要看平台與 SDK 的執行模型。",
+        "如果 UI 已關閉但 callback 晚到，處理器仍操作舊 View 可能出錯；要找取消訂閱、取消請求與舊事件防護。"
+      ]
+    },
+    {
+      "heading": "用一張可驗證的物件卡",
+      "paragraphs": [
+        "為每個待查物件記：定義檔、建立位置、持有者、公開方法、事件來源、釋放位置、版本與實際觀測。空白欄位留白，別用猜測補齊。",
+        "教學卡只作查核模板，不包含公司原始碼；保留未知能指引下一個搜尋。"
+      ],
+      "code": {
+        "title": "物件查核卡（虛構欄位）",
+        "text": "name: [待查]\ndefined_at: [檔案／版本]\ncreated_by: [待查]\nmethods_called: [程式碼位置]\nevents_subscribed: [處理器位置]\nreleased_by: [待查]"
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "question": "【責任】View 一般可能負責什麼？",
+      "answer": "接收操作與顯示狀態；實際職責仍看程式。"
+    },
+    {
+      "question": "【圖】A 有 B 欄位能證明 A 每次操作都呼叫 B 嗎？",
+      "answer": "不能；持有關係與執行路徑不同。"
+    },
+    {
+      "question": "【建立】查物件關係最先要找哪三處？",
+      "answer": "定義、建立／注入、實際使用處。"
+    },
+    {
+      "question": "【清理】共用 SDK 物件能由任意一通電話 Dispose 嗎？",
+      "answer": "不能；先確認所有者與共用範圍。"
+    },
+    {
+      "question": "【事件】重複訂閱可能出現什麼症狀？",
+      "answer": "同一事件被處理多次，需查訂閱次數及取消訂閱。"
+    },
+    {
+      "question": "【執行緒】背景 callback 可以不看平台就直接改 UI 嗎？",
+      "answer": "不應假設；需核對 UI 執行緒規則。"
+    },
+    {
+      "question": "【名稱】同名 Softphone 可推公司物件數量嗎？",
+      "answer": "不能；查實際版本、建立與集合管理。"
+    },
+    {
+      "question": "【卡片】沒有釋放位置時應怎麼記？",
+      "answer": "標未知，繼續查生命週期，不填猜測。"
+    }
+  ],
+  "recap": [
+    "責任分工只是查碼框架。",
+    "建立、持有、呼叫、事件與釋放要分開記。",
+    "公司依賴圖需原始碼與執行證據。"
+  ],
+  "sources": [
+    {
+      "label": "Microsoft Learn：C# 事件、發布者與訂閱者",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/"
+    },
+    {
+      "label": "Microsoft Learn：IDisposable 與資源所有權",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose"
+    },
+    {
+      "label": "Microsoft Learn：Visual Studio 搜尋定義與參照",
+      "url": "https://learn.microsoft.com/en-us/visualstudio/ide/writing-code-in-the-code-and-text-editor?view=visualstudio"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # 教學練習檔
 
-本資料夾放四種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環、Socket 本機 TCP／UDP 練習，以及 VoIP 音訊取樣練習。全部不含公司資料，也沒有真實設備的設定。
+本資料夾放五種用途不同的檔案：Wireshark 合成封包、RS-232 軟體回環、Socket 本機 TCP／UDP 練習、VoIP 音訊取樣，以及虛構 API 事件追蹤。全部不含公司資料，也沒有真實設備的設定。
 
 ## Wireshark 合成封包
 
@@ -31,3 +31,9 @@
 `voip-tone-lab.py` 使用 Python 標準函式庫合成一秒鐘的 440 Hz 教學音，印出 8 kHz、16-bit、單聲道 PCM 的樣本數、原始資料量與每 20 ms 的分幀數。直接執行 `python3 voip-tone-lab.py` 不會建立檔案；加上 `--write-wav` 才會在目前資料夾產生 `voip-tone-lab.wav`，若同名檔已存在則拒絕覆寫。Windows 可改用 `py voip-tone-lab.py`。
 
 這個腳本不讀麥克風、不連網，也**沒有**實作 G.711、G.729、RTP 或通話；它只驗證教材裡的取樣與原始 PCM 算式。VoIP 章節另沿用本資料夾的合成 `wireshark-sip-rtp.pcap` 觀察 SIP、SDP 與 RTP；其負載為固定教學位元組，不可當成真人語音或品質測試。
+
+## ICS／RCS 與廠商 API 主題的事件追蹤
+
+`integration-trace-lab.py` 是 Python 標準函式庫寫的虛構 `DemoCtrl-A` 模擬器，不連網、不存檔、不呼叫 SDK 或實體設備，也不使用公司原始碼。它用虛擬時間列出 View→Controller→Adapter→虛構設備的五種案例：`success`、`timeout`、`late`、`duplicate`、`stale-session`。其中 `ACK accepted` 只表示教學模型接受處理；只有相符的狀態事件才可在此模型中確認 READY。晚到或舊 Session 事件的處理規則是此腳本的示範策略，不代表真實產品。
+
+下載後執行 `python3 integration-trace-lab.py` 可看全部案例；Windows 可使用 `py integration-trace-lab.py`。若只想比較一個情境，可加 `--case timeout` 等參數。數字是固定教材時間，不是設備性能或通用逾時設定；任何公司元件關係仍須用授權程式碼和版本相符文件查證。

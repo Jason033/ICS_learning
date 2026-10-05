@@ -1,70 +1,56 @@
 # 知識航線：系統維護與除錯學習網站
 
-[打開學習網站](https://jason033.github.io/ICS_learning/) · [GitHub原始碼](https://github.com/Jason033/ICS_learning)
+[開啟網站](https://jason033.github.io/ICS_learning/) · [GitHub 原始碼](https://github.com/Jason033/ICS_learning)
 
-這是給新進軟體工程師的個人學習網站。目標是從基礎建立原理與正常流程，逐步能閱讀既有程式、想到有理由的故障位置、查證並修改。各大主題獨立，可以自行選擇；遇到知識缺口時，另有規劃中的可選共同基礎。
+這是給新進軟體工程師的個人教材，目標是把熟悉的資工概念接成可用的系統流程，練習讀既有程式、判斷故障停在哪個交接點，以及驗收有限修改。各主題可以獨立選讀；遇到前置缺口再補參照，不必先修完一整套共同基礎。
 
-## 目前可以讀什麼
+## 目前教材
 
-**全站正在重新設計成循序教材。目前完成一組三篇連續的新版網路入門，其餘123篇舊版資料保留供參考，尚未按新版方式重編。** 原有網址與瀏覽器閱讀紀錄保留。
+全站有 126 篇教材：78 篇完成新版，48 篇仍保留為舊版參考資料。新版包含 28 篇可按需補讀的網路、Wireshark、Socket 與 RS-232 教材，以及六個核心系列的 50 篇。首頁會把六個核心系列放在一起；舊版入口另有標示。
 
-1. [兩個程式為什麼需要通訊](https://jason033.github.io/ICS_learning/#/lesson/networking/why-programs-communicate)：從一次狀態查詢理解兩端角色、請求、回覆及共同約定。
-2. [訊息內容如何表示成資料](https://jason033.github.io/ICS_learning/#/lesson/networking/messages-and-bytes)：沿同一份回覆，逐步認識bit、byte、文字編碼及HEX的用途。
-3. [一次本地通訊經過哪些地方](https://jason033.github.io/ICS_learning/#/lesson/networking/a-local-journey)：沿同一回合走過程式、作業系統、網卡、線路與交換器。
+| 核心系列 | 篇數 | 主要學習任務 |
+| --- | ---: | --- |
+| [Ozeki 本機音訊控制](https://jason033.github.io/ICS_learning/#/topic/ozeki) | 7 | 追麥克風、媒體串接、錄音與喇叭播放的程式生命週期；SIP／RTP只作為音訊進出通話的邊界。 |
+| [PTT](https://jason033.github.io/ICS_learning/#/topic/ptt) | 8 | 從按下發話追到准入、設備控制、音訊時序、放開與故障恢復。 |
+| [VoIP](https://jason033.github.io/ICS_learning/#/topic/voip) | 9 | 串起 SIP 呼叫、SDP 媒體協商、RTP 傳送與通話品質診斷。 |
+| [無線電通訊](https://jason033.github.io/ICS_learning/#/topic/radio) | 8 | 從軟體資料、收發路徑到鏈路品質觀測；硬體只講維護需要的介面與邊界。 |
+| [廠商 API 整合](https://jason033.github.io/ICS_learning/#/topic/integration) | 9 | 依版本文件和程式追呼叫、事件、狀態、錯誤與資源責任，不假設未知公司的實作。 |
+| [可靠性與並行](https://jason033.github.io/ICS_learning/#/topic/reliability) | 9 | 用執行順序、期限、重試、佇列與紀錄分析長時間運作問題。 |
 
-三篇教的是入門關係，還沒有教完整IP、Port、TCP／UDP或程式除錯。下一組再打開目的地址與交付的選擇。網站把新版與舊版的目錄、前後篇導航分開，避免讀完新手教材突然跳進舊版濃縮內容。解答可展開，讀完可標記「已讀」；紀錄只存在目前瀏覽器，不等於已掌握能力。
+網路、Wireshark、Socket、RS-232 四個參照主題共 28 篇新版，遇到相關工作再選讀。其餘 48 篇舊版仍可查閱，但尚未依新版標準逐篇改寫。這些數量說明目前範圍，不代表讀者已具備相應能力。
 
-## 為什麼重新設計
+50 篇核心教材是可查閱的完整內容庫，不是線性必修清單。一般主線約 46 篇；Ozeki 電話媒體、PTT 介面盒、VoIP 註冊及無線電 RF 硬體鏈，按手邊系統條件選讀。三篇目錄已標明選讀條件，RF 硬體鏈也標示為選讀。
 
-之前的教材雖增加了篇幅、圖、工程問題與實作，仍過於濃縮，許多段落要求讀者已經知道未教的名詞。它能回答某些問題，卻不能可靠地帶目前起點的讀者學出完整觀念。先前的檔案數、題數、程式與發布測試不能證明教學已完成。
+## 教材怎麼讀
 
-這次以已確認的工作目標和起點重排知識：先知道問題與角色，再教表示與正常運作，之後才接讀碼、故障及修正。C#／.NET為主，Python為輔助；不預設讀者已熟C#。硬體深度以軟體需要理解的角色、介面、訊號、限制及觀測為主，不要求硬體設計或深入公式。
+從你遇到的工作選主題，再照該主題建議順序閱讀。每篇會交代流程中各程式和元件的責任、資料如何交接、哪些證據能支持哪些判斷，並附上練習與解答。題目不是常見問題清單，也不假設教材中的合成案例就是公司架構。
 
-16個主題仍涵蓋網路、Wireshark、Ozeki、RS-232、無線電、PTT、Socket、VoIP、廠商API、可靠性與並行處理、作業系統觀測、衛星、訊號／DSP／SDR、資安、故障分析及概念整理。完整教學範圍與先後關係見[新版教學方案](revision/learning-redesign/curriculum-plan.md)；[舊課程地圖](課程地圖.md)保留既有資料清單，不能當新版完成清單。
+C#／.NET 是主要讀碼環境；Python只用在可重跑的教學工具。硬體內容著重軟體可見的角色、介面、限制與觀測，不要求設計硬體或推導硬體數學。閱讀進度只存在目前瀏覽器，不會自動同步。
 
-## 審查方法、結果與限制
+## 本機預覽與維護
 
-新教材採同一狀態查詢作基準，逐篇只打開新的必要問題；練習再改文字表示或流程條件，檢查能否用已教內容推理。作者自審、另一位作者從允許的前置連读、整合方全文審查與圖文檢查各負責不同部分。網站測試檢查載入、手機呈現、解答、導航與進度，不代替學習驗收。
-
-目前三篇已完成正文與分工審查，並發布至GitHub Pages；公開檔案一致性與瀏覽功能已驗證。詳細發現與驗證見[新版重編紀錄](revision/learning-redesign/README.md)。目標讀者的實際理解仍需閱讀確認；不能宣稱已培養中級維護能力。下一步先確認這組教材能跟得上，再循同一知識路線展開後續與其他獨立主題。兩輪舊版製作與驗證資料留在[歷史紀錄](revision/README.md)。
-
-## 教學情境與公司實際系統
-
-圖、訊息、封包和程式模型是明確假設的教學材料，不能當成公司設備配置。Ozeki相關真實API需核對實際DLL版本；既有.NET 10教學模型也不能直接貼回公司的.NET Framework程式。公司RCSCall／iCallAPI依賴、設備行為及部署關係仍需實際文件和程式確認。工作筆記`對話.txt`沒有加入公開儲存庫。
-
-## 本機開啟與維護
-
-網站只有靜態HTML、CSS、JavaScript及JSON，沒有登入、伺服器或付費服務。GitHub Pages發布`main`分支的`/docs`。
+網站是靜態 HTML、CSS、JavaScript 和 JSON，GitHub Pages 從 `main/docs` 發布。本機預覽可執行：
 
 ```bash
 python3 -m http.server 8000 --directory docs
 ```
 
-Windows可用`py -m http.server 8000 --directory docs`，再開`http://localhost:8000/`。直接雙擊HTML可能無法載入JSON。
+再開啟 `http://localhost:8000/`。新增章節時，在 `docs/content/lessons/` 加入教材 JSON，並於 `docs/content/catalog.json` 登記相同 ID；保留既有 ID 可維持原有章節連結和本機閱讀紀錄。
 
-| 重要檔案／資料夾 | 用途 |
+| 路徑 | 用途 |
 | --- | --- |
-| docs/content/catalog.json | 主題、章節順序、狀態、簡介及教材版本 |
-| docs/content/lessons/ | 一篇一個JSON，存正文、例題、練習、解答與來源 |
-| docs/assets/diagrams/ | 原創SVG圖；不能把教學圖當真實拓撲 |
-| docs/assets/labs/ | 原始碼、合成封包、操作說明與可下載專案ZIP |
-| docs/app.js、docs/styles.css | 共用呈現與版型，新增章節通常不用改它們 |
-| 課程地圖.md | 舊版資料清單與歷史範圍 |
-| revision/ | 新版教學設計、審稿與驗證；另保留舊版歷史證據 |
-| tools/audit_content.py | 唯讀量測；--finalize在全部可閱讀章節結構通過後同步時間與目錄 |
-| tools/package_labs.py | 打包原始碼，排除bin／obj與可執行檔 |
-| tests/smoke.cjs、tests/browser.py | 資料／呈現互動檢查與選用的真實瀏覽器檢查 |
+| `docs/content/catalog.json` | 主題、章節順序、標題和教材版本 |
+| `docs/content/lessons/` | 每篇教材的正文、練習、解答和來源 |
+| `docs/assets/diagrams/`、`docs/assets/labs/` | 示意圖、教學程式與合成資料 |
+| `docs/app.js`、`docs/styles.css` | 網站呈現、導覽及樣式 |
+| `revision/learning-redesign/` | 學習目標、課程分工、教材規格與驗收紀錄 |
+| `tools/audit_content.py` | 唯讀檢查資料結構；不估計閱讀時間，也不替教材打品質分數 |
+| `tests/smoke.cjs`、`tests/browser.py` | 網站資料與互動檢查；後者需要 Playwright／Chromium |
 
-新增章節：先在catalog加入穩定ID與planned狀態，再依[新版教材規格](revision/learning-redesign/authoring-standard.md)撰寫`<topic>--<chapter>.json`。內容審查、相關模型與網站驗證通過後才改成ready。新增主題則建立自己的目錄，不必變更其他主題順序。
+## 驗收範圍與限制
 
-基本檢查：
+目前的 JavaScript 語法、網站路由／互動、126 篇教材資料結構與合成 PCAP 檢查通過；教材結構檢查有 0 項警戒。這些檢查不能證明讀者已學會。本次環境沒有 Playwright／Chromium 或 Wireshark／TShark，因此沒有聲稱通過瀏覽器畫面或原生 Wireshark 驗收；.NET 教材程式也沒有在本次環境重新建置。每個系列另有作者檢查與獨立技術／銜接審查紀錄。
 
-```bash
-node --check docs/app.js
-node tests/smoke.cjs
-python3 tools/audit_content.py
-```
+尚未取得公司原始碼、部署圖、實際 Ozeki 套件版本及設備資訊，所以教材說明一般維護方法，不宣稱知道公司系統的流程或根因。下一步的品質驗收應由讀者選一篇連續試讀，指出哪個流程交接仍不清楚，再針對卡點修正。
 
-瀏覽器檢查需另安裝Playwright與Chromium，開本機伺服器後執行`python tests/browser.py http://localhost:8000/`。C#教學專案解壓後依各自README執行；網站閱讀本身不需安裝.NET。驗證時在暫存資料夾編譯，避免把bin／obj發布。
-
-下一步是驗證新版連續教材的理解與銜接，再依教學方案重編全站。公司相關內容需要真實文件才能映射，不預先替未知系統定義架構。
+完整設計取捨與檢查證據見[改版紀錄](revision/learning-redesign/README.md)、[核心教材複核](revision/core-series-quality-followup.md)及[驗收資料](revision/learning-redesign/verification.json)。

@@ -1,25 +1,10 @@
 {
-  "contentVersion": 2,
+  "contentVersion": 3,
   "intro": "從正確的字元和訊息模型出發，才有辦法把「串列不通」分成可驗證的問題。本章用兩組完整推導與多輪案例，把資源、電氣、UART、parser、時序與業務狀態連成維護流程。",
   "prerequisites": [
     "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
     "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
-  "studyTime": {
-    "reading": [
-      10,
-      17
-    ],
-    "practice": [
-      20,
-      40
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
-  },
   "goals": [
     "定義成功與正常契約，預測各層應出現的資料。",
     "用有效設定、HEX、讀取狀態及時間分開故障候選。",
@@ -57,7 +42,7 @@
       "heading": "例題一：完整正常查詢的數量與時間",
       "paragraphs": [
         "Device-Lab-A為RS-232、9600 8N1、none flow、STATUS? CRLF；回覆OK,READY CRLF。請求9bytes、90bits、9.375ms；回覆10bytes、100bits、10.4167ms。裝置從收完請求至開始回覆20ms，假設其他延遲0，下界39.7917ms。設教學環境交易deadline200ms，不代表所有裝置建議200，而是留給此條件的明確比較門檻。",
-        "APP t=0開始write，線路請求t=2到11.375，裝置t=31.375開始回應至41.7917，APP t=50才讀到10bytes，這些時間可合理共存，因為橋/排程有延遲。裝置處理=20ms，整APP=50ms；50−39.7917不是全部網路延遲，因為起點與觀測層不同。記錄每段才能看懂同一個回覆在工具與APP不同timestamp。"
+        "APP t=0開始write，線路請求t=2到11.375，裝置t=31.375開始回應至41.7917，APP t=50才讀到10bytes，這些時間可合理共存，因為橋/排程有延遲。裝置處理=20ms，整APP=50ms；50−39.7917=10.2083ms，包含t=0至首個線路bit的2ms，以及最後回覆bit至APP讀到資料的8.2083ms；這兩段分別屬不同觀測邊界，不應統稱為網路延遲。記錄每段才能看懂同一個回覆在工具與APP不同timestamp。"
       ],
       "table": {
         "caption": "例題一：完整正常查詢的數量與時間",
@@ -112,7 +97,7 @@
       "heading": "從Read路徑到錯誤分類，避免丟失關鍵資訊",
       "paragraphs": [
         "若程式碼catch所有異常只寫「serial error」，會合並resource、timeout、EOF/關閉、parity/driver、message corruption及業務拒絕。讀程式時把每類發生的位置標在轉換鏈，並儲存原錯誤code及phase。最大read count和實際n分開，message total/已收bytes分開，deadline起點和remaining分開，才不會報告虛假的「裝置只回一半」。",
-        "下方是原創日誌模型不是SerialPort API；真實專案把例項與交易ID連到自己的owner。timestamp與單調耗時用於不同目的，老事件若不屬當前例項需顯式標記discard reason。不要把回呼exception吞掉後繼續使用受汙染buffer，恢復需按protocol定義。"
+        "下方是原創日誌模型不是SerialPort API；真實專案把例項與交易ID連到自己的owner。timestamp與單調耗時用於不同目的，老事件若不屬當前例項需顯式標記discard reason。不要把回呼exception吞掉後繼續使用受汙染buffer，恢復需按protocol定義。此處的`record`是C#用來宣告一筆資料形狀的語法，範例將日誌欄位放在同一列；它不是SerialPort API。"
       ],
       "code": {
         "title": "原創教學資料／C#閱讀片段",
@@ -278,16 +263,16 @@
       "url": "https://www.analog.com/en/resources/app-notes/an-960.html"
     },
     {
-      "label": "Microsoft：SerialPort.Read實際回傳數",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.read?view=netframework-4.6"
-    },
-    {
-      "label": "Microsoft：DataReceived時序與執行緒",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived?view=dotnet-plat-ext-8.0"
+      "label": "Microsoft Learn：DataReceived事件的觸發與執行緒行為",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived"
     },
     {
       "label": "pySerial：引數、讀取與timeout",
       "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
+    },
+    {
+      "label": "Microsoft .NET 10 原始碼：SerialPort.Read回傳實際位元組數",
+      "url": "https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.IO.Ports/src/System/IO/Ports/SerialPort.cs"
     }
   ],
   "resources": [

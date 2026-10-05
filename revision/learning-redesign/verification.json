@@ -1,68 +1,114 @@
 {
-  "checked_at_utc": "2026-10-03T16:04:24.408921+00:00",
+  "checked_at_utc": "2026-10-05T13:30:22Z",
+  "scope": "Current local working tree: 16 independent topics, 126 ready lesson routes, 78 v3 lessons, 48 legacy reference lessons. Six core series total 50 v3 lessons; networking, Wireshark, Socket and RS-232 provide 28 optional references.",
   "checks": {
     "javascript_syntax": {
-      "exit_code": 0,
-      "output": "",
-      "stderr": ""
+      "status": "passed",
+      "command": "node --check docs/app.js"
     },
-    "site_schema_and_navigation": {
-      "exit_code": 0,
-      "output": "通過：16 個獨立主題、126 篇教材，以及首頁／主題／完整教材／進度／規劃中頁面的互動檢查。",
-      "stderr": ""
+    "site_routes_and_interactions": {
+      "status": "passed",
+      "command": "node tests/smoke.cjs",
+      "result": "All 16 topic pages and 126 ready lesson routes rendered in the harness; core entry links, inline lesson references, same-version navigation, answers, progress state and planned-page behavior passed."
+    },
+    "content_structure": {
+      "status": "passed",
+      "command": "python3 tools/audit_content.py",
+      "result": "126 lessons: 78 v3 and 48 legacy; 0 structural warnings. Body text totals 540,637 characters, median 4,440; these are inventory values, not quality scores. Six core series contain 50 lessons, with four conditional chapters identified as optional in the learning path."
+    },
+    "json_parse": {
+      "status": "passed",
+      "command": "Python json parser over docs/content/catalog.json and docs/content/lessons/*.json",
+      "result": "Catalog and all 126 lesson JSON files parsed successfully."
+    },
+    "baseline_pcap_validation": {
+      "status": "passed",
+      "command": "python3 tests/verify_labs.py",
+      "result": "Three teaching PCAPs passed their format, timestamp, IP/TCP/UDP checksum and DNS/HTTP/SIP/RTP assertions."
+    },
+    "maintenance_pcap_validation": {
+      "status": "passed",
+      "command": "python3 docs/assets/labs/wireshark-maintenance-verify.py",
+      "result": "Three 171/172-frame PCAPs passed structure, available checksums, TCP framing/sequence/ACK, SIP Content-Length, RTP order/count and paired-observation checks."
+    },
+    "integration_python_lab": {
+      "status": "passed",
+      "command": "python3 docs/assets/labs/integration-trace-lab.py --case all",
+      "result": "Success, timeout, matching late event, duplicate and stale-session cases exited normally. A matching request/session late result resolves Unknown in this explicitly fictional model; an old-session result is not applied."
+    },
+    "python_syntax": {
+      "status": "passed",
+      "command": "python3 -m py_compile tests/browser.py tools/audit_content.py docs/assets/labs/integration-trace-lab.py"
     },
     "whitespace": {
-      "exit_code": 0,
-      "output": "",
-      "stderr": ""
+      "status": "passed",
+      "command": "git diff --check"
+    },
+    "browser_visual_test": {
+      "status": "not_run",
+      "reason": "Playwright and Chromium are unavailable in this environment. The Node harness verifies rendering logic, not actual desktop/mobile browser layout."
+    },
+    "native_wireshark_test": {
+      "status": "not_run",
+      "reason": "Wireshark GUI and TShark are unavailable. PCAP files were checked by repository validators and independent content review, not by native dissector output."
+    },
+    "dotnet_labs": {
+      "status": "not_run",
+      "reason": ".NET SDK/compiler is unavailable in this environment. C# source was reviewed statically; current code and archive match, but no compile/runtime result is claimed."
+    },
+    "learner_comprehension": {
+      "status": "not_run",
+      "reason": "The user has not yet completed a reading session and knowledge check against the revised lessons."
+    },
+    "company_system_mapping": {
+      "status": "not_available",
+      "reason": "Company source code, deployment details, actual Ozeki package version and device records were not supplied; materials do not infer those facts."
+    },
+    "reliability_lab_archive_integrity": {
+      "status": "passed",
+      "command": "Python zipfile byte comparison against docs/assets/labs/reliability-maintenance-lab/",
+      "result": "All five files in reliability-maintenance-lab.zip are byte-for-byte identical to the corresponding working source files."
+    },
+    "reliability_async_scenarios": {
+      "status": "verified_by_static_calculation",
+      "command": "Reviewed Program.cs calculation for dotnet run -- async and dotnet run -- async 500; independently recalculated both deterministic timelines",
+      "result": "Baseline cost 50 yields status queue wait 30 and completion at 101; cost 500 yields status wait 480, heartbeat wait 402 and completion at 503. The C# executable was not compiled because .NET SDK is unavailable."
     }
   },
-  "limitations": [
-    "Website and data checks do not prove learner comprehension.",
-    "No new C# execution or company hardware validation in this pilot."
-  ],
-  "svg_text_bounds": [
-    {
-      "file": "networking-intro-bytes-ready.svg",
-      "text_outside_viewbox": []
-    },
-    {
-      "file": "networking-intro-journey-a.svg",
-      "text_outside_viewbox": []
-    },
-    {
-      "file": "networking-intro-journey-roundtrip.svg",
-      "text_outside_viewbox": []
-    },
-    {
-      "file": "networking-intro-programs-roles.svg",
-      "text_outside_viewbox": []
-    },
-    {
-      "file": "networking-intro-programs-sequence.svg",
-      "text_outside_viewbox": []
+  "lesson_counts": {
+    "total_ready": 126,
+    "v3": 78,
+    "legacy_reference": 48,
+    "optional_foundation_v3": 28,
+    "six_core_v3": 50,
+    "core_series": {
+      "ozeki": 7,
+      "ptt": 8,
+      "voip": 9,
+      "radio": 8,
+      "integration": 9,
+      "reliability": 9
     }
-  ],
-  "payloads": {
-    "READY": {
-      "hex": "52 45 41 44 59",
-      "bytes": 5,
-      "encoding": "ascii"
-    },
-    "STATUS?": {
-      "hex": "53 54 41 54 55 53 3f",
-      "bytes": 7,
-      "encoding": "ascii"
-    },
-    "就緒": {
-      "hex": "e5 b0 b1 e7 b7 92",
-      "bytes": 6,
-      "encoding": "utf-8"
-    },
-    "5": {
-      "hex": "35",
-      "bytes": 1,
-      "encoding": "ascii"
-    }
+  },
+  "review_evidence": {
+    "summary": "All 50 lessons in the six core series received independent technical and continuity review across two reviewers (24 and 26 lessons); the curriculum was separately checked for overlap and optional reading paths. Corrected findings are summarized in revision/core-series-quality-followup.md. Counts do not establish learner comprehension.",
+    "reports": [
+      "revision/ozeki-audio-review.md",
+      "revision/cross-topic-review.md",
+      "revision/ptt-review.md",
+      "revision/ptt-peer-review.md",
+      "revision/voip-review.md",
+      "revision/radio-review.md",
+      "revision/integration-review.md",
+      "revision/integration-peer-review.md",
+      "revision/reliability-review.md",
+      "revision/reliability-peer-review.md",
+      "revision/core-series-quality-followup.md"
+    ]
+  },
+  "publication": {
+    "status": "pending",
+    "public_main_sha_before_update": "97911ebf28c59d50bfa504f8924a2ab2f910f522",
+    "verification_file": "revision/learning-redesign/publication-verification.json"
   }
 }

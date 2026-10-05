@@ -1,237 +1,151 @@
 {
-  "contentVersion": 2,
-  "intro": "篩選器是把一句排查問題翻成可檢查條件的工具。它的難點不是背ip.addr，而是清楚知道哪些資料會被丟棄、哪些只是隱藏、雙向條件如何成立，以及為何一個合法篩選仍可能回答錯問題。本章從集合與方向建立概念，逐步寫出可驗證的查詢。",
+  "contentVersion": 3,
+  "intro": "上一章教你取得一份短擷取，並用端點條件找到一條TCP對話。本章再往前一步：把調查問題拆成可驗證的display filter，先擴大範圍定位資料，再逐步縮到目標請求；同時知道何時才適合在擷取前排除流量，以及零結果不足以證明什麼。全程使用附帶的wireshark-first-capture.pcap，結果都能從該檔核對。",
   "prerequisites": [
-    "知道 IP 是主機位址、Port 是應用端點；本章遇到傳輸與擷取新概念會從機制解釋。",
-    "可以使用自己電腦上的 Wireshark 開檔；未安裝時可先讀本章完整資料與推導，再進行操作。"
+    "已完成Wireshark第一章，會查看封包列表、細節、位元組，並理解display filter只隱藏畫面結果、capture filter會限制原檔內容。",
+    "已學過IP、Port、TCP與HTTP；本章聚焦如何用Wireshark欄位把它們組成調查條件，不重講通訊原理。"
   ],
   "goals": [
-    "能區分擷取篩選的不可逆選擇與顯示篩選的查詢。",
-    "能把方向、端點、旗標及時間條件寫成不混流的表達式。",
-    "能用正反例驗證篩選，避免零筆和錯誤命中導致假結論。"
+    "能從問題定義必要欄位，逐步擴大或縮小display filter，並解釋每一步排除了什麼。",
+    "能按端點、方向、HTTP欄位及TCP stream範圍隔離一筆查詢。",
+    "只在條件已知且取捨明確時使用capture filter，並避免把DNS或回覆一起排除。",
+    "能用空篩選、寬條件和原始擷取條件檢查零結果，區分沒有匹配資料與沒有發生流量。"
   ],
   "sections": [
     {
       "kind": "concept",
-      "heading": "兩個階段、兩種語言：先保存，再查詢",
+      "heading": "先把調查問題寫成需要保留的證據",
       "paragraphs": [
-        "Capture filter在擷取階段決定哪些frame值得保存，常用libpcap/BPF形式，例如tcp port 9100。Display filter在Wireshark已讀入檔案、解析出欄位後，決定畫面顯示哪些frame，例如tcp.port == 9100。兩者不是一種語法的不同寫法；它們處理時間與可用資訊都不同。把tcp.port == 9100貼進擷取設定可能無法編譯，反過來tcp port 9100也不是正常的顯示表達式。",
-        "擷取階段要在高流量下迅速決定保留，通常以外層地址、Port與協定等條件處理，不能依賴事後多筆推論的tcp.stream與tcp.analysis。顯示階段可以查解析欄位、組合條件、看工具產生的分析資訊。你不能要求capture filter事先知道哪段之後會被稱為重傳，因為那些關係尚未完整建立。",
-        "若顯示條件太窄，清空即可恢復原檔；若擷取條件太窄，原檔根本沒有被排除的frame。這個不可逆差別會影響工程策略：目標資訊尚不完整時，授權短窗寬抓通常比過早只存某個應用Port有診斷彈性。磁碟或敏感資料限制仍可要求縮小範圍，但需記下因此無法回答的問題。"
+        "本章使用同一份合成檔 `wireshark-first-capture.pcap`。它共有13個frame：前兩筆是DNS查詢與回覆，後11筆是一條TCP對話。DNS查詢由 `192.0.2.10:53000` 送往 `192.0.2.53:53`，回覆將 `lab.example` 對應到文件位址 `198.51.100.20`。TCP對話是 `192.0.2.10:54000` 與 `198.51.100.20:8080`；client在frame 6送出 `GET /status`，server在frame 8回覆HTTP 200，本文長18 bytes。",
+        "這些frame編號只對這份檔案有意義，換一份擷取就會不同。它們把本章的答案限制在可核對的資料內：檔中只有這一次HTTP查詢，不能用它推論服務的一般行為或公司網路拓撲。若問題是「這次GET有沒有對上HTTP回覆」，需要保留兩個方向、HTTP內容與相關TCP資料；只要知道server收過資料，所需範圍就不同。過濾條件應由問題決定，而不是由哪條filter看起來最專業決定。",
+        "下文依序從DNS確認名稱解析線索、從IP/Port定位TCP對話、再用HTTP欄位縮小到請求或回覆。每次縮小前先記下目前條件和匹配數；若新條件讓預期證據消失，先檢查這一步的方向、欄位或檔案範圍，暫時退回上一個已驗證條件。這讓filter成為可回退的查詢，而不是把畫面縮小後就當作完整事實。"
       ]
     },
     {
-      "kind": "concept",
-      "heading": "把篩選想成集合：每筆frame通過還是不通過",
+      "kind": "worked-example",
+      "heading": "從寬到窄：每一步都用PCAP中的已知frame驗證",
       "paragraphs": [
-        "每一個條件都把全部frame分成真與假。tcp表示有TCP解析；tcp.len > 0表示含TCP資料；ip.src == 192.0.2.10表示來源是A。and要求同一筆滿足兩者，or容許任一者，not排除條件集合。先把自然語句寫成「我需要哪些frame」再翻語法，可避免一路亂加條件只求畫面變少。",
-        "ip.addr同時涵蓋來源與目的，因此ip.addr == A適合找與A相關的雙向流量；ip.src == A只看A送出的方向。tcp.port同時看TCP來源或目的Port；tcp.dstport只看目的Port。想看本次連線全部證據，通常先保留雙向；想計算A發多少資料，再用來源方向加tcp.len > 0。把任務方向說清楚，纔不會誤把回覆消掉。",
-        "多層封裝可能讓一個欄位有多個值，例如外層IP與隧道內層IP。即使普通TCP也有srcport和dstport兩個Port，tcp.port條件是在其中任一值上成立。正因如此，不能把每個比較都想成對唯一純量的計算；有些組合必須明寫來源／目的。入門先用本套件沒有隧道的IPv4，再理解實際系統的外內層條件。"
+        "先用 `tcp` 顯示檔內所有TCP frame，應看到11筆（frame 3到13）；這確認你目前看的檔案確實含有TCP。接著用上一章學過的 `ip.addr == 198.51.100.20 && tcp.port == 8080`，在本檔仍應得到這一條連線的11筆。這個條件要求封包任一端包含該IP，且任一端的TCP Port為8080；它適合初步搜尋，但一般情況不保證IP與Port落在同一端點，也不保證只包含一次操作。需要精確端點時，應用下文的雙向條件或stream。",
+        "需要追蹤DNS名稱時，使用 `dns.qry.name == \"lab.example\"` 找該名稱相關的查詢/回覆；要單獨檢查回覆，可再加 `dns.flags.response == 1`。核對回覆中的位址後，才用該次實際解析出的IP定位TCP。不要只按時間猜DNS回答屬於哪個連線：名稱可能有多個答案、快取可能讓擷取期間沒有DNS，應同時檢查端點與時間。",
+        "若目前只查client送出的方向，可先用 `ip.src == 192.0.2.10 && tcp.dstport == 8080`，在此檔會留下client到server方向的握手、GET及結束封包；反向的SYN/ACK、HTTP回覆和server結束資料不會出現。加上 `http.request.method == \"GET\" && http.request.uri == \"/status\"` 後，會進一步縮至frame 6。若問題是server回了什麼，應反過來按server來源端點定位，並用 `http.response.code == 200` 找frame 8。",
+        "當你要的是同一條TCP連線的兩個方向，選中已知frame後讓Wireshark建立TCP Conversation Filter，或讀出該連線的 `tcp.stream` 值再用 `tcp.stream eq N`（N要換成Wireshark在這份檔案中顯示的數字）。這會比只指定服務Port更能隔離對話。stream編號由目前擷取檔的解析結果分配，不是跨PCAP或跨時間的固定連線ID；套用前後都應核對端點。"
       ]
     },
     {
       "kind": "mechanism",
-      "heading": "方向條件的完整寫法：避免篩到同Port的別人",
+      "heading": "用欄位方向與括號，讓條件忠實描述端點",
       "paragraphs": [
-        "若要找A:51000與B:9100之間的雙向對話，一種精確寫法是正向四欄條件or反向四欄條件，各自用括號包起來。只寫tcp.port == 9100會包括其他六條TCP；只加ip.addr == A也仍包括同一主機的其他操作。當問題是某次請求，端點與時間／識別碼都需要一起選。",
-        "括號是寫給工具與下一位讀者看的結構，不該依靠記憶運算優先序。假設寫ip.src == A && tcp.dstport == 9100 || tcp.srcport == 9100，右半部會接受任何來源9100，即使來自其他主機。加上完整反向端點，才對稱地描述同一連線。這個錯誤不會讓語法列變紅，因為語法合法，邏輯卻不符需求。",
-        "對Boolean旗標也要分清欄位存在與值為真。tcp.flags.syn作存在測試不等於只找SYN=1；應寫tcp.flags.syn == 1。找主動建立嘗試可加tcp.flags.ack == 0，讓SYN/ACK不混進來。查RST用tcp.flags.reset == 1；查純ACK還需tcp.len == 0且排除SYN／FIN／RST，因多種控制段都可能同時設ACK。"
+        "`ip.addr`和`tcp.port`各自可匹配封包的來源或目的欄位，因此適合先找與主機及Port相關的雙向資料；但兩條件本身不保證該IP和Port位於同一端點。需要確認封包是否經過特定server端點時，應寫明來源或目的欄位，或使用下方把完整正向和反向條件括起來的式子。`ip.src`、`ip.dst`、`tcp.srcport`、`tcp.dstport`把方向寫明：client請求通常是client來源、server目的；回覆則是server來源、client目的。以方向限定用途時，回覆消失可能只是filter寫成請求方向。",
+        "同一主機也可能同時有多條連線。只用 `tcp.port == 8080` 會保留所有一端使用8080的TCP封包；再加服務IP仍可能把同一服務上其他client的請求放進來。若要固定四個端點欄位，將完整正向和完整反向條件分別括號化，再用 `||` 合併。這樣要求同一frame的地址和Port同時配對，避免把一個對話的請求與另一個對話的回覆混在一起。",
+        "`tcp.stream`能方便隔離已解析的單一TCP對話；`http.request.method`、`http.request.uri`或`http.response.code`則把條件提高到HTTP語意。選最符合問題的粒度即可：回報TCP有沒有資料時不必先加HTTP路徑；要核對特定API回覆時，HTTP欄位能更快排除同連線上的握手、ACK與關閉。欄位不存在、協定未被解碼或資料加密時，HTTP條件可能是零筆，即使底層TCP資料確實存在。"
       ],
       "code": {
-        "title": "A:51000與B:9100的雙向條件",
-        "text": "(ip.src == 192.0.2.10 && tcp.srcport == 51000 && ip.dst == 198.51.100.20 && tcp.dstport == 9100) ||\n(ip.src == 198.51.100.20 && tcp.srcport == 9100 && ip.dst == 192.0.2.10 && tcp.dstport == 51000)"
+        "title": "同一組端點的雙向精確條件（需隔離端點時使用）",
+        "text": "(ip.src == 192.0.2.10 && tcp.srcport == 54000 && ip.dst == 198.51.100.20 && tcp.dstport == 8080) ||\n(ip.src == 198.51.100.20 && tcp.srcport == 8080 && ip.dst == 192.0.2.10 && tcp.dstport == 54000)"
       }
     },
     {
-      "kind": "worked-example",
-      "heading": "例題一：從業務句子推導篩選，而非只背範例",
-      "paragraphs": [
-        "要求是「看A連B的TCP 9100所有建立嘗試，並區分有沒有回應」。第一步ip.addr == 192.0.2.10 && ip.addr == 198.51.100.20 && tcp.port == 9100保留端點對話。第二步tcp.flags.syn == 1只看握手相關，第三步用ack==0看正向SYN、ack==1看SYN/ACK。不要一開始只抓正向SYN，否則無法從同一視圖看到回應。",
-        "本檔中51002在wire time .300、1.300、3.300送出三個同seq3000的SYN，沒有匹配SYN/ACK；51001則在.250送SYN、.260收RST/ACK。兩者都可被人說「連不上」，但封包現象不同。一個有明確拒絕、一個在觀測窗內無回應。先建立包含雙向的基礎條件，再用旗標分組，才能得到這個區別。",
-        "正常51000握手也會進入端點集合，卻在後續有資料與關閉。篩選的驗證應包含它作正控制：若正常流都不見，先查條件寫錯、舊篩選殘留或檔名錯誤，不能直接說所有連線都失敗。正控制是用已知應出現的資料，驗證查詢本身沒有消滅答案。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題二：不要把SIP Port當成整通電話",
-      "paragraphs": [
-        "假設目標是教材Call-ID lab-a@example.invalid。先以sip.Call-ID == \"lab-a@example.invalid\"找四筆INVITE、180、200與ACK。這些SIP都走UDP5060；但SDP宣告媒體用40000與40002。若只用udp.port == 5060分析「整通電話」，結果恰好排除了聲音資料。無RTP這個結論只是查詢沒有問到媒體。",
-        "將問題拆成兩張集合：訊號集合依Call-ID，媒體集合依本次SDP端點與SSRC。普通RTP標頭沒有SIP Call-ID，不能要求rtp且sip.Call-ID同時成立。A呼叫的媒體條件可從udp.port == 40000 || udp.port == 40002開始，再加IP與方向，確認解成RTP。另一通lab-b使用41000/41002，作為不應命中的反控制。",
-        "結合兩集合可用括號明寫(sip.Call-ID == \"lab-a@example.invalid\") || (udp.port == 40000 || udp.port == 40002)，但這只是已知教材端點的方便查詢。實際再協商可能改Port、媒體代理可能讓IP與SIP不同，因此要保存哪個SDP版本導出哪個條件。過濾表達式不是永遠有效的通話ID。"
-      ]
-    },
-    {
       "kind": "mechanism",
-      "heading": "文字、bytes、欄位與分段：contains找到什麼",
+      "heading": "Capture filter只在條件已知時收窄",
       "paragraphs": [
-        "contains搜尋指定欄位的子內容，文字值需引號，原始bytes可用71:31:37表示q17。tcp.payload contains 71:31:37會在單段payload找這三bytes；它不會替你認定這是請求ID欄位，也未必跨段找得到。同一串bytes可能出現在二進位內容、另一個欄位或重送資料中，所以命中後還要看格式與stream。",
-        "若q17三bytes被拆成第一段q與第二段17，逐段contains可能零筆，但Follow Stream仍可重組看到q17。這不是搜尋工具出錯，而是搜索對象不同。另一方面若資料已加密，根本不存在明文q17於捕捉bytes中；再寬的明文contains也找不到。先判斷資料是否完整、是否跨段、是否可解讀，再挑正確搜尋層。",
-        "正則表達式matches適合複雜文字規則，但會增加可讀與維護成本；為了找單一欄位精確值，通常==比較更清楚。欄位名可從細節右鍵複製或官方dfref查，不靠猜。例如sip.Call-ID大小寫屬欄位名稱，字串lab-a的大小寫是否應匹配是另一件事。工具版本差異應用已知小範例核對，而非盲改全文條件。"
+        "Display filter查詢已保存檔案，條件不合時可以清空重看。Capture filter使用另一套libpcap語法，在擷取時就略過不符合的frame；原檔沒有存下來的資料無法靠改display filter還原。只有在觀測問題、介面、端點與Port已相當確定，而且確實要控制流量或檔案大小時，才把明確的條件放到capture filter。",
+        "例如這份檔案若只想保存已知server的TCP/8080往返，capture filter可寫 `host 198.51.100.20 and tcp port 8080`。這個條件會排除本檔用來關聯名稱與位址的DNS兩筆；如果DNS本身也是要檢查的證據，可在同一capture filter中增加已知resolver的條件，例如 `(host 198.51.100.20 and tcp port 8080) or (host 192.0.2.53 and port 53)`。實際resolver、server IP或Port可能改變，不能直接將教材值複製到真實系統。",
+        "若server位址會變、操作先經DNS或proxy、Port未知，或你目前正在診斷「為什麼沒有連上」，以上述IP/Port作capture filter都可能先丟掉關鍵線索。初次或未知故障應在授權的短時間與合適介面內寬抓，事後再用display filter；如因資料政策必須限縮，記錄條件與因此無法回答的問題。filter可降低資料量，不能替代對測量範圍的交代。"
       ]
     },
     {
-      "kind": "mechanism",
-      "heading": "零筆結果和not條件：不存在不等於否定事實",
+      "kind": "diagnostic-case",
+      "heading": "零筆結果要先驗證查詢，再判斷有沒有流量",
       "paragraphs": [
-        "篩選列紅色表示無效或未完成語法，不能當作查詢結果。綠色但零筆才代表此檔目前沒有符合條件的解析項。其原因可能真無流量、選錯文件、擷取條件漏存、協議沒被解碼、時間範圍錯或應用內容被拆段。從「沒有匹配欄位」直接跳到「設備沒有發」省略了所有這些可能。",
-        "想排除某協定可用not dns，想排除地址A可用not (ip.addr == A)，但是也會保留沒有ip.addr的frame，例如ARP。這有時正是你需要的全集，有時不是。若任務是「其他IPv4來源」，寫ip && ip.src != A更直接。先定義全集是所有frame還是IP或TCP，not的含意纔有清楚邊界。",
-        "不同Wireshark版本對!=等多值欄位的語義曾有調整，維護共同過濾器時不要依賴難讀的否定。優先用ip.src、ip.dst與明確括號，寫出至少一筆應匹配與一筆應排除的測試資料。驗證邏輯比收藏幾十條萬能filter更能持續維護。"
+        "假設 `ip.src == 198.51.100.20 && tcp.dstport == 8080 && http.response.code == 200` 是零筆。先從方向推理：在回覆封包中server是來源、client暫用Port是目的，所以目的Port應是54000而不是8080。回到較寬的server/8080雙向條件會看到TCP資料，再用 `ip.src == 198.51.100.20 && tcp.srcport == 8080 && http.response.code == 200` 才會命中frame 8。零筆在這裡證明的是方向條件不符，不是server沒回應。",
+        "面對其他零筆，按成本低到高驗證：先清掉display filter並確認讀的是預期PCAP；再查 `tcp`、端點對話，最後加入HTTP欄位。如果TCP有命中而HTTP沒有，檢查該Port是否被辨識為HTTP、封包是否只抓到部分資料、或流量是否為TLS。可查看位元組或Follow TCP Stream判斷資料型態；只有在確認它是明文HTTP時，才嘗試Decode As修正解析器的協定選擇。",
+        "如果清空display filter後檔案仍沒有目標端點，從這份檔案本身只能說「沒有保存到符合端點的封包」。原因可能是程式沒有觸發、時間窗不對、選錯介面，或當時capture filter已排除資料；僅憑空結果無法區分。查擷取設定與操作紀錄，再於相同可控條件下以較寬capture設定重抓，才有新的證據判斷流量是否離開本機。"
       ]
     },
     {
       "kind": "lab",
-      "heading": "實作：為同一檔建立五個問題的查詢與驗收",
+      "heading": "練習流程：將一次API問題整理成可重現的filter鏈",
       "paragraphs": [
-        "開mixed清空filter，確認171筆。依次建立：所有TCP9100；正常51000雙向；51002建立嘗試；lab-a訊號；lab-a兩方向媒體。每個篩選另存為文字，紀錄問題、條件、預期正例、反例和結果。先不要用manifest對答案；完成後才用它核對原始欄位，避免把情境名稱當推理。",
-        "數值驗收：正常51000十筆；51002三筆SYN；lab-a SIP四筆；媒體Port40000/40002共40筆，因爲一方向20筆、另一方向本應20但漏一且重複一，總筆數恰好仍20。這是故意設的陷阱：40筆不能證明完全無遺失或重複。媒體識別若暫未解成RTP，先依UDP端點查，後續章節學Decode As。",
-        "變因一把媒體filter改成udp.port == 5060，觀察只有訊號；復原回端點。變因二把雙向改成ip.src == A && tcp.dstport == 9100，確認服務器回覆消失而原檔仍在。驗收報告需要說明「條件導致隱去」，再清空filter恢復171。TShark選做匯出同條件，-Y是display filter，不要誤寫成-f。"
-      ],
-      "code": {
-        "title": "顯示篩選匯出SIP核心欄位",
-        "text": "tshark -r wireshark-maintenance-mixed.pcap -Y \"sip.Call-ID == \"lab-a@example.invalid\"\" -T fields -E header=y -e frame.number -e sip.Call-ID -e sip.CSeq.method\n# 引號的shell寫法依PowerShell/CMD調整；GUI直接輸入filter可避免shell層跳脫。"
-      }
-    },
-    {
-      "kind": "diagnostic-case",
-      "heading": "看似ACK不見，其實是篩選把證據刪了",
-      "paragraphs": [
-        "問題：使用者說伺服器沒有ACK。候選一是對端真未收到；候選二是擷取缺反向；候選三是顯示只看tcp.len > 0，因此純ACK全部隱藏。先在同檔清空顯示條件，查看該連線是否有服務器IP、ack字段與tcp.len0。這個動作不改資料，卻能最快區分查詢造成的假象。",
-        "新增證據：清空後q18可見反向ACK4014，之前篩選是tcp.port == 51003 && tcp.len > 0。那個filter只適合看應用資料，並非完整傳輸判讀。有限修正是去掉len條件保留整個stream；隨後用方向與len列標出純ACK。報告不寫「網絡恢復」，因爲網絡沒有被改動。",
-        "若去掉len條件仍無ACK，下一步再比較另一端抓包和capture設定。這是層層排除，不是用一種原因解釋所有無回覆。工具查詢問題可先修而不碰公司系統；真正網絡路徑問題需要補證據。高品質排查會讓每次改動針對一種假說，並保留同一正常基準。"
-      ]
-    },
-    {
-      "kind": "maintenance",
-      "heading": "保存能被別人檢查的篩選規則",
-      "paragraphs": [
-        "共用filter應附一句目的，例如「此檔中隔離q17的TCP雙向」，再附資料範圍與端點，不只叫Filter1。把已確認的端點值與可替換參數分清，其他人才能知道換場景需要改什麼。依目標從寬到窄的三個版本也值得保存；最後只剩一筆時仍能回到包含握手和鄰近事件的上下文。",
-        "導出衍生PCAP時先確認你選的是全部還是Displayed packets。顯示篩選只隱藏，可是匯出「只顯示」會真的產生少資料的新檔；這時別人再清空filter也找不回去。保留原檔與衍生檔名稱、條件、工具版本，才能解釋爲什麼下一位維護者看不見你提到的ACK。",
-        "不要把所有限制都塞進一條長式子。可以先定時間與端點，再使用stream，再用目標欄位。長度不是力量，能用正反例說明每個子條件爲什麼存在纔是可維護的規則。過濾器最終服務的是工程問題，結果需要連同原始字段和觀測位置解讀。"
+        "對附帶PCAP分別記錄下列問題、filter、匹配數及預期正/反例：名稱解析是否回覆；此server的整條TCP對話是否存在；GET `/status` 是否送出；HTTP 200 是否回來。先用DNS查詢取得此次對話的IP，再切換到TCP端點條件，之後才逐步縮小至HTTP欄位；DNS frame與HTTP frame不是同一批封包，不應把DNS條件持續併進HTTP filter。別只保存最後一條式子。數量應能從原檔確認：總計13筆，DNS查詢/回覆2筆，TCP對話11筆，GET一筆，HTTP 200回覆一筆。",
+        "再模擬一個即時擷取規劃：已知server與Port、但希望保留DNS對照時，寫出capture filter並圈出條件涵蓋的resolver；若resolver尚未知，說明為何不能照抄這個條件。最後故意將一個回覆方向寫成client方向，預測零結果，再用雙向TCP stream證明原檔確有回覆。每個判斷都應引用某個可點到的frame，而不只寫filter變綠或變少。"
       ]
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "為何tcp.analysis.retransmission適合display filter而不適合capture filter？",
-      "answer": [
-        "該字段是解析器綜合連接歷史推論，不是保存前即可讀取的固定標頭位元。",
-        "Capture filter與display語言不同，前者不能簡單使用tcp.analysis字段。",
-        "先保存足夠端點範圍，再離線分析重送；捕捉太窄會丟掉分析所需上下文。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "只想找主動發起的SYN，爲何不能寫tcp.flags.syn？給更明確條件。",
-      "answer": [
-        "存在測試不等於Boolean值爲1；TCP字段存在時並不代表SYN設定。",
-        "明確寫tcp.flags.syn == 1 && tcp.flags.ack == 0，把SYN/ACK排除。",
-        "仍須加端點或時間範圍；否則其他連接建立也會進來。"
-      ]
-    },
-    {
       "level": "application",
-      "question": "陌生資料：A=10.1.1.5:53001，B=10.1.1.8:9300。寫雙向精確條件並說明正反例。",
+      "question": "本檔的 `lab.example` 對應哪個TCP目標？請列出由DNS線索到HTTP請求的查詢順序，並指出請求所在frame。",
       "answer": [
-        "正向是ip.src == 10.1.1.5 && tcp.srcport == 53001 && ip.dst == 10.1.1.8 && tcp.dstport == 9300。反向把地址與Port對應交換，兩組括號用||。",
-        "A的53002→B9300應被排除；B9300→A53001應保留。",
-        "驗證這兩筆比只看結果變少更有力；沒有正確反向會漏掉ACK與回覆。"
+        "先用 `dns.qry.name == \"lab.example\"` 找到DNS查詢及回覆；加 `dns.flags.response == 1` 可只看回覆，核對它將名稱對到 `198.51.100.20`。",
+        "再用 `ip.addr == 198.51.100.20 && tcp.port == 8080` 找雙向TCP對話，或隔離該stream。最後加 `http.request.method == \"GET\" && http.request.uri == \"/status\"`；檔中請求是frame 6，server的HTTP 200回覆是frame 8。"
       ]
     },
     {
-      "level": "application",
-      "question": "陌生資料：條件ip.src==10.0.0.1 && tcp.dstport==9000 || tcp.srcport==9000。10.0.0.9:9000→10.0.0.8:55000會命中嗎？需求是僅看10.0.0.1與10.0.0.2。",
+      "level": "understanding",
+      "question": "filter `ip.src == 198.51.100.20 && tcp.dstport == 8080` 在本檔找不到HTTP 200。怎麼用端點方向解釋並改成正確的回覆條件？",
       "answer": [
-        "會命中，因爲右邊tcp.srcport==9000爲真，不要求目標地址。",
-        "改成完整正反向兩組條件並括號化，明確10.0.0.1與10.0.0.2。",
-        "用題給10.0.0.9作反例驗證；語法合法不能代替需求測試。"
+        "HTTP回覆由server `198.51.100.20:8080` 送往client `192.0.2.10:54000`。因此回覆中的8080是來源Port，不是目的Port。",
+        "改用 `ip.src == 198.51.100.20 && tcp.srcport == 8080 && http.response.code == 200`，會命中frame 8。先前零筆是方向條件不合，不足以說server沒回覆。"
       ]
     },
     {
-      "level": "application",
-      "question": "陌生資料：兩段TCP payload分別是52 45 51 20 71和32 35 20 47 45 54。contains 71:32:35零筆，能說q25沒發送嗎？",
+      "level": "reasoning",
+      "question": "下一次只打算保存本檔已知TCP服務對話，但還需要從擷取中確認 `lab.example` 的DNS答案。請寫capture filter；為什麼只用server與TCP/8080會使DNS線索消失？",
       "answer": [
-        "不能，目標q25的bytes跨段：第一段末71是q，第二段開頭32 35是25。",
-        "單段tcp.payload contains無法跨段匹配；Follow本stream可恢復組合文本。",
-        "先查連續seq確保無缺口，再依格式關聯q25，別只改變字符串大小寫。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：某SIP宣告媒體UDP32000/33000。寫sip && rtp得到0，爲什麼不是無聲證據？",
-      "answer": [
-        "同一frame通常屬於SIP訊號或RTP媒體，而普通RTP不攜帶SIP解析字段。and要求同一筆兩者同時成立，所以查詢可能錯誤。",
-        "依Call-ID找訊號，再按本次SDP查UDP端點；需結合方向與SSRC。",
-        "如果端點也無數據，才調查觀測位置、是否發送與媒體路徑，不能用錯誤集合判斷。"
+        "可用 `(host 198.51.100.20 and tcp port 8080) or (host 192.0.2.53 and port 53)`。第一組保存server往返的TCP/8080，第二組保存已知resolver的DNS流量。",
+        "DNS封包是client與 `192.0.2.53:53` 之間的流量，不符合server IP與TCP/8080條件，因此會在擷取階段被排除。若真實resolver未知或會變，需先查環境或暫不加這個capture條件。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "某人只保存顯示出來的RST兩筆作爲新PCAP。對方清空filter仍無握手。如何解釋並補救？",
+      "question": "你用 `http.request.uri == \"/status\"` 得到零筆，但未清空前的封包清單有TCP資料。列出兩個有根據的檢查方向，並說明每個方向能排除什麼。",
       "answer": [
-        "導出Displayed packets產生的新檔只剩RST，清空display不能恢復已未導出的資料。",
-        "提供原始完整檔或重新導出含握手、請求與鄰近事件的窗口，保留導出條件。",
-        "只憑RST兩筆無法可靠判斷整個連接之前的狀態；修復交接資料後再分析。"
-      ]
-    },
-    {
-      "level": "diagnosis",
-      "question": "陌生資料：udp.port==45000有20筆，rtp有0筆。列兩個原因與區分動作。",
-      "answer": [
-        "可能確實是非RTP協議，也可能沒取得SDP或未自動識別RTP。",
-        "先檢查原bytes的版本位元、標頭長度和對應媒體協商，再考慮對該端點Decode As。",
-        "若強制後字段不自洽就撤回；正確解碼後才討論seq/jitter，UDP存在本身不等於聲音。"
+        "先回到server/8080雙向filter查看目標TCP對話，確認來源/目的方向、stream及該筆資料是否在此操作時間；若HTTP request實際在另一條連線或時段，就排除錯誤端點/操作關聯。",
+        "再看TCP payload或Follow TCP Stream是否有明文HTTP。若資料是TLS或HTTP未被解析，HTTP URI欄位不會命中；若是已知明文HTTP但非標準Port未辨識，再檢查Decode As。TCP有資料不等於HTTP欄位一定存在。"
       ]
     }
   ],
   "recap": [
-    "能區分擷取篩選的不可逆選擇與顯示篩選的查詢。",
-    "能把方向、端點、旗標及時間條件寫成不混流的表達式。",
-    "能用正反例驗證篩選，避免零筆和錯誤命中導致假結論。"
+    "從調查問題開始，以TCP/端點作寬範圍，再逐步加入方向、stream與HTTP欄位；每一步用已知正例和反例驗證。",
+    "來源/目的欄位不能互換。請求與回覆方向相反；同Port或同主機也可能包含其他連線。",
+    "Capture filter在儲存前排除frame，條件未知時會破壞後續診斷線索；display filter可清除並回看原檔。",
+    "零筆代表目前條件在目前檔案中沒有命中，不等同真實系統沒有流量或沒有回覆。"
   ],
   "sources": [
     {
-      "label": "Wireshark 官方：顯示篩選器語法與欄位型別",
+      "label": "Wireshark User's Guide：Display Filter語法與套用方式",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChWorkDisplayFilterSection.html"
+    },
+    {
+      "label": "Wireshark User's Guide：Filter表示式、欄位與邏輯組合",
       "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChWorkBuildDisplayFilterSection.html"
     },
     {
-      "label": "Wireshark 官方：TShark 讀檔、篩選與匯出",
-      "url": "https://www.wireshark.org/docs/man-pages/tshark.html"
+      "label": "Wireshark User's Guide：Capture Filter使用時機與語法",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChCapCaptureFilterSection.html"
     },
     {
-      "label": "Wireshark 官方：細節欄位及工具產生欄位",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChUsePacketDetailsPaneSection.html"
+      "label": "Wireshark Display Filter Reference：TCP端點、方向與stream欄位",
+      "url": "https://www.wireshark.org/docs/dfref/t/tcp.html"
     },
     {
-      "label": "Wireshark 官方：VoIP Calls 與 SIP Flow Sequence",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+      "label": "Wireshark Display Filter Reference：HTTP請求與回覆欄位",
+      "url": "https://www.wireshark.org/docs/dfref/h/http.html"
+    },
+    {
+      "label": "Wireshark Display Filter Reference：DNS名稱與回覆欄位",
+      "url": "https://www.wireshark.org/docs/dfref/d/dns.html"
+    },
+    {
+      "label": "Wireshark User's Guide：Follow TCP Stream與串流檢視",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvFollowStreamSection.html"
     }
   ],
   "resources": [
     {
-      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-manifest.json",
-      "label": "可重現資料清單",
-      "description": "檔案雜湊、frame 的原始欄位與合成情境名稱；先獨立分析，再用清單核對。"
+      "path": "./assets/labs/wireshark-first-capture.pcap",
+      "label": "第一章合成擷取檔",
+      "description": "13個Ethernet frame：lab.example的DNS查詢/回覆，以及一條GET /status、HTTP 200的TCP對話；所有地址與內容均為文件示例，不是公司流量。"
     }
-  ],
-  "studyTime": {
-    "reading": [
-      12,
-      20
-    ],
-    "practice": [
-      35,
-      55
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

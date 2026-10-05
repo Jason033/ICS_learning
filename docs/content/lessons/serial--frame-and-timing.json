@@ -1,25 +1,10 @@
 {
-  "contentVersion": 2,
+  "contentVersion": 3,
   "intro": "UART停止位只結一字元，不會告訴程式一條命令在哪結束。從文字終止符與二進位長度，到校驗、累積、重同步和交易期限，本章建立一個真正能讀懂parser行為的資料模型。",
   "prerequisites": [
     "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
     "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
-  "studyTime": {
-    "reading": [
-      11,
-      18
-    ],
-    "practice": [
-      20,
-      40
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
-  },
   "goals": [
     "區分字元幀、訊息幀與交易結果。",
     "逐byte計算LEN、總長與XOR，並解釋校驗限制。",
@@ -115,7 +100,7 @@
       "heading": "C#的完整條件與消費位置必須對應契約",
       "paragraphs": [
         "下方節錄LabParser核心：len先驗1–32，總長len+3；不足break保留；XOR範圍從LEN直到最後DATA，不包括AA或CHK。校驗成功再RemoveRange整個frame，失敗只RemoveAt(0)。這兩個消費長度為什麼不同，要用上節輸入逐byte推演，不能以「清空buffer比較簡單」替代。",
-        "若一次read含合法幀A+B，清空會把B丟掉；若LEN超上界不拒絕，可無期限等待與吃記憶體。模型每byte處理使暫存有界，但未實現交易ID與deadline；生產需單執行緒或同步保護parser、錯誤計數與適當限流。parser狀態不能由UI執行緒與callback無保護同時修改。"
+        "若一次read含合法幀A+B，清空會把B丟掉；若LEN超上界不拒絕，可無期限等待與吃記憶體。模型每byte處理使暫存有界，但未實現交易ID與deadline；生產需單執行緒或同步保護parser、錯誤計數與適當限流。parser狀態不能由UI執行緒與callback無保護同時修改。`Take(total).ToArray()`會把buffer開頭的預期frame長度複製成新陣列；後續`RemoveRange`才從累積buffer消費這些byte，兩步用途不同。"
       ],
       "code": {
         "title": "原創教學資料／C#閱讀片段",
@@ -239,12 +224,16 @@
       "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
     },
     {
-      "label": "Microsoft：SerialPort.Read實際回傳數",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.read?view=netframework-4.6"
-    },
-    {
       "label": "Analog Devices：UART字元與非同步傳送",
       "url": "https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html"
+    },
+    {
+      "label": "Microsoft .NET 10 原始碼：SerialPort.Read回傳實際位元組數",
+      "url": "https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.IO.Ports/src/System/IO/Ports/SerialPort.cs"
+    },
+    {
+      "label": "Microsoft Learn：DataReceived事件的觸發與執行緒行為",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived"
     }
   ],
   "resources": [

@@ -1,271 +1,174 @@
 {
-  "contentVersion": 2,
-  "intro": "長期程式的難點是同一套帳號、裝置與事件會被使用很多次。這章從資源所有權與事件引用開始，說明Stop、Detach、Disconnect、Dispose的不同，推導重復訂閱、舊回呼、UI等待與第二通失敗，再建立可重跑的結束規則。",
+  "contentVersion": 3,
+  "intro": "音訊物件可能持有裝置、緩衝或媒體連線；漏掉停止與釋放，會造成第二次啟動失敗、裝置仍被占用，或舊回呼干擾新操作。本章把「誰建立、誰擁有、誰停止、誰釋放」放進明確生命週期，並處理裝置切換和事件競態。",
   "prerequisites": [
-    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
-    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
+    "已能從程式找出 handler、connector、來源與接收端。",
+    "具體 Ozeki API 名稱來自頁面標記的 1.8.12；新版共享方法是發行紀錄中的版本特定例子。先核對本地契約。"
   ],
-  "studyTime": {
-    "reading": [
-      15,
-      25
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 lifecycle 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
-  },
   "goals": [
-    "用所有權說明誰該停止、解除或釋放每個資源。",
-    "從委託與引用理解重複訂閱、保留舊物件與晚到回呼。",
-    "設計同一通可重複清理、不同通互不影響的終止流程。"
+    "分清暫停媒體、斷開一條邊、釋放整個物件。",
+    "設計裝置切換的建立、驗證、提交與失敗回復。",
+    "用操作/session identity 解讀晚到回呼和共享裝置競態。"
   ],
   "sections": [
     {
-      "heading": "生命週期是建立到不再使用的完整承諾",
-      "kind": "concept",
+      "kind": "mechanism",
+      "heading": "Stop、Disconnect、Dispose 管理不同範圍",
       "paragraphs": [
-        "一個物件的生命週期包含誰建立、何時開始工作、誰使用、何時停止、何時不再接收事件和何時釋放底層資源。垃圾回收負責回收不再可達的受控記憶體，卻不能代替應用及時停止音訊、結束電話或取消業務訂閱。一個還可達的物件不會因為“第一通已經結束”就自動消失；許多長期錯誤來自沒有完成邏輯結束。",
-        "所有權指誰負責最終清理，借用指可以使用但不負責釋放。核心擁有線、會話擁有本通媒體或借用全局裝置，都要明確。若C1和C2借同一個speaker，C1結束時不一定有權Dispose它。若每通自建connector與sender，結束則應清理自己的物件。誰可以清理取決於設計契約，不是變量有沒有Dispose方法。",
-        "讀公司程式可先做所有權表：資源、建立點、使用者、共享範圍、停止條件、最終釋放點。建立點與釋放點若都找不到，是未完成閱讀；找得到但對應不同資源，可能是實際bug。表要能解釋連續兩通，不只解釋啓動一次；每次通話增加的新訂閱、連接和計時器，都應有對應終止或轉移。"
+        "`Stop`停止某個 handler 的媒體活動；`Disconnect`移除指定來源與接收端之間的邊；`Dispose`釋放物件持有的資源。三者不能互相代替。Ozeki 1.8.12 參考分別列出 Microphone/Speaker 的 Start、Stop、Dispose 與 MediaConnector 的 Disconnect、Dispose；新版本是否新增管理方法、取得物件是否共享，需查本地契約。",
+        "先標 owner：應用服務可能持有長期 connector/裝置；每個短期 session 持有自己的 recorder 或播放來源；UI 只提出開始/停止要求。若 UI 關閉時 Dispose 由背景 session 共用的裝置，會互相破壞；若物件永久放在 static 欄位又從未關閉，則可能佔用裝置或檔案。每個物件應有明確建立者、使用者、釋放者。",
+        "清理通常要先阻止新工作，再等正在執行的資料 callback 結束，然後拆自己的路由、停止短期 handler、釋放自己擁有的資源。確切順序依 SDK 同步語義而定，但不能讓 callback 在 Dispose 後繼續操作。所有例外與取消路徑也需要跑清理，而不只正常按下停止時。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "裝置切換必須有失敗回復",
+      "paragraphs": [
+        "假設 Mic-A 正常，使用者選 Mic-B。若平台允許兩支同時開啟，先建立並初始化 B、核對裝置 ID 和格式，再把媒體圖切到 B，確認資料活動後才釋放 A。若 B 無法建立，就保留 A 或回報明確錯誤，而不是先 Dispose A 再發現新輸入不可用。",
+        "若不能同時使用兩個端點，則切換策略需是「停止 A→建立 B→驗證→成功後提交；失敗則重建 A」。這是產品所需可用性與裝置能力的取捨，SDK 本身不會替應用定義回復體驗。紀錄至少帶切換前後的 device ID、初始化結果、資料活動、失敗原因和回復結果。",
+        "插拔也可作同一狀態機：使用中→裝置移除通知→停止受影響的路徑→重新枚舉→選擇替代裝置→重建物件與連線→驗證。1.8.12 Microphone 頁列 `OnUnplugged`，並說該物件也會被 dispose；這是舊頁面的契約。公司 wrapper 可能把通知改成另一個事件或同步訊息，須追到實作。"
+      ],
+      "code": {
+        "title": "切換流程與失敗回復",
+        "text": "目前 A 正常 → 建立 B → 初始化/身份確認 → 將資料圖切到 B → 驗證\n                                                       ├ 成功：停止並釋放 A\n                                                       └ 失敗：保留 A 或重新建立 A\n\n若裝置不允許雙開，採停止 A → 建立 B → 驗證；失敗時明確回復 A。"
+      }
+    },
+    {
+      "kind": "code-reading",
+      "heading": "C# 清理語法執行釋放，不替你判定物件所有權",
+      "paragraphs": [
+        "`using` 或 `using var` 會在作用域結束時對 `IDisposable` 物件呼叫 Dispose；`try/finally` 可以確保清理在例外路徑執行。這些語法不知道兩個 session 是否共用同一支實體麥克風，也不會替你等待事件回呼完成。先定義 owner，才知道某段程式有沒有權釋放資源。",
+        "實務上短期 session 可以有自己的 `StopSession`/`Dispose`，並用狀態守衛避免重複清理；長期共用裝置則由服務 owner 管理。事件回呼應帶 session identity，舊 session 的 Stopped callback 只能改自己的狀態，不能拿全域 `currentDevice` 停掉剛建立的新裝置。若 callback 和 UI/背景工作可能並行，還要依框架規則保護共享狀態。",
+        "官方發行紀錄 10.3.193 記載多個呼叫者可能取得同一實體 Speaker/Microphone，互相 Start/Stop 會影響彼此，並新增 StartManaged/StopManaged/DisposeManaged 方法。這是明確的版本案例，不表示每版或每個 wrapper 都支援相同引用計數語義。不要將它當成機械式替換清理方法的指令；查版本和使用指南後再決策。"
+      ],
+      "code": {
+        "title": "資源清理責任示意（方法名不是 Ozeki API）",
+        "text": "async Task StopSessionAsync(Session session)\n{\n    if (!session.TryBeginStopping()) return;\n    session.StopAcceptingNewWork();\n    await session.WaitForCallbacksAsync();\n    session.UnsubscribeOwnedHandlers();\n    session.DisconnectOwnedEdges();\n    session.StopOwnedMedia();\n    session.DisposeOwnedMedia();\n    session.MarkStopped();\n}\n\n// 示意一個 owner 的清理順序；要代入公司介面與 SDK 契約。"
+      }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "第一輪成功、第二輪失敗可能是不同資源殘留",
+      "paragraphs": [
+        "合成案例 A：第一次錄音只停止 recorder，未完成關檔；第二次使用同一路徑建立 recorder 時失敗。這是目的端生命週期/檔案鎖定問題，不是麥克風沒有資料。案例 B：舊 session 的 Stopped callback 晚到，讀取全域 currentMic 並將新 Mic-B 停止。症狀同是「第二次沒聲音」，但 A 要修 recorder 關閉，B 要修 callback 歸屬。",
+        "給每次操作一個 session ID，記錄物件建立、Start、Stop、Disconnect、Dispose 的時間與 owner。事件也記錄產生它的物件/session ID。若新 session 的狀態在舊 callback 到達後改變，就有時序證據；若上輪 recorder 狀態未結束，則檢查關檔完成契約及路徑權限。",
+        "測試要覆蓋快速開始/停止、連續錄三次、切換裝置、拔除當前裝置、新設備初始化失敗、應用關閉時仍有 callback。成功標準不只是第一次有聲，而是每輪舊資源都結束、後續 session 可用且沒有操作串線。若無法確定 Stop 是同步完成還是只提交命令，先查文件或以隔離小測試確認。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "把競態假設變成能驗證的日誌",
+      "paragraphs": [
+        "下面的合成事件順序展示一個 bug：Session S1 在 t=10 開始停止；S2 在 t=12 選用 Mic-B 並開始；t=14 舊 S1 callback 以全域欄位停止 Mic-B。只有事件名稱而沒有物件/session 身份，log 看起來可能只是「Mic stopped」，很難看出是舊 session 造成。",
+        "改善觀測時記錄操作 ID、session ID、物件 ID、裝置穩定識別、事件執行緒或序列、前後狀態及狀態變更者。敏感路徑或使用者名稱可遮罩；保留定位所需的穩定 ID 與錯誤碼。關鍵是讓一次命令和它實際影響的物件能被配對。",
+        "若程序確定有多執行緒事件，將切換/清理狀態轉換序列化，或以鎖、取消 token 等架構手段保護；具體選擇依現有程式執行緒模型，不為了單一案例加全域鎖。用快速切換測試確認舊 callback 只作用於 S1，而 S2 最終仍在預期狀態。"
       ],
       "table": {
-        "caption": "兩個可行設計，不能混搭",
+        "caption": "合成競態時序（測試資料，不代表 SDK 固定 callback 順序）",
         "headers": [
-          "資源",
-          "程式級復用",
-          "每通擁有"
+          "時間",
+          "事件",
+          "對象",
+          "當時關係"
         ],
         "rows": [
           [
-            "設備",
-            "程式啓動創建，通話可Start/Stop",
-            "每通創建，結束釋放"
+            "t=10",
+            "Stop requested",
+            "S1 / Mic-A",
+            "舊 session 正在結束"
           ],
           [
-            "路由邊",
-            "初始化Connect，關閉Disconnect",
-            "每通Connect，結束Disconnect"
+            "t=12",
+            "Start completed",
+            "S2 / Mic-B",
+            "新 session 已成為目前操作"
           ],
           [
-            "通話附著",
-            "每通Attach/Detach",
-            "每通獨立處理器"
+            "t=14",
+            "Stopped callback",
+            "S1 callback；程式卻操作 currentMic=Mic-B",
+            "舊事件錯誤影響新物件"
           ],
           [
-            "訂閱",
-            "核心一次，通話每次",
-            "每通訂閱並解除"
+            "修正後",
+            "Stopped callback",
+            "S1 callback 只改 S1 狀態",
+            "session identity 阻止跨操作清理"
           ]
         ]
       }
-    },
-    {
-      "heading": "事件訂閱為什麼會讓舊物件留在記憶體",
-      "kind": "concept",
-      "paragraphs": [
-        "C#事件通常保存委託集合，委託包含要調用的方法與目標實例。若長期存在的core訂閱了舊form的方法，core通過委託仍引用form；即使你把form變量設null，引用鏈還在。相反地，若發佈者與訂閱者均沒有任何外部引用，彼此引用循環不必然洩漏，因為.NET回收不是簡單引用計數。定位問題要找從長期根能到達的鏈。",
-        "重復訂閱同一個handler不會自動合併。+=兩次可使一次事件調用兩次handler，-=一次通常只移除一個匹配項。重復初始化、重新註冊時再訂核心來電、保持恢復時再訂通話，都會造成紀錄倍增、同一操作兩次清理或聲音路徑重復。看到紀錄兩行不能立刻判斷SDK發了兩次；先記錄事件原始接收序號與訂閱點次數。",
-        "匿名函數更需要保存委託。+= e=>Apply(e)與-= e=>Apply(e)不是同一個已保存handler，外形相同也不保證解除到原訂閱。可用命名方法或保存delegate字段，並把訂閱/解除放在明確生命週期入口。維護不是禁止lambda，而是使每一份訂閱都有可驗證的身分與歸屬。"
-      ]
-    },
-    {
-      "heading": "Stop、Detach、Disconnect、Dispose各拆哪一層",
-      "kind": "concept",
-      "paragraphs": [
-        "Stop讓設備或來源不再工作；Detach解除sender/receiver與call的附著；Disconnect拆來源→目標資料邊；Dispose釋放物件擁有的資源。Ozeki官方通話示範結束時Stop、Detach、解除call事件，程式關機時另釋放connector。你不能把其中一項當作其他項已完成的證明，也不能照字母順序隨意調用。",
-        "應依依賴關係設計：先阻止新業務工作與舊狀態復活；結束或等待控制流程按SDK契約處理；停止本通擁有的來源，解除附著、路由和事件，最後釋放本通擁有的物件。真實SDK可能在Stop或Detach產生通知或例外，所以不能假設清理只是不會失敗的幾行。要保存每一步結果，並確保某一步失敗不會讓其餘必需清理永久跳過。",
-        "也不能用通用Dispose層層掃所有東西。SDK通話物件可能由SDK管理，Line可能仍給其他通用，設備可能全局共享；只有清楚擁有者才有權釋放。LabSession採用每通自己擁有LabMedia，故Ended可直接Dispose該媒體；這個設計便於理解隔離，不宣稱真實產品必須每通創建麥克風。遷移時替換所有權表，而不是機械複製順序。"
-      ]
-    },
-    {
-      "heading": "重複終止與晚到事件：結束狀態要不可復活",
-      "kind": "concept",
-      "paragraphs": [
-        "用戶按掛斷、SDK發終態、超時處理和窗口關閉可能幾乎同時要求清理。本通結束入口應可重復調用而不重復副作用。最簡單串行模型用Ended守衛：第一次將Ended設true，再解除事件與釋放；之後直接返回。真實併發需保證檢查與修改是原子的，可通過單一控制佇列或適當同步實現。布林字段本身不自動保證多步操作安全。",
-        "解除訂閱通常防止未來發佈使用當前訂閱集合通知，但無法撤銷已開始的回呼、已經取出的委託快照或UI佇列中的工作。因此handler內部和派送後的狀態應用仍要檢查會話是否結束以及generation。不要以“已經-=”推論絕不再有舊工作。這種邊界是第二通剛開始就被舊清理斷音的關鍵。",
-        "終止應是應用模型里的單向邊。舊Active晚到只能記錄，不可把Ended改回Active；舊C1終態仍能確認C1結束，但不得清C2。若結束並未收到SDK確認，業務可以顯示“終止請求中／結果未確認”，同時採用安全資源策略，不能為了UI乾淨而假裝伺服器已回覆。應用生命週期與遠端事實需區分，才能解釋網路故障下的殘留。"
-      ]
-    },
-    {
-      "heading": "例題一：兩次訂閱，一次解除，還剩多少？",
-      "kind": "worked-example",
-      "paragraphs": [
-        "輸入LabCall無訂閱，隨後同一handler+=兩次。Start發一條Dialing，count從0到2；-=一次後HandlerCount仍1；再-=一次才0。若重新初始化每次都+=，運行一天後一次事件可調用十幾個handler，即使每通都“解除了一次”，仍不匹配。這個數量推導無需網路就能驗證。",
-        "修正不是看到兩條紀錄就加去重隱藏，而是保證初始化與訂閱各發生一次，或用擁有訂閱的session/註冊記錄明確移除。應用層業務動作可再做冪等守衛，因為即使訂閱正確，真實SDK或異步工作仍可能重復輸入。去重和訂閱數是兩個問題：前者保護業務結果，後者保護生命週期和引用。",
-        "驗收需首次創建、重復創建請求、結束與再次創建。Lab情境會把錯誤作為預期重現，並驗證兩次remove才清零；最終全PASS是“錯誤機制和修正均符合模型”，不是Fault不存在。你應在看答案前計算數量，才能理解事件語法背後的行為。"
-      ],
-      "code": {
-        "title": "完整重複訂閱推導；對應lifecycle情境",
-        "text": "var call = new LabCall(\"C1\", new LabLine(\"L1\"));\nint count = 0;\nAction<LabCallEvent> handler = _ => count++;\ncall.Changed += handler;\ncall.Changed += handler;\ncall.Start();\nConsole.WriteLine(count); // 2\ncall.Changed -= handler;\nConsole.WriteLine(call.HandlerCount); // 1\ncall.Changed -= handler;\nConsole.WriteLine(call.HandlerCount); // 0"
-      }
-    },
-    {
-      "heading": "例題二：連續三通與重複終止",
-      "kind": "worked-example",
-      "paragraphs": [
-        "輸入C1、C2、C3依次創建，每通擁有LabSession與LabMedia。Active後Tx/Rx均true；HangUp觸發Ended，session第一時間Ended=true，解除OnState並Dispose媒體。隨後顯式session.Dispose與注入又一Ended，清理次數仍1。因為call的訂閱已0，注入晚到狀態不會再次進入session；即使直接有舊入口，Ended守衛也保護終止。",
-        "下面完整循環是回歸核心：每通結束後邊數0、handler0、釋放次數1，下一通用自己的新媒體。因此C1不能把C2的裝置釋放，也不會因C1結束過就讓C2永久Ended。實際生產可採用全局設備，但需把測試條件改為“共用資源還活著、附著歸屬當前通”；不可以只刪斷言而不建立另一種所有權的檢查。",
-        "這段Lab是串行同步模型，不能證明多線程下Ended守衛原子化。要驗證併發，需把兩個結束請求投到同一受控佇列或用同步點重現交錯，檢查控制層只接納一次清理。重要的是明確目前驗證了甚麼：物件隔離與串行重復終止已驗證，真實SDK回呼與併發釋放尚需契約及目標環境測試。"
-      ],
-      "code": {
-        "title": "完整三通回歸；可讀LabSession的實際實現",
-        "text": "var line = new LabLine(\"L1\");\nfor (int i = 1; i <= 3; i++)\n{\n    var call = new LabCall($\"C{i}\", line);\n    using var session = new LabSession(call);\n    call.Start(); call.Emit(LabCallState.Active);\n    Console.WriteLine(session.Media.Tx(call.Id)); // True\n    call.HangUp();\n    session.Dispose();\n    call.Emit(LabCallState.Ended);\n    Console.WriteLine($\"handlers={call.HandlerCount} edges={session.Media.EdgeCount} disposals={session.Media.DisposeCount}\");\n    // 每通 0 0 1\n}"
-      }
-    },
-    {
-      "heading": "回呼執行緒、UI執行緒和狀態執行緒各有角色",
-      "kind": "concept",
-      "paragraphs": [
-        "SDK回呼在哪條線程執行是廠商契約，不是event語法規定；本次網頁教學使用InvokeGUIThread幫助更新UI，但不足以保證所有事件都由同一背景線程發出。實測可記錄Environment.CurrentManagedThreadId和接收／處理時間，然而一次觀測不能當永久保證。公司包裝可選擇把通知統一送控制佇列，建立自己的順序與歸屬規則。",
-        "WinForms控件需由創建它們的UI線程使用。Control.Invoke是同步派送並等UI執行，BeginInvoke可排隊但後續工作仍需生命週期守衛；較新.NET9+有InvokeAsync，舊.NET Framework並不支持。關閉窗口時handler可能仍在進行，不能只檢查一次IsDisposed後就認為排隊永遠安全；按UI框架規則管理關閉與取消。",
-        "UI線程若等待SDK工作完成，而SDK回呼又Invoke等待UI，就形成雙方等待。CPU可很低、網路已接通、畫面卻卡住。修復不是增加線程數量，而是讓UI不同步等待回呼所需工作、回呼不長時間阻塞、狀態處理與顯示派送分離。原始狀態在控制層正確處理，再發佈不可變顯示快照，能降低畫面舊數據反過來污染通話狀態。"
-      ]
-    },
-    {
-      "heading": "捕捉局部快照，避免延遲UI工作讀到新的全域call",
-      "kind": "concept",
-      "paragraphs": [
-        "假設回呼收到C1 Active，立刻BeginInvoke(()=>label.Text=call.CallState)。佇列執行前用戶建立C2，call已指C2，於是C1通知卻顯示C2狀態。正確做法是先從事件/所屬session保存callId、state、generation，再派送快照；UI應用時核對目前顯示的是同一會話。這樣顯示內容來自通知，而不是執行較晚時才讀一個變化的全局字段。",
-        "保存快照仍不代表所有工作都該接受。如果C1已經Ended或被C2替代，舊C1顯示工作應被當前generation過濾；舊紀錄可以保存，但不能重新點亮Active。狀態和顯示的區別再次出現：控制層應有完整終態規則，UI僅投影其中當前有效資料。你的維護圖應該畫兩條佇列時序：事件到達、狀態應用、UI排隊、UI執行。",
-        "錯誤處理也需按邊界：handler異常如果逃出，行為取決於SDK觸發方式；在入口記錄上下文並隔離可以避免靜默丟業務，但不能吞所有例外當成功。記錄需含call/line身分、狀態、線程、動作和清理階段。把大量同步磁碟寫入放回呼內，可能製造原本要查的卡頓；紀錄要兼顧可追查與負荷。"
-      ]
-    },
-    {
-      "heading": "追碼實作：從引用圖找到重複和殘留",
-      "kind": "lab",
-      "paragraphs": [
-        "執行lifecycle，逐步看Call.Changed訂閱集合、LabSession.Ended與Media.DisposeCount。故障實驗只去掉Call.Changed -= OnState，預期每通cleanup_once檢查失敗，因為HandlerCount仍1；即使Ended守衛使晚到通知不執行副作用，引用仍殘留。復原後去掉Dispose的Ended早退，預測重復清理次數或已釋放物件訪問風險，按實際Lab實現觀察。",
-        "第二任務把兩次+=中的一次改為新lambda，思考保存哪份委託才可解除；執行後用HandlerCount核對。先畫call→delegate→session→media引用圖，再標各自owner。驗收包含連續三通、重復終止、訂閱清零和每通媒體隔離；不要用單次記憶體下降替代所有這些檢查。",
-        "Lab沒有WinForms，也沒有真實SDK回呼線程。UI部分是人工時間線練習：在紙上排C1通知、C2建立、C1佇列執行，指出局部快照與generation兩個保護點。拿到真實程式再用線程與佇列紀錄檢驗；這能保持概念精確，也不會把純模型聲稱成已經驗證公司的UI。"
-      ]
-    },
-    {
-      "heading": "故障鑑別：第二通一接通就停止聲音",
-      "kind": "diagnostic-case",
-      "paragraphs": [
-        "開始只知道第一通正常、第二通Active後無聲。候選甲是第一通結束Dispose了程式級共用媒體，第二通試圖Start已釋放物件；候選乙是第二通已經附著並出聲，舊C1終態晚到調用共用Detach。兩者都不是通話無法建立，先查媒體物件身份、Disposed狀態、附著目標與每次清理的call歸屬。",
-        "補證A顯示C2使用M1、M1在C1結束已Dispose、Start拋ObjectDisposed；修所有權：每通創建M2或把共用M1的Dispose移到程式關閉，依選定設計完整回歸。補證B顯示C2已Attach且Tx為true，C1 Ended在後觸發Detach、SenderCall變null；修舊清理的歸屬或隔離媒體。不能用無條件重新Attach循環掩蓋舊清理，因為仍可能反復斷音。",
-        "驗收除了第二通，還要取消沒接通、遠端終止、關閉時回呼、重復End與三通壓力。若修共用媒體，確認第一通終止不釋放其他使用者；若修session隔離，確認每通確實清自己資源且不留下訂閱。報告應明確資源模型、已重現的交錯與變更後的狀態，不把“再試一次聽得到”當長期正確性。"
-      ]
     }
   ],
   "exercises": [
     {
-      "question": "【基礎】Stop、Detach、Disconnect、Dispose能互相替代嗎？",
       "level": "foundation",
+      "question": "Stop、Disconnect、Dispose 各自管理什麼？",
       "answer": [
-        "它們各處理工作啓用、通話附著、資料邊與資源所有權。",
-        "某一動作完成不證明其他關係已解除；call=null更不是這些動作。",
-        "依完整生命週期逐項檢查，並僅清理自己擁有的資源。"
+        "Stop停止 handler 的媒體活動；Disconnect移除一條特定路由；Dispose釋放物件持有的資源。",
+        "一個動作不能自動證明其他動作已完成。",
+        "依本地 SDK 的同步/非同步契約決定順序。"
       ]
     },
     {
-      "question": "【基礎】core長期保存舊form.handler，form變量null後為甚麼可能仍存在？",
-      "level": "foundation",
-      "answer": [
-        "委託包含目標form，core→delegate→form仍從長期物件可達。",
-        "變量null僅移除一條參照，垃圾回收不會清仍可達物件。",
-        "解除該訂閱或終止core的合法生命週期，再用引用鏈檢查；循環本身不必然洩漏。"
-      ]
-    },
-    {
-      "question": "【基礎】-=之後，已排隊的UI更新一定不執行嗎？",
-      "level": "foundation",
-      "answer": [
-        "不一定；已經取得的回呼與UI工作不受後續解除訂閱自動撤銷。",
-        "handler與UI應用都需會話Ended/ID/generation守衛。",
-        "驗收終止後舊工作不復活狀態，且新通顯示不受影響。"
-      ]
-    },
-    {
-      "question": "【應用】同一handler+=3次，一次事件，隨後-=2次。調用次數和剩餘訂閱？",
       "level": "application",
+      "question": "切換 Mic-A 到 Mic-B，請列出成功與失敗回復都要觀察的項目。",
       "answer": [
-        "事件時共有3個匹配委託，所以正常調用3次。",
-        "兩次remove後仍1份；下一事件還會調用1次。",
-        "修初始化與解除對應關係，不能只在顯示層隱藏重復。"
+        "記錄新裝置 ID、初始化和格式、圖切換結果，以及新來源資料活動。",
+        "成功後才釋放 A；B 失敗時保留 A 或重新建立 A，並記錄回復結果。",
+        "若不能同時開啟，先確認此平台限制，再測試明確的停止—建立—回復流程。"
       ]
     },
     {
-      "question": "【應用】C1回呼排UI，C2替代當前，佇列執行時讀全域call。怎樣同時保護內容與歸屬？",
-      "level": "application",
+      "level": "understanding",
+      "question": "為什麼 `using var microphone` 無法保證共用硬體裝置安全釋放？",
       "answer": [
-        "回呼入口保存C1的ID、state、generation快照，避免執行時讀C2。",
-        "UI應用快照前核對當前generation/ID，不接受已終止舊C1投影。",
-        "回歸C1 Active晚到、C1 Ended和C2 Active的不同排列，不能僅測一個順序。"
+        "using 只會在作用域結束呼叫此物件 Dispose，不知道另一個 owner 是否也透過另一物件使用同一端點。",
+        "Ozeki 發行說明記錄過共享實體裝置時 Start/Stop 會互相影響，且有版本特定的 managed 方法。",
+        "須核對本地 SDK/wrapper 的共享契約，再決定唯一 owner 或其支援的共享管理模式。"
       ]
     },
     {
-      "question": "【應用】C1/C2共用speaker，C1結束Dispose speaker，C2斷音。改成Stop一定正確嗎？",
-      "level": "application",
+      "level": "reasoning",
+      "question": "舊 session 的停止 callback 晚於新 session 開始，可能如何導致「第二次沒聲音」？",
       "answer": [
-        "Stop仍可能停止C2所需輸出，因此不能只換方法名稱。",
-        "先決定共享設備owner與使用者政策，C1只能解除自己的媒體路徑或按明確引用計數/混音策略退出。",
-        "測C1結束而C2持續、最後使用者結束及程式關閉，才能確認資源範圍。"
+        "若 callback 查全域目前裝置，它可能停止新 session 的麥克風或拆掉新路由。",
+        "callback 應使用事件所屬 session/物件 identity，只能改動仍由自己擁有的資源。",
+        "記錄身份和狀態前後變化，並測快速重啟確認修正。"
       ]
     },
     {
-      "question": "【診斷】UI等call任務完成，SDK回呼Invoke等UI，CPU低且網路200已確認。如何解釋與修？",
       "level": "diagnosis",
+      "question": "麥克風 Level 持續變化，但第二次錄音無法寫入。應先查什麼？",
       "answer": [
-        "UI等SDK，SDK又等UI形成循環等待，低CPU符合阻塞而非排除問題。",
-        "查兩線程堆疊與等待關係；讓UI異步等待、回呼不同步依賴UI顯示，分離控制狀態與投影。",
-        "測試快速完成、錯誤和關閉，確認沒有新的阻塞或未觀察異常。"
-      ]
-    },
-    {
-      "question": "【診斷】C2開始Tx=true，30ms後C1清理使SenderCall=null；另一案M1已Dispose導致Start例外。各修哪層？",
-      "level": "diagnosis",
-      "answer": [
-        "前案是舊清理越界，修會話歸屬與共享媒體切換；後案是所有權/壽命設計混搭，修釋放或重建範圍。",
-        "前案需重現晚到終態，後案需連續復用與取消回歸。",
-        "最終均驗證三通正確、每通清理一次、無訂閱殘留，而不是反復Start掩蓋問題。"
+        "來源有活動，先查上次 recorder 是否停止並完成關檔/Dispose，及目標檔案是否仍被鎖定。",
+        "再確認新 recorder 已建立、連在圖上、開始寫入且收到資料。",
+        "用新路徑或已知來源作隔離測試，分開目的端與來源故障。"
       ]
     }
   ],
   "recap": [
-    "資源釋放取決於owner，結束一通不能任意釋放共享物件。",
-    "訂閱是引用與調用集合，重復訂閱和解除數量可推導。",
-    "終止、回呼和UI佇列各有邊界，舊工作不能復活或清掉新會話。"
+    "每種資源都要有 owner，並知道它何時失效。",
+    "裝置切換需含成功驗收及失敗回復，不要先丟掉唯一可用路徑。",
+    "測快速重複操作與晚到回呼，避免只驗收第一次開始。"
   ],
-  "resources": [
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab.zip",
-      "label": "下載本主題完整 C# 教學專案",
-      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
-    },
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
-      "label": "下載自製 C# 事件與媒體模型原始碼",
-      "description": "完整專案由主題練習包提供；本章追讀 lifecycle，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
-    }
-  ],
+  "resources": [],
   "sources": [
     {
-      "label": "Ozeki：官方通話終態與媒體清理",
-      "url": "https://voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
+      "label": "Ozeki MediaHandlers 教學：媒體 handler 與 connector 的 Start、Stop、Dispose 生命週期",
+      "url": "https://www.voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
     },
     {
-      "label": "Ozeki：每通CallHandler與獨立資源",
-      "url": "https://voip-sip-sdk.com/p_7542-how-to-handle-more-than-one-call-in-the-same-time.html"
+      "label": "Ozeki Microphone API 參考（頁面標 OzekiSDK 1.8.12.0）：裝置、狀態、插拔事件、Start/Stop/Dispose",
+      "url": "https://voip-sip-sdk.com/doc/html/1acde4be-300f-ff36-9df0-54b1d2a849b8.htm"
     },
     {
-      "label": "Microsoft：事件訂閱保存委託與解除",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/how-to-subscribe-to-and-unsubscribe-from-events"
+      "label": "Ozeki Speaker API 參考（頁面標 OzekiSDK 1.8.12.0）：裝置取得、Start/Stop/Dispose",
+      "url": "https://voip-sip-sdk.com/doc/html/13fd25fe-5822-b770-de51-afd58fd7c14f.htm"
     },
     {
-      "label": "Microsoft：Dispose與重復調用設計",
-      "url": "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose"
-    },
-    {
-      "label": "Microsoft：WinForms線程與Invoke/InvokeAsync",
-      "url": "https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/how-to-make-thread-safe-calls"
+      "label": "Ozeki 官方發行紀錄：10.3.193 說明共享實體裝置造成 Start/Stop 互相影響，並列 managed 裝置存取方法",
+      "url": "https://www.voip-sip-sdk.com/p_7021-download-ozeki-voip-sip-sdk.html"
     }
   ]
 }

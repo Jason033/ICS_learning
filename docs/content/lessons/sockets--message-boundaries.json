@@ -1,247 +1,252 @@
 {
-  "contentVersion": 2,
-  "intro": "TCP 能把 bytes 排好順序，卻不提供一則應用訊息的開始與結束。訊息邊界必須由協定定義，由解析器持續儲存狀態；這是閱讀與維護 Socket 程式最容易缺掉的基礎。",
+  "contentVersion": 3,
+  "intro": "一條 TCP 連線上，兩則訊息可以連在一起，也可以在標頭或本文中間分多次讀到。維護接收程式時，關鍵不是猜一次 Receive 代表幾則訊息，而是確認協定如何界定一則資料、解析器怎麼保存尚未完成的部分，以及結束或取消時還欠多少 bytes。",
   "prerequisites": [
-    "前兩章的 TCP 串流；對非空接收 buffer，Receive 返回 0 表示遠端送出方向的 EOF，本章以狀態逐步區分。",
-    "陣列索引從0起，offset表示已處理數量；正文用具體返回值追算。"
+    "熟悉 TCP 將有序 bytes 交給程式即可；不需先讀完整個 Socket 系列。",
+    "本篇使用兩-byte 大端序長度字首。若不熟悉 `await` 或 `Memory<byte>`，先把它們讀成「等待這次讀取完成」和「指定 buffer 中可寫入的範圍」，不需先補完整 C# 課程。"
   ],
   "goals": [
-    "從串流資料推導為何需要訊息框架與保留未完成資料。",
-    "追算標頭、本文、剩餘資料與 EOF 各種狀態。",
-    "設計能承受所有合理分段、合併和壞長度的接收迴圈。"
+    "從既有程式與協定格式辨認一則訊息的邊界規則。",
+    "追蹤部分標頭、部分本文、多則連續訊息和 EOF 時的解析器狀態。",
+    "分辨取消與對端結束，並判斷目前連線能否安全續讀。",
+    "設計分段方式無關的測試，且在配置本文前驗證長度上限。"
   ],
-  "studyTime": {
-    "reading": [
-      14,
-      23
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      45
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
-  },
   "sections": [
     {
-      "heading": "沒有分隔，接收端就無從猜意思",
-      "kind": "concept",
-      "paragraphs": [
-        "假設要傳兩筆文字 A 和 BC。連續 bytes 為 ABC，與傳一筆 ABC 完全相同。TCP 只看到三個 bytes，無從知道應用想分成一筆、兩筆或三筆。傳送者呼叫兩次 Send、網路卡分兩個封包、接收者使用兩次 Receive，都不是可靠的應用邊界；任何中間環節都可能合併或分割。所謂拆包與黏包，常只是應用誤把傳輸切片當訊息。",
-        "解析器需要共享的規則，才能從同一串流得到唯一的訊息序列。規則可以定長、分隔符、長度字首或結構化語法；兩端必須一致，包括長度欄位代表本文還是整框、位元組還是字元、是否含終止符。若沒有格式檔案，應先從序列化與解析程式找證據，不能以幾個抓包看起來常常相同就猜定長。",
-        "框架與內容解析也是兩件事。框架先取出一個完整的資料單位，內容解析再判斷它是命令、回覆、狀態或錯誤。框架完成不表示內容合法，內容合法也不表示業務已完成。把這兩層拆開，可讓分段問題與應用命令問題各有清楚的錯誤紀錄。"
-      ]
-    },
-    {
-      "heading": "三種邊界方法各自需要的前提",
-      "kind": "mechanism",
-      "paragraphs": [
-        "定長格式讓每筆 N bytes，解析器只需累積至 N，但版本變動或可變長文字會使規則不再簡單。定長也必須說明 padding、欄位寬度和空值，否則同樣的 N bytes 仍可能解錯。優點是邊界容易知道，限制是所有資料都必須遵守這個固定寬度。",
-        "分隔符格式例如每行以 LF 結束，接收端找到 LF 前都保留。若內容可以含 LF，必須有跳脫或編碼規則，並定義 CRLF 是否一起移除。等待分隔符也要有上限：惡意或壞資料永不送 LF，無界累積會耗光記憶體。逾時可以使本次接收失敗，但不能被偷換成「把目前 bytes 當一筆完整訊息」。",
-        "長度字首先告訴接收端本文多少 bytes，再讀足。教材規定兩 bytes 大端序，本文長度 1..1024，本文嚴格 UTF-8；上限和零長度政策是自訂教學協定，不是 TCP 的內建格式。收到長度後先驗證，再配置本文，避免宣稱巨大長度使記憶體分配失控。這三種方法都需要狀態，不是把一次 Read 包進一個函式就自然完整。"
-      ]
-    },
-    {
-      "heading": "為什麼分段不敏感可以作為驗證性質",
-      "kind": "concept",
-      "paragraphs": [
-        "給定合法的完整串流S及相同協定，任何保持順序的切片S1..Sn都應得到同樣訊息列表；切片可以只含標頭一半、本文一半或多個完整框。這不是要求每次Receive相同，而是要求解析結果不依賴傳輸如何分片。把協定解析與真實網路隔離後，就能用大量切點檢查這個性質，而不需反覆等偶發事件。",
-        "對11bytes輸入，可以逐一測試第一切點1..10，或測試所有合理的小分割槽。還要驗證Feed返回輸出後內部retained的數值與內容，而非只在結束比較數量。若parser一次Feed後只輸出一框而剩餘已有完整第二框，下一次沒有新資料時它可能永遠不處理；因此迴圈處理餘框也是性質的一部分。",
-        "錯誤輸入的性質則不同：上限被越過應在配置前拒絕；EOF在中途應明確報截斷；合法最大值應透過；錯誤後不能偷偷輸出任意內容。邊界值測試至少包括0、1、1024、1025，每個依據本教材規則判定。測試不是映象複製實現，而是從協定契約獨立寫出預期，再比較程式。"
-      ]
-    },
-    {
-      "heading": "邊界層次與buffer複用會影響維護設計",
-      "kind": "concept",
-      "paragraphs": [
-        "以2byte長度框架為例，底層Receive切片可以裝很多框，框架本文又可能包含業務欄位，文字解碼只是本文解釋之一。維護者要把這些層畫成Receive片段→連續bytes→完整框→解碼/欄位→業務訊息，不要將任何兩層的長度混用。frameLength包括2byte標頭時，與bodyLength不同；日誌必須註明單位和範圍。",
-        "如果解析器輸出ReadOnlyMemory指向可複用buffer，業務稍後處理時buffer可能已裝下一批資料。這會出現「剛parse正確，handler讀到別的內容」的生命週期錯誤。可以複製出獨立訊息，或透過明確的擁有/租借契約確保消費者結束前不復用；效能最佳化不能省略這個前提。教材List/GetRange建立獨立陣列，便於理解但有分配成本。",
-        "FrameParser也要歸屬於一條連線，重連不應把舊pending接到新會話。否則舊本文殘片會和新標頭拼接。清理與複用策略必須同時保護未消費bytes、訊息記憶體壽命和會話世代；只更改RemoveRange還不足以解決跨連線共享parser。"
-      ]
-    },
-    {
-      "heading": "長度上限、緩衝容量和消費背壓如何一起作用",
-      "kind": "mechanism",
-      "paragraphs": [
-        "一框最多1024bytes只限制單筆資料，不能限制整個系統佔用。若每秒1000框到達而業務每秒處理500，完整訊息佇列仍每秒增加500框。若parser只負責輸出且無限排隊，TCP接收看似正常但記憶體增長、訊息過期與最終崩潰都可能發生。需要分別限制未完整框、已完整待分派框、業務佇列及處理並行數。",
-        "暫停讀取可以透過TCP流量控制把壓力往傳送端傳，稱為背壓；它不能自動決定該丟哪個業務訊息。週期完整狀態可能允許保留最新一筆，而切換命令不能隨意合併。若一條連線混合兩種資料，策略更需依協定，不能在低階buffer滿時隨機丟bytes，因為那會破壞後續所有框架邊界。",
-        "因此容量驗證要問「哪一層的單位是bytes、哪一層是完整訊息」。丟掉一個已識別且協定允許丟棄的完整狀態，與丟掉半框本文有不同後果。小型教材每次資料很少，便於先驗證正確性；擴充負載時新增量測與有界佇列，但保留每byte消費一次、每框輸出一次與錯誤分類的不變條件。"
-      ]
-    },
-    {
-      "heading": "把解析器想成一臺儲存位置的機器",
-      "kind": "mechanism",
-      "paragraphs": [
-        "長度字首解析至少有「等待兩 bytes 標頭」「已有合法長度、等待本文」「完成一框並準備下一框」三個狀態。收到一段 bytes 時先追加到待處理資料，若標頭未滿就返回等待；滿兩 bytes 才解出 length；本文未滿就保留；滿了才輸出一則並移除恰好 2+length bytes。接著繼續迴圈，因為同一段輸入可能已帶下一則完整訊息。",
-        "不變條件是：已輸出的框架只輸出一次，未形成完整框架的 bytes 不丟、不重複；任何時刻的待處理資料都是尚未解析的連續串流字尾。若程式拿到第一框後清空整個 buffer，下一框被丟掉；若每次從頭重解且不移除，上一框被重複輸出。這些錯誤即使網路百分之百可靠也會發生。",
-        "另一種結構是 ReadExact：先讀滿標頭，解長度，再讀滿本文。每次 Receive 只要求剩餘空間，所以不會把下一框多讀進來；下一次 ReadFrame 留在 Socket 繼續讀下一框。累積解析與 ReadExact 都合理，但不能混用錯誤：前者可能一次得到多框，後者依每次所需長度讀取。維護時先辨認設計，再核對 offset、容量和剩餘責任。"
-      ]
-    },
-    {
-      "heading": "例題一：任意切片，輸出仍應相同",
       "kind": "worked-example",
+      "heading": "先從一份協定格式還原接收端要做的工作",
       "paragraphs": [
-        "教材編碼 A 為 00 01 41，溫度為 00 06 E6 BA AB E5 BA A6；合併串流共 11 bytes。按 [1,2,3,5] 切片餵入。第一片 00，只有一 byte 標頭，輸出0、保留1。第二片 01 41，湊成長度1與本文A，輸出A，移除3、保留0。第三片 00 06 E6，得知本文6，但只有1，輸出0、保留3。",
-        "第四片 BA AB E5 BA A6，補滿6 bytes 本文，輸出溫度，移除8、保留0。最後 End 透過，說明正好在框架間結束。中間那個 E6 是 UTF-8 三 bytes 字元的開頭，不能立即把單片 Decode 成文字；框架在位元組層累積完整本文後才嚴格解碼。",
-        "若一次餵入11 bytes，while 迴圈會連續輸出A與溫度；若分成11次一 byte，輸出仍應相同。這是對分段不敏感的性質，比一次真實網路讀取剛好成功更有力。測試可列舉每個單一切點，或以固定種子產生切片，對照基準訊息列表。"
-      ]
-    },
-    {
-      "heading": "例題二：EOF 要看處於哪個狀態",
-      "kind": "worked-example",
-      "paragraphs": [
-        "資料 00 03 41 42 宣稱本文3 bytes，目前只有AB兩 bytes。若下一次非空接收返回0，不能輸出AB，也不能等待永遠；對方送出方向已結束而這框少一 byte，應報本文截斷。資料只剩 00 時 EOF，則是標頭截斷。錯誤所處位置不同，有助區分協定長度、傳送中斷或清理過早。",
-        "若收到 00 02 41 42，完整輸出AB，下一次等待新標頭時立刻 EOF，且沒有累積殘資料，則是框架間的乾淨結束。教材 ReadExact 的 allowCleanEof 只在尚未讀到新標頭第一 byte 時允許返回false；本文階段從不接受乾淨 EOF，因為已經承諾了 length bytes。",
-        "同理，取消與逾時不能當作 EOF。它們表示本機不再等，不保證對方不再送。若要在同一連線繼續解析，必須儲存已讀的半框狀態，且沒有另一個仍在進行的接收；較容易驗證的策略是由連線所有者結束這條無法維持邊界的會話，重新連線。具體策略需符合協定，不能隨意清空 buffer 接著猜。"
-      ]
-    },
-    {
-      "heading": "接收迴圈裡的 offset 是工程不變條件",
-      "kind": "code-reading",
-      "paragraphs": [
-        "ReadExact 設 offset=0，每次請求 buffer.AsMemory(offset)，Receive 返回 n 後累加。若總長5，返回2、1、2，offset 依序2、3、5；下一次寫入只覆蓋剩餘範圍。忘記 AsMemory(offset) 會把後一片蓋在前面，忘記加 n 可能永遠等待，直接加 buffer.Length 則可能把半框當完整。",
-        "教材解析器用 List<byte> 易讀但會複製資料並移動字尾，適合小型驗證，不表示大型正式系統最佳實作。高吞吐程式可用環形緩衝、PipeReader 或索引檢視，但不變條件仍相同。最佳化前必須先保有輸出一致性、最大長度與EOF行為，再衡量分配與吞吐；單純換成更複雜型別不會修復錯的框架規則。"
+        "本系列的本機教學協定規定：每則訊息先放 2-byte 無號大端序 `bodyLength`，後面恰好是該長度的本文；允許本文 1–1024 bytes，0 和超過 1024 都拒絕。長度不包含這 2-byte 字首。本文交出後，內容 parser 才能依各自格式解讀；本篇只驗證外層框架。這是教材規則，不代表公司或 Ozeki 的線上格式。",
+        "合成串流 `00 01 41 00 06 10 20 30 40 50 60` 含兩框：第一框長度 1、本文為 `41`；第二框長度 6、本文為 `10 20 30 40 50 60`。整條串流共 11 bytes。這些本文只作切片測試，不賦予文字或欄位意義。解析器不能依賴資料剛好一次讀到 3 bytes、再讀到 8 bytes。",
+        "工程路徑是：送端按格式組好 length 與 body → TCP 傳送有序 bytes → 接收端每次取得一段 bytes → framing parser 保留未完成狀態並交出完整 body → 對應的內容 parser 解讀 body → handler 才決定如何處理。這篇只負責從 TCP bytes 還原 body；若把 Receive 邊界直接當訊息邊界，問題會發生在交給內容 parser 以前。"
       ],
-      "code": {
-        "title": "從剩餘範圍繼續讀，而非從頭覆寫",
-        "text": "int offset = 0;\nwhile (offset < buffer.Length)\n{\n    int n = await socket.ReceiveAsync(buffer.AsMemory(offset), SocketFlags.None, ct);\n    if (n == 0)\n    {\n        if (offset == 0 && allowCleanEof) return false;\n        throw new EndOfStreamException($\"EOF at {offset}/{buffer.Length}\");\n    }\n    offset += n;\n}\nreturn true;"
+      "table": {
+        "caption": "這條串流的格式與預期輸出",
+        "headers": [
+          "範圍",
+          "十六進位 bytes",
+          "格式解讀",
+          "Framing parser 輸出"
+        ],
+        "rows": [
+          [
+            "第一框",
+            "00 01 41",
+            "長度 1，本文 1 byte",
+            "41"
+          ],
+          [
+            "第二框",
+            "00 06 10 20 30 40 50 60",
+            "長度 6，本文 6 bytes",
+            "10 20 30 40 50 60"
+          ],
+          [
+            "合併串流",
+            "00 01 41 00 06 10 20 30 40 50 60",
+            "兩框共 11 bytes",
+            "兩則，不是一則 11-byte 訊息"
+          ]
+        ]
       }
     },
     {
-      "heading": "邊界錯誤後不能盲目找看似合理的標頭",
+      "kind": "mechanism",
+      "heading": "每次只消費已確認的範圍，未完成部分留在狀態中",
+      "paragraphs": [
+        "解析器至少保存尚未消費的串流字尾。每次有新資料時，先併入這段字尾；少於 2 bytes 就還不能讀長度；有完整標頭後先驗證 1–1024，再等 body 長度足夠；湊成完整框才交出 body，並只移除這一框的 `2 + bodyLength` bytes。接著繼續檢查剩下的資料，因為同一批輸入可能包含下一框。",
+        "以 `[1, 2, 3, 5]` 分段餵入同一串流：第一段只有 `00`，解析器保留 1 byte；第二段 `01 41` 補成第一框並輸出 `41`；第三段 `00 06 10` 使第二框累積 1/6 本文 byte；第四段 `20 30 40 50 60` 補滿並輸出第二個 body。每步保留的都是尚未形成完整框的串流尾端，而不是任意刪除或重解整個 buffer。",
+        "若一次餵入 11 bytes，parser 的迴圈仍會輸出兩框；若 11 次各餵 1 byte，也須得到相同的兩個本文。TCP 的分段、Send 次數、segment 數量或 Receive 次數都不能替應用定義訊息邊界。解析結果對所有保持 byte 順序的切片方式相同，才是可測試的正確性條件。"
+      ],
+      "table": {
+        "caption": "同一串流在 `[1, 2, 3, 5]` 切片下的解析狀態",
+        "headers": [
+          "餵入",
+          "新 bytes",
+          "這一步的結果",
+          "未完成資料"
+        ],
+        "rows": [
+          [
+            "1 byte",
+            "00",
+            "標頭未滿，等待",
+            "00（1 byte）"
+          ],
+          [
+            "2 bytes",
+            "01 41",
+            "輸出第一框 body `41`",
+            "空"
+          ],
+          [
+            "3 bytes",
+            "00 06 10",
+            "長度 6 的 body 只到 1 byte，等待",
+            "00 06 10（3 bytes）"
+          ],
+          [
+            "5 bytes",
+            "20 30 40 50 60",
+            "輸出第二框 body `10 20 30 40 50 60`",
+            "空"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "code-reading",
+      "heading": "讀 Receive 迴圈時，同時追兩個計數：本次讀到多少、框架還欠多少",
+      "paragraphs": [
+        "`Socket.ReceiveAsync` 的回傳數 `n` 是這一批實際輸入 parser 的 bytes 數。只把 `readBuffer[0..n]` 餵給 `FrameReader.Feed`；buffer 其餘容量不是資料，`n` 也不是訊息數。此處的 `FrameReader` 是正文用來表達「保留 framing 狀態、輸出完整原始 body」的抽象契約，不是 ZIP 專案裡的類別：它回傳 `byte[]` body，並以 `CompleteInput()` 驗證 EOF 時沒有未完成框。下面的程式是展示呼叫順序的示意骨架，不是可直接編譯的完整類別實作；要實際執行請用資源 ZIP 提供的 `FrameParser` 範例，並依其 `List<string>`／`End()` 介面呼叫。",
+        "若一框還欠 6 bytes 而本次只新增 3，parser 就保留進度等待後續輸入；不要用 `readBuffer.Length` 當有效長度。完整 body 交出後才進入內容處理。ZIP 的具體實作叫 `FrameParser`：`Feed` 回傳 `List<string>`，因為它在完成外層 frame 後又嚴格解碼 UTF-8；它用 `End()` 檢查 EOF 邊界。兩者共享分段和 EOF 規則，但回傳型別與內容處理不同，不能把類別或呼叫範例直接互換。",
+        "正文的 `Memory<byte>`／`AsMemory` 與 token `ReceiveAsync` 範例依 .NET 10 API 簽名撰寫；維護舊 TFM 時先核對可用 overload。無論簽名如何，parser 只應消費該次呼叫實際回報的 bytes 數。"
+      ],
+      "code": {
+        "title": "正文抽象契約：接收 bytes，交出完整原始 body",
+        "text": "// FrameReader 是正文抽象介面；不是 ZIP 中的 FrameParser。\nbyte[] readBuffer = new byte[4096];\nvar frameReader = new FrameReader(maxBodyLength: 1024);\n\nwhile (true)\n{\n    int n = await socket.ReceiveAsync(\n        readBuffer.AsMemory(), SocketFlags.None, connectionToken);\n\n    if (n == 0)\n    {\n        frameReader.CompleteInput(); // 無殘留才是框架間的乾淨結束\n        break;\n    }\n\n    foreach (byte[] body in frameReader.Feed(readBuffer.AsSpan(0, n)))\n    {\n        await HandleBodyAsync(body, connectionToken);\n    }\n}"
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "EOF、取消與長度錯誤必須分開處理",
+      "paragraphs": [
+        "對非零長度 buffer 的 TCP stream socket，Receive 回傳 0 表示對端已正常結束這個送出方向，後面不會再有 bytes。解析器若正好處於新標頭之前且沒有殘留資料，這是乾淨結束；若已有 1 byte 標頭，或已讀完整長度卻未收滿本文，則是截斷框架。前者可正常結束讀取，後者須回報預期長度、已收長度和當時狀態，不能把半框當完成訊息。",
+        "若把取消 token 傳給 `ReceiveAsync`，取消會以 `OperationCanceledException` 回報；這不是 EOF，呼叫端也拿不到正常完成時的 byte count `n`。因此不能把取消當成「讀取到新標頭」，也不能依 buffer 容量猜本次進度。最簡單安全的政策是結束該連線並丟棄 parser。只有在應用能保證讀取操作已結束、保存所有已回報 bytes，且仍由同一個唯一讀取者持有連線時，才設計續用流程。",
+        "期限的實作也要確認：若取消 token 真正傳入 `ReceiveAsync`，走的是取消路徑；若只用 `Task.WhenAny` 或等待包裝器回報 timeout，底下的 receive 可能還在執行。此時不能立刻啟動第二個讀取迴圈，否則兩者會競爭消耗同一串流。取消 request handler 不一定等於關閉長連線讀取；log 應分開記錄 `eof`、`cancelled`、`timeout` 和 socket error，並標明是哪一層停止等待。"
+      ],
+      "table": {
+        "caption": "讀取停止時的狀態及可下的結論",
+        "headers": [
+          "發生時的 parser 狀態",
+          "停止原因",
+          "判斷"
+        ],
+        "rows": [
+          [
+            "在新標頭前，沒有殘留 bytes",
+            "Receive 回傳 0",
+            "乾淨的送出方向 EOF；可完成讀取"
+          ],
+          [
+            "已有 1 個標頭 byte，或 body 尚未收足",
+            "Receive 回傳 0",
+            "框架截斷；回報實際／預期長度"
+          ],
+          [
+            "任一 parser 進度",
+            "傳入 ReceiveAsync 的 token 被取消",
+            "本機取消等待，不是 EOF；安全預設是結束連線並丟棄 parser"
+          ],
+          [
+            "底下的 ReceiveAsync 仍在執行",
+            "只由等待包裝器回報 timeout",
+            "尚未取消 socket 讀取；不可再啟動第二個讀取者"
+          ],
+          [
+            "已取得 2-byte 長度，且長度為 0 或大於 1024",
+            "長度驗證失敗",
+            "在配置 body 前拒絕，依協定決定關閉連線"
+          ]
+        ]
+      }
+    },
+    {
       "kind": "maintenance",
+      "heading": "解析器要有界，完整訊息的派送也要有界",
       "paragraphs": [
-        "若收到 04 01，長度1025超過教材上限，應在本文配置前拒絕。若跳過一 byte 再找較小值，可能把內容中的兩 bytes 誤當標頭，產生錯誤命令。是否能重新同步由協定決定：含 magic、版本、完整性檢查與嚴格掃描規則的格式可能支援，但本教材沒有這些規則，因此無合法的「猜下一框」恢復方法。",
-        "最大長度是資料與資源界線，尚需限制總待處理容量、框架等待期限與完整訊息分派佇列。每框小於1024不代表無限多框可以一直累積；若業務消費速度慢，要決定等待、限速或拒絕策略。接收層與應用層的排隊責任應分開量測，才能知道是 parser 沒輸出還是 handler 來不及處理。"
+        "本教材 body 上限 1024 bytes，所以單一 frame 最多 1026 bytes。讀到兩-byte 長度後，先拒絕 0 或 1025，再配置本文；固定 4096-byte Receive buffer 只限制一次讀取，不能代替 parser 累積狀態的上限。",
+        "完整 body 若排進無界佇列、而 handler 消費較慢，記憶體仍會增長。逐筆 `await` 消費，或使用有界佇列並定義背壓／拒絕方式；不要為騰出空間丟掉半框中的 bytes，否則後續 offset 會全部錯位。佇列容量和跨連線資源控制可作後續服務設計，不影響本篇 parser 的分段正確性。",
+        "教材 ZIP 的 `List<byte>` parser 用來讀懂狀態，不是高吞吐範本。改成 `PipeReader` 或環形 buffer 後，仍要維持同一契約：完整框恰好輸出一次、未完成尾端不丟、長度先限界。"
       ]
     },
     {
-      "heading": "實作：改切片，而非靠 Sleep 強迫網路拆包",
-      "kind": "lab",
-      "paragraphs": [
-        "用 .NET 10 執行 C# 模型，前四行 feed 應對照例題輸出。將 chunks 改為 [11]，再改為11個1，兩次 parsed 都應等於 A、溫度且 End 透過。輸入大小總和必須11，不然是測試資料本身錯誤，不是 TCP 造成。這個確定性測試完全不需要網路排程配合。",
-        "故障變因是在 FrameParser 完成第一框後把 pending.Clear() 取代 RemoveRange；用單片11會丟第二框，而四片可能掩蓋錯誤。復原後執行兩種切片，以及1025長度、標頭EOF、本文EOF、無效UTF-8四個失敗檢查。驗收是訊息列表相同與錯誤分類正確；不要以加 Sleep 或把 buffer 放大作為邊界修正。"
-      ]
-    },
-    {
-      "heading": "診斷：有時收到一則，有時兩則都不見",
       "kind": "diagnostic-case",
+      "heading": "從最早不相符的交接點找 parser 問題",
       "paragraphs": [
-        "案例甲與乙都出現偶發少一則。甲記錄 Receive n=11、parse A，隨後 bufferCleared；乙記錄 n=1、decode replacement、parseError。甲的資料完整到達，卻在取第一框後丟掉字尾；乙把分段當完整標頭或立即解碼。兩者都不是網路丟包，可用本章相同11 bytes 的不同切片在離線重現。",
-        "甲修正移除已消費長度並迴圈解析剩餘；乙保留未完整 bytes，標頭與本文各有狀態，本文滿才decode。回歸至少涵蓋一框多片、多框一片、UTF-8字元中間切開、EOF落在邊界與中間。最後比對輸出內容和次數，不只確保「沒有例外」，因為靜默丟掉第二框仍可能沒有例外。"
+        "可在既有程式依序記錄 `connectionId`、讀取回傳 `n`、parser 狀態、宣告長度、已累積／預期 bytes、完成 body 長度及 handler request ID。記錄少量必要原始 bytes 時先遮蔽密碼、Token 或個資。這些欄位把 OS 交付、框架完成和應用派送拆開，讓同一筆失敗可重現。",
+        "若接收端的 `ReceiveAsync` 只回傳 3 bytes，而 body 還欠 6，這本身不是缺資料故障；看後續讀取或 EOF。若依同一連線的 TCP 重組證據已有完整 frame bytes，但 parser 仍報少 byte，先比對讀取有效範圍、parser offset 和 length endian；若 `FRAME complete` 已記錄而 handler 沒記錄，追分派佇列與 request 關聯。封包有 ACK 不能代替應用 frame 完成，正如 frame 完成也不能證明 handler 已執行。",
+        "一個清楚的失敗例子是標頭宣稱 body 3 bytes，但收到本文 2 bytes 後連線 EOF。正確診斷是 `body expected=3, received=2` 的截斷。把已有兩 bytes 解碼、補零或把 EOF 改成成功會掩蓋傳送端／路徑中斷，也會讓下一筆資料從錯誤位置開始。"
+      ]
+    },
+    {
+      "kind": "lab",
+      "heading": "用同一份 bytes 改切片，驗證解析器不依賴網路排程",
+      "paragraphs": [
+        "解壓 `sockets-maintenance-lab.zip`，用 .NET 10 執行本機 loopback 專案。正文的 `FrameReader` 抽象會交出原始 `byte[] body`；ZIP 的具體 `FrameParser` 則在相同 framing 完成後嚴格解碼 UTF-8，`Feed` 因而回傳兩個字串 `A`、`溫度`，待處理資料用 `Retained` 查看，並以 `End()` 檢查 EOF。`FrameParser` 是文字教學實作，不產出可供二進位欄位 parser 使用的 raw body；若下游要解欄位，framing 層應交付完整原始 bytes。",
+        "把同一合併串流分別改成一次 11 bytes 和 11 次各 1 byte，輸出列表必須一樣。再輸入長度 1025 的標頭 `04 01`，應在 body 配置前拒絕；測試 EOF 在標頭中間、body 中間和兩框之間的差異。這些都是確定性 parser 測試，不需要 `Sleep` 或要求 TCP 固定分段。",
+        "驗收不只比較最後輸出內容，也比較每次 `Feed` 後的輸出數與 `Retained`；ZIP 的保留量以 bytes 計。單片輸入只輸出第一框代表 parser 未繼續處理殘留完整框；逐 byte 才成功可能代表程式假設某次讀取必須帶足標頭或本文。記錄每個切片的原始範圍、parser 狀態和輸出數，能直接指出最早錯誤的步驟。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "為何連續送 A 和 BC，接收端不能只靠 bytes 決定筆數？",
-      "level": "foundation",
-      "answer": [
-        "ABC 與單筆 ABC 的串流相同，沒有應用邊界資訊。",
-        "Send 次數和 TCP 封包切片都不保證成為 Receive 邊界。",
-        "必須共享定長、分隔符或長度字首等規則，才能唯一解析。"
-      ]
-    },
-    {
-      "question": "長度欄位要先驗證還是先配置本文？為何？",
-      "level": "foundation",
-      "answer": [
-        "先解析固定寬度標頭，再驗證允許範圍。",
-        "直接依不可信長度配置，可能在收到本文前就耗掉大量記憶體。",
-        "教材只允許1..1024；這是自訂資源政策，不是TCP上限。"
-      ]
-    },
-    {
-      "question": "輸入 00 02 58 59 00 01 5A，按2、3、2 bytes 餵入。列輸出與保留。",
       "level": "application",
+      "question": "有 8-byte 串流 `00 03 41 42 43 00 01 58`。若 `ReceiveAsync` 依序回傳前 3 bytes、後 5 bytes，每次應保留或輸出什麼？",
       "answer": [
-        "第一片00 02只得標頭，輸出0、保留2。",
-        "第二片58 59 00，輸出XY，留下下一框首byte00，保留1。",
-        "第三片01 5A補齊下一框，輸出Z、保留0。每步移除的是完整框，不是整個輸入。"
+        "第一批 `00 03 41` 已有 2-byte 標頭，宣告 body 3 bytes，目前只到 1 byte；保留 3 bytes，還不能輸出。",
+        "第二批補入 `42 43` 後，第一個 body 完整為 `41 42 43`，輸出它並消費恰好 5 bytes；剩餘 `00 01 58` 又是一個完整框，接著輸出 `58`。",
+        "最終輸出兩個 body，順序不變、無殘留。Receive 次數是 2，不是訊息筆數。"
       ]
     },
     {
-      "question": "ReadExact總長7，返回3、2、2，列各次寫入起點和offset。",
-      "level": "application",
+      "level": "reasoning",
+      "question": "已讀到長度字首 `04 01`，還沒收到本文。教材上限 1024 bytes。接收端要先配置 1025-byte body 再判斷，還是先採取其他動作？",
       "answer": [
-        "各次起點是0、3、5，避免覆蓋前段。",
-        "offset累加成3、5、7，下次剩餘4、2、0。",
-        "比較最終七bytes與原資料，能捕捉總數正確但內容覆寫的錯誤。"
+        "`04 01` 是無號大端序長度 1025，超過允許上限。",
+        "在配置或等待本文前拒絕這個框架，記錄原始標頭和限制；依協定關閉連線或回報格式錯誤。",
+        "不應跳過一 byte 猜下一個標頭，除非正式協定明確定義可重新同步的標記與規則。"
       ]
     },
     {
-      "question": "00 04 41 42 43 後EOF，如何分類？缺幾bytes？",
-      "level": "application",
-      "answer": [
-        "長度4，需要本文四bytes；目前ABC三bytes。",
-        "EOF落在本文中，缺一byte，是截斷，不能輸出ABC作完成框。",
-        "記錄expected4/received3，與傳送端同框長度及退出時間核對。"
-      ]
-    },
-    {
-      "question": "收到完整00 01 41後取消等待下一框，能稱對方已關閉嗎？",
       "level": "diagnosis",
+      "question": "標頭已收滿並宣告 body 4 bytes，目前收到 3 bytes，下一次 `ReceiveAsync` 對非零 buffer 回傳 0。與目前只讀到半個標頭就取消相比，兩者如何分類？",
       "answer": [
-        "完整A可以先輸出，下一次取消只表明本機不再等。",
-        "與Receive返回0的EOF不同，也可能有尚未到達資料。",
-        "檢查接收是否確實停止再決定續用或結束連線，不能同時留兩個接收者。"
+        "前者是對端正常結束送出方向，但 body 還差 1 byte，因此是截斷框架，不可輸出為完成訊息。",
+        "後者是本機取消了等待；它不代表對端 EOF。若準備續用連線，parser 的標頭進度和讀取所有權必須保留；若進度存在已返回函式的區域變數，結束連線較安全。",
+        "log 應分別記錄 EOF 與取消，並寫下預期／實際 bytes 和當前狀態。"
       ]
     },
     {
-      "question": "測試單片兩框失敗、逐byte透過，最有力的候選原因？",
-      "level": "diagnosis",
+      "level": "reasoning",
+      "question": "同一串流換成單次餵入 11 bytes 後只輸出第一框，但 `[1, 2, 3, 5]` 仍輸出兩框。首先檢查什麼？",
       "answer": [
-        "單片具有兩個完整框，逐byte使第一框完成時通常沒有第二框字尾。",
-        "這支援解析一次就退出或清空全部buffer的錯誤，而非鏈路丟包。",
-        "看已消費長度與剩餘bytes；修正後回歸多框一片和一框多片。"
-      ]
-    },
-    {
-      "question": "自訂格式無magic或校驗，壞長度後掃描下一個小數字是否安全？",
-      "level": "diagnosis",
-      "answer": [
-        "內容中的任意兩bytes也可能恰好是小數字，沒有可信同步點。",
-        "掃描可能產生虛構框甚至命令，不能當一般安全恢復。",
-        "依協定拒絕並結束會話；只有明確定義同步規則才可重新同步。"
+        "單片輸入含兩個完整 frame；第一框完成後，parser 必須消費恰好第一框長度，再迴圈檢查剩餘 bytes。",
+        "先查解析 loop 是否只執行一次、是否以 `Clear()` 清掉整個 buffer、是否回傳後未再次 drain。",
+        "這是分段不敏感性失敗，可用固定同一串流離線重現，不需先調整網路或 Receive buffer。"
       ]
     }
   ],
   "recap": [
-    "從串流資料推導為何需要訊息框架與保留未完成資料。",
-    "追算標頭、本文、剩餘資料與 EOF 各種狀態。",
-    "設計能承受所有合理分段、合併和壞長度的接收迴圈。"
+    "TCP 交付 bytes；應用格式負責定義訊息起訖。",
+    "保存未完成標頭／本文，只消費完整框；同一批 bytes 可能產生多框。",
+    "EOF、取消、期限和格式錯誤不是同一事件；長度需在配置本文前驗證。",
+    "同一串流在任意保持順序的切片下應輸出相同訊息列表；用狀態和累積量找到最早不相符點。"
   ],
   "sources": [
     {
-      "label": "IETF RFC 9293：TCP 串流、連線與關閉機制",
-      "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
+      "label": "IETF RFC 9293 §2.2、§3.7：TCP byte stream 與應用讀寫／segment 邊界不保證對應",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.7"
     },
     {
-      "label": "Microsoft：接收返回長度與結束",
+      "label": "Microsoft .NET 10：Socket.ReceiveAsync 實際回傳 byte 數、EOF 與取消例外",
       "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0"
     },
     {
-      "label": "Microsoft：讀取大端序16位長度",
+      "label": "Microsoft .NET 10：BinaryPrimitives.ReadUInt16BigEndian 讀取長度字首",
       "url": "https://learn.microsoft.com/en-us/dotnet/api/system.buffers.binary.binaryprimitives.readuint16bigendian?view=net-10.0"
-    },
-    {
-      "label": "Microsoft：System.IO.Pipelines 與未消費資料",
-      "url": "https://learn.microsoft.com/en-us/dotnet/standard/io/pipelines"
     }
   ],
   "resources": [
     {
-      "label": "下載 TCP 本機練習",
+      "label": "TCP 本機長度字首練習（Python 標準函式庫）",
       "path": "./assets/labs/socket-tcp-lab.py",
-      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度字首與分段讀取。"
+      "description": "只在 127.0.0.1 使用系統分配的暫時 Port；以兩-byte 大端序長度字首讀取 STATUS? 與 OK,READY，故意切分 sendall 呼叫。"
     },
     {
-      "label": "下載 C# Socket 維護教材模型",
+      "label": "C# Socket 維護教材模型（.NET 10）",
       "path": "./assets/labs/sockets-maintenance-lab.zip",
-      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
+      "description": "本機回環專案；具體 `FrameParser.Feed` 回傳嚴格 UTF-8 解碼後的字串，以 `End()` 檢查 EOF；正文 `FrameReader` 是另一個回傳原始 body bytes、以 `CompleteInput()` 表達 EOF 的抽象契約。兩者 framing 不變數相同，介面不可混用。"
     }
   ]
 }

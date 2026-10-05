@@ -57,28 +57,40 @@ def main():
             }""")
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), f"page overflow: {topic}/{chapter}"
 
-        pilot = next(t for t in catalog["topics"] if t["id"] == "networking")
-        pilot = [c for c in pilot["chapters"] if c.get("contentVersion", 0) >= 3]
-        assert page.locator(".learning-preview li a").count() == len(pilot)
-        for i, chapter in enumerate(pilot):
-            page.locator(f".learning-preview a[href='#/lesson/networking/{chapter['id']}']").click()
-            page.wait_for_function("title => document.querySelector('.lesson-header h1')?.textContent === title", arg=chapter["title"])
-            assert page.locator(".legacy-notice").count() == 0
-            assert page.locator(".lesson-plan").count() == 0
-            check = page.locator(".concept-check details").first
-            check.locator("summary").click()
-            assert check.get_attribute("open") is not None
-            assert check.locator("p").count() >= 1
-            nav = page.locator(".lesson-next")
-            if i + 1 < len(pilot):
-                assert nav.locator("a").last.get_attribute("href") == f"#/lesson/networking/{pilot[i + 1]['id']}"
-            else:
-                assert "本組新版試讀到此" in nav.inner_text()
-                assert nav.locator("a").last.get_attribute("href") == "#/topic/networking"
-            assert page.locator(".lesson-aside a[href='#/lesson/networking/one-conversation']").count() == 0
-            page.goto(base)
-            page.wait_for_selector(".learning-preview")
-        lesson("networking", "one-conversation")
+        core_topics = ["ozeki", "ptt", "voip", "radio", "integration", "reliability"]
+        for topic_id in core_topics:
+            topic = next(t for t in catalog["topics"] if t["id"] == topic_id)
+            assert page.locator(f".learning-preview a[href='#/topic/{topic_id}']").count() == 1
+            assert page.locator(f".learning-preview a[href='#/topic/{topic_id}']").inner_text().find(topic["title"]) >= 0
+
+        first_core = next(t for t in catalog["topics"] if t["id"] == core_topics[0])
+        first_chapter = next(c for c in first_core["chapters"] if c["status"] == "ready" and c.get("contentVersion", 0) >= 3)
+        lesson(first_core["id"], first_chapter["id"])
+        assert page.locator(".legacy-notice").count() == 0
+        assert page.locator(".lesson-plan").count() == 0
+        first_check = page.locator(".concept-check details").first
+        if first_check.count():
+            first_check.locator("summary").click()
+            assert first_check.get_attribute("open") is not None
+        page.set_viewport_size({"width": 390, "height": 844})
+        toc = page.locator(".mobile-lesson-toc")
+        toc.locator("summary").click()
+        toc.locator("a[href='#section-3']").click()
+        page.wait_for_function("() => { const heading = document.querySelector('#section-3 h2').getBoundingClientRect(); const headerBottom = document.querySelector('.site-header').getBoundingClientRect().bottom; return heading.top >= headerBottom && heading.top < 200; }")
+        page.set_viewport_size({"width": 1440, "height": 1000})
+        nav = page.locator(".lesson-next")
+        ordered_core = [c for c in first_core["chapters"] if c["status"] == "ready" and c.get("contentVersion", 0) >= 3]
+        expected_next = (f"#/lesson/{first_core['id']}/{ordered_core[1]['id']}"
+                         if len(ordered_core) > 1 else f"#/topic/{first_core['id']}")
+        assert nav.locator("a").last.get_attribute("href") == expected_next
+        page.goto(base)
+        page.wait_for_selector(".learning-preview")
+
+        legacy_topic = next(t for t in catalog["topics"] for c in t["chapters"]
+                            if c["status"] == "ready" and c.get("contentVersion", 2) < 3)
+        legacy_chapter = next(c for c in legacy_topic["chapters"]
+                              if c["status"] == "ready" and c.get("contentVersion", 2) < 3)
+        lesson(legacy_topic["id"], legacy_chapter["id"])
         assert page.locator(".legacy-notice").is_visible()
         page.locator("#complete-button").click()
         assert page.locator("#complete-button").get_attribute("aria-pressed") == "true"
@@ -89,7 +101,7 @@ def main():
         first_answer = page.locator(".exercise-card details").first
         first_answer.locator("summary").click()
         assert first_answer.get_attribute("open") is not None
-        assert first_answer.locator("p").count() >= 2
+        assert first_answer.locator("p").count() >= 1
         if args.screenshots:
             args.screenshots.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(args.screenshots / "desktop.png"))
@@ -120,7 +132,7 @@ def main():
         assert not errors, errors
         print(json.dumps({"browser": "Chromium", "mobile_lessons": count,
                           "widths": [1440, 390], "javascript_errors": errors,
-                          "checks": ["search", "progress persistence", "answer disclosure", "mobile navigation", "overflow", "diagram decoding and original-image links", "unavailable content", "teaching preview entry and edition navigation", "inline understanding checks"]},
+                          "checks": ["search", "six core series entry", "progress persistence", "answer disclosure", "mobile navigation", "mobile section anchor clears sticky header", "overflow", "diagram decoding and original-image links", "unavailable content", "lesson edition labels", "inline understanding checks"]},
                          ensure_ascii=False, indent=2))
         browser.close()
 

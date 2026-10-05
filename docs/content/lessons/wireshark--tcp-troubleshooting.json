@@ -1,243 +1,305 @@
 {
-  "contentVersion": 2,
-  "intro": "TCP把不可靠路徑上的數據組織成可靠的有序bytes，但它只管理運輸，不懂查狀態、PTT或音訊業務。本章從連接、序號、累計ACK、重傳與窗口建立機制，再使用同一份混合檔比較拒絕、無回應、收到但不處理、接收壓力與觀測遺漏。目標是能說出證據爲什麼支持某一層，而不只背「ACK不等成功」。",
+  "contentVersion": 3,
+  "intro": "這篇把已會讀的 TCP 欄位放回多筆封包與程式紀錄的時間線，用它們判斷目前證據到達哪個交接點、還有哪些故障假說成立。重點是連線建立前的拒絕與沉默、ACK 與應用處理的界線、傳輸重送與業務重試的差別，以及零窗口限制哪個方向。",
   "prerequisites": [
-    "知道 IP 是主機位址、Port 是應用端點；本章遇到傳輸與擷取新概念會從機制解釋。",
-    "可以使用自己電腦上的 Wireshark 開檔；未安裝時可先讀本章完整資料與推導，再進行操作。"
+    "已讀過封包欄位與 Wireshark 的基本操作；能辨認端點、方向、SYN/RST/ACK、TCP 序號與資料長度即可。本篇不重教握手、序號算法、封包窗格、篩選器或 Follow TCP Stream。",
+    "練習使用網站附帶的合成 PCAP 和程式紀錄，不需連線或實際設備。"
   ],
   "goals": [
-    "能解釋連接建立、byte流、累計ACK、重傳與窗口之間的因果。",
-    "能按原始seq/ack及時間區間區分運輸現象與應用等待。",
-    "能對同症狀提出競爭假說，有限修正並設計迴歸驗證。"
+    "根據同一端點組合的封包時間線，區分建立前收到 RST 與 SYN 沒有可見回應。",
+    "指出 TCP ACK 證明的接收邊界，並用應用紀錄確認資料是否繼續進入解析、排隊與處理。",
+    "依連線和序號範圍辨認重複傳輸，避免把它直接當成第二次業務請求。",
+    "從窗口廣告方向判定哪一端暫時無法接收更多資料，並提出下一個能區分假說的觀測。"
   ],
   "sections": [
     {
       "kind": "concept",
-      "heading": "TCP承諾什麼：雙向有序bytes與連接生命週期",
+      "heading": "先固定案例與觀測邊界",
       "paragraphs": [
-        "IP負責把packet盡力送往目的地，途中可遺失、重複或亂序；TCP在兩端建立連接狀態，把每個方向的數據賦予序號並管理確認與重傳。接收方可以先保存亂序bytes，等缺口補齊再按序交給應用；同樣範圍重複抵達通常不會重複交付。可靠是相對於連接未失敗且可恢復的傳輸而言，不是永遠保證送達。",
-        "應用寫入13bytes，可能在線路分兩段、與下一次寫入合在一段，或被重傳；接收應用一次recv也可能只讀部分。這是byte stream和message的區別。要還原請求，應用另外定義長度、分隔符或固定結構。Wireshark能重組運輸，但未知應用格式仍需文檔，否則無法判定收到的bytes是否完整有效請求。",
-        "TCP連接有建立、傳輸、關閉和失敗階段。Client先SYN請求同步起始序號，Server SYN/ACK確認且提出反向起始序號，再ACK完成。正常關閉用FIN表示這個方向沒有更多數據，可能半關閉；RST則是中斷信號。只看到一個FIN不表示兩個方向都結束。維護時先確認本次操作發生在哪階段，才能排除尚未開始的應用格式問題。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "累計ACK與缺口：確認的是一段連續範圍",
-      "paragraphs": [
-        "序號表示本段第一byte的位置；ACK=N表示接收端下一期待N，之前連續bytes已確認。假設已收到1001～1100、又先收到1201～1300，中間1101～1200缺失，累計ACK仍停1101，不能跳1301假裝完整。接收端可另外用SACK選擇性確認某些後面區間，但累計ACK的連續邊界保持。",
-        "同一ACK多次出現可說明缺口或其他重複確認行爲，發送方會結合算法判斷快速重傳；不能把任何重複ACK都自動定位爲某臺設備丟包。若沒有及時確認，發送方也會在重傳計時器到期後再送未確認範圍。重傳時間與次數由實現、網絡估計、擁塞機制與系統配置共同影響，沒有全系統通用的固定1秒規則。",
-        "SYN和FIN各佔一個序號，純ACK不佔。教材q17 SYN1000後數據1001、長13，範圍1001～1013，ACK1014才覆蓋全部。業務回應使用反方向自己的序號9001～9015，ACK9016覆蓋15bytes。兩個方向分別計數，ACK欄位是在確認對方方向，因此不能把每行seq與ack當同一條計數器。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "重傳、業務重試與擁塞：三種不同決策",
-      "paragraphs": [
-        "TCP重傳通常再次發送同一序號區間，以補運輸缺口；應用可能完全不知道中間發生了重傳。業務重試則是應用期限到後再發請求，使用新bytes與新TCP序號，可能沿同一連接或新連接。若請求有副作用，同ID如何去重必須由應用協議決定，TCP不能保證業務只執行一次。",
-        "擁塞控制管理路徑負擔，接收窗口管理對端緩存空間，兩者分別限制發送量。重傳可以由路徑遺失觸發，也可由ACK遺失、亂序、抓包混亂或其他因素呈現；在一端觀測重傳不一定代表應用失敗。應量測該請求最終回應時間、是否有序到達、重傳範圍與另一端證據，不能只因Expert Info有一行就宣佈網絡故障。",
-        "過度業務重試會產生更多連接、請求和隊列工作，有可能放大原本慢回應。若TCP仍在補數據，而應用不斷新發同命令，日誌中可能混出多個ID與重傳；先按連接與byte範圍分開，再按request ID比較。有限修正要針對造成等待的機制，不能把所有層的timeout都改大當作解決。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "窗口與零窗口：對端說暫時不要再給我",
-      "paragraphs": [
-        "TCP窗口廣告描述接收方從確認位置開始還能接受多少bytes，是流量控制機制。接收程序讀得慢、緩衝耗盡時，可廣告Zero Window讓發送方暫停常規新數據。之後應用騰出空間，窗口更新才容許繼續。窗口零不是無路由或沒有監聽，反而說明已經有連接而且對端在表達壓力。",
-        "窗口值可能要結合握手協商的Window Scale換算；Wireshark可顯示原值與計算值。若中途才抓而缺協商，工具可能無法準確推真實容量。本套件沒帶Window Scale選項，因此標頭4096就按4096理解；不能把這個簡化規則套到所有大窗口連接。",
-        "窗口小不自動是故障，偶爾短時零窗口可能在負載下恢復。要看持續多久、與應用處理及deadline關係、是否反覆出現。若服務器CPU忙或接收線程被阻塞，窗口和queue可能一起變化；網絡調參不能替程序讀緩衝。Packet告訴你接收壓力，程序證據幫助解釋壓力從哪裏產生。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題一：ACK後的500ms逾時，哪一層已經發生",
-      "paragraphs": [
-        "q18在51003完成三次握手後，於wire time .430送13-byte REQ q18 GET，seq4001；.440收到服務器純ACK4014。13bytes範圍4001～4013，ACK覆蓋它們。此檔之後無對應服務器應用payload。運輸已確認這份bytes範圍，卻沒有業務回應，這讓「SYN完全沒到」與「客戶端從未發送」不符合已知。",
-        "候選仍有服務器未調用recv、收到但parser錯誤、已解析卻排隊、處理完成但回覆路徑失敗。ACK由TCP實現產生，不需應用親自逐項處理。客戶端期限500ms是應用策略，可能在.930左右認爲本次等待結束；不應把這個期限叫TCP連接建立timeout，因爲連接早已完成。",
-        "補合成log：服務器在對應請求後記PARSE q18與QUEUE depth8，期限之後才COMPLETE。可將下一步聚焦處理與排隊，而不是優先改防火牆。若沒有服務器log，只能報告運輸確認與業務回應缺口，並列候選；你不能從ACK推parser已成功。這個機制讓證據從一次模糊「無回應」縮小到可調查的階段。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題二：同bytes重傳與ACK確認的計算",
-      "paragraphs": [
-        "q19在.530送seq5001 len13，.830重發相同seq與bytes，.840收到ACK5014，.850見回應seq9001 len15。等待從首送到重送300ms，從重送到ACK10ms，到業務回應20ms。首次請求到回應320ms是抓包間隔，不包含按鍵與UI時間。",
-        "兩次數據區間相同，所以總可見payload26而唯一13；ACK5014剛好確認13。reference沒有第一份.530卻有第二份.830，支持兩個合成觀察之間第一份未被收錄。真實情境還需檢查鏡像、drop與時鐘，才能評估是路徑丟失還是capture漏記。Wireshark重傳標籤是一種基於當前序號歷史的分析，原seq與len是可自行復核的事實。",
-        "若同樣payload第二次seq5014，它就不是這份13bytes的TCP重傳，而是新的傳輸bytes。應用是否重複請求、能否重複執行，要由ID與協議定義判斷。修復可能不同：運輸遺失查路徑質量，應用盲重試查deadline、冪等策略與結果未知處理；兩者不要混爲「重試次數太多」。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題三：零窗口的時間與工程後果",
-      "paragraphs": [
-        "51006在.730送13bytes，服務器.740 ACK7014且window0，1.040廣告window4096。零窗口觀察持續300ms。此時客戶端請求已被運輸確認，而接收端不希望再進新數據；如果還有第二個請求，發送可能等待。這與51002只見SYN沒有響應是不同階段。",
-        "先看窗口方向：是B向A廣告零，代表B接收A數據的容量受限，不是A的接收容量。若圖只列tcp.window_size==0而未看ip.src，容易倒置壓力來源。教材沒有後續第二請求，所以不能由它證明實際業務耗時增加了300ms；你可說此窗口條件存在300ms，會限制該方向新發送。",
-        "補測應記錄B的接收緩衝、讀線程、CPU或隊列和窗口恢復時刻。有限修正如讓接收處理不被長計算阻塞，迴歸需比較相同負載下零窗口持續時間與請求完成率，不是只把窗口截圖刪掉。工程後果是容量與期限相互影響，而不是所有零窗口都表示設備死機。"
-      ]
-    },
-    {
-      "kind": "diagnostic-case",
-      "heading": "連接不上：拒絕、無回應與解析缺口各自怎麼追",
-      "paragraphs": [
-        "同症狀「連接不上」給兩條新觀察：51001的SYN後10ms收到RST/ACK；51002同seq的SYN在.300、1.300、3.300出現，無對應反向。RST支持某個接收點明確拒絕或重置；可能目標未監聽或中間設備拒絕，來源IP本身未必足以鎖定程序。無回應可能請求沒到、回應沒回、對端沉默或抓包只見一向。",
-        "先用服務端監聽清單與服務端抓包區分。若服務端看不到51002 SYN，調查兩個觀察點之間與路徑；若看見SYN而沒有SYN/ACK，再覈對監聽地址、Port、防護策略與資源。若服務端有SYN/ACK但客戶端沒見，追反向。這樣的雙點實驗逐段排除，優於把三次SYN直接叫防火牆丟包。",
-        "另一種「無回應」是51005沒有服務器data卻有客戶端ACK9016。這應優先查捕捉完整性，而不是把它跟SYN-only合成同一個故障。使用者描述可以相同，機制不同；維護工作先把語言轉換爲連接階段與字段事實，才能選有區分力的下一步。"
-      ]
-    },
-    {
-      "kind": "lab",
-      "heading": "實作：用原始字段做六種現象的證據表",
-      "paragraphs": [
-        "開mixed，分別按51000至51006端點查看，不依賴固定stream編號。導出time、srcport、dstport、seq_raw、ack_raw、flags、len與window。每條寫最後已確認階段：正常回應、收到RST、只見SYN、數據被ACK無業務回應、同範圍重傳、ACK覆蓋未捕獲數據、窗口暫爲零。先自行給候選，不使用manifest情境名稱作結論。",
-        "變因對照用reference，驗證51004第一份.530缺失與51005.650回應出現。再用tcp.analysis.retransmission與tcp.analysis.lost_segment看自動標籤，比較標籤與手算差異。標籤名稱或優先級依版本與完整歷史可能變化，驗收以原seq/ack與範圍爲主，不要求所有版本用同一顏色。",
-        "驗收提交至少六條端點證據，包含ACK4014、ACK5014、ACK9016與300ms窗口範圍的計算；對每個故障給兩個以上候選及下一步能區分它們的數據。恢復清空filter看171筆。不要在實機制造斷線，本套件離線就能完成機制練習；GUI未在製作環境驗證，bytes與校驗和已獨立檢查。"
+        "本篇只使用 `wireshark-maintenance-mixed.pcap`。它是 171 個 Ethernet frame 組成的合成混合案例，含其他背景流量；端點、時間和請求 ID 均為教學資料，不是公司封包。以下 frame 編號是這一份檔案中的編號，時間使用 Wireshark `frame.time_relative`，也就是從第一個 frame 的時間起算。",
+        "不要把它接到 `wireshark-first-capture.pcap` 的 13-frame HTTP 範例，也不要接到網路流程教材中的 Q42 時間線。那些檔案有各自的連線、端點和時間基準；相同的 TCP 概念不代表它們是同一次操作。q18 的合成 logs.csv 使用與本 PCAP 相同的相對時鐘，因此可在這個練習內依 request ID 與時間對照；真實跨主機紀錄則仍要先核對時鐘偏差和每個 log stage 的定義。",
+        "本篇的 seq 與 ACK 數字均採原始序號欄位（`tcp.seq_raw`、`tcp.ack_raw`），不是 Wireshark 常見的相對序號顯示；例如 SYN 的原始 seq=2000，在相對顯示中可能是 0。檢視時要先確認顯示模式，或直接核對 raw 欄位。判讀時先記錄一條完整端點組合，例如 `192.0.2.10:51003 → 198.51.100.20:9100`，再按時間列出雙向封包和應用事件。端點、方向、序號範圍和 log 的交接階段是原始證據；Wireshark 的 TCP analysis 標籤可以協助定位，但其解讀依賴擷取中已看到的封包順序與歷史，不應單獨拿來指定故障元件。"
       ],
-      "code": {
-        "title": "匯出TCP原始字段而非只匯出Info摘要",
-        "text": "tshark -r wireshark-maintenance-mixed.pcap -Y \"tcp.port == 9100\" -T fields -E header=y -E separator=, -e frame.time_relative -e ip.src -e tcp.srcport -e tcp.seq_raw -e tcp.ack_raw -e tcp.len -e tcp.flags -e tcp.window_size_value"
+      "table": {
+        "caption": "本篇會追的五條獨立 TCP 連線",
+        "headers": [
+          "client 端點",
+          "server 端點",
+          "觀察主題",
+          "對應 mixed frame"
+        ],
+        "rows": [
+          [
+            "192.0.2.10:51001",
+            "198.51.100.20:9100",
+            "SYN 後收到 RST/ACK",
+            "18–19"
+          ],
+          [
+            "192.0.2.10:51002",
+            "198.51.100.20:9100",
+            "SYN 重送但無反向封包",
+            "21、72、171"
+          ],
+          [
+            "192.0.2.10:51003",
+            "198.51.100.20:9100",
+            "q18 的 TCP ACK 與應用處理紀錄",
+            "24–30；另見 logs.csv"
+          ],
+          [
+            "192.0.2.10:51004",
+            "198.51.100.20:9100",
+            "q19 同一資料範圍再次傳送",
+            "32–59"
+          ],
+          [
+            "192.0.2.10:51006",
+            "198.51.100.20:9100",
+            "server 廣告零窗口後恢復",
+            "47–65"
+          ]
+        ]
       }
     },
     {
-      "kind": "maintenance",
-      "heading": "選擇改動與迴歸指標：先讓故障機制可檢驗",
+      "kind": "worked-example",
+      "heading": "建立前的 RST 與 SYN 沒有回應，證據不同",
       "paragraphs": [
-        "若連接拒絕，有限修正可能是正確目標Port或監聽配置；驗證要看相同端點握手、數據與業務回覆。若窗口壓力，修正可能是程序及時讀取與處理；驗證要看窗口恢復、隊列與完成時限。若業務排隊，修改網絡重傳參數不直接消除隊列。每項改動與指標都應針對同一機制。",
-        "一次操作可能最終成功但變慢，或運輸全正常卻業務失敗。記錄成功率、完成時間分佈、重傳範圍、窗口持續及服務端階段；不要只用包數或平均RTT作最終體驗。RTT通常是一個方向送出到對方確認的測量，業務請求時間含處理，按鍵到UI還含更多應用開銷。",
-        "不完整捕捉會導致不完整分析，但也可以提供邊界明確的證據。報告先寫端點、時間、原字段與階段，再寫假說及驗證，而不是堆tcp.analysis術語。能解釋爲何ACK只覆蓋bytes、爲何窗口屬於接收方、爲何重傳重複範圍，才建立了可遷移到陌生公司程序的觀念。"
+        "51001 的 frame 18 在相對時間 `.235` 由 `192.0.2.10:51001` 向 `198.51.100.20:9100` 送出 SYN，seq=2000。frame 19 在 `.245` 從 server 位址反向送回 RST/ACK，ack=2001，正好確認 SYN 佔用的序號位置。這條觀測表示 SYN 到達了某個能回覆 reset 的 TCP 端點；連線未完成建立，回覆明確拒絕或中止了這次嘗試。封包的來源 IP 不足以證明 RST 一定由目標主機上的服務程序產生，中間設備也可能代為回覆。",
+        "51002 的 SYN 則在 frame 21 `.285`、frame 72 `1.285`、frame 171 `3.285` 重複出現，方向和 seq=3000 都相同；這份 mixed 檔裡沒有該連線的反向封包。可下的結論是「此觀測檔記錄到多次 SYN，沒有記錄到回覆」，不能直接改寫成「server 收到後沒回」、「防火牆丟包」或「服務未啟動」。請求可能沒到 server，回覆可能沿別的路徑或在擷取點之前遺失，擷取也可能不完整。",
+        "若要區分這些可能，在相同測試時間從 server 側擷取並核對 `:9100` 的監聽地址與狀態：server 側看不到 SYN，優先查兩個觀測點之間和擷取條件；看見 SYN、卻沒看見 SYN/ACK 或 RST，查該端點的監聽、資源與策略；看見 server 已送 SYN/ACK 而 client 側沒有，轉查回程路徑或 client 側觀測。RST 案例同樣可比對兩端擷取，確認回覆在哪一側首次出現。"
+      ],
+      "table": {
+        "caption": "建立階段的兩種可見時間線",
+        "headers": [
+          "連線",
+          "已觀察到的方向與欄位",
+          "目前能支持的結論",
+          "仍未知"
+        ],
+        "rows": [
+          [
+            "51001",
+            "client SYN seq=2000；反向 RST/ACK ack=2001",
+            "建立完成前收到 reset 回覆",
+            "是哪個網路端點產生 RST、拒絕原因"
+          ],
+          [
+            "51002",
+            "client SYN seq=3000 出現三次；沒有可見反向封包",
+            "本檔未記錄到連線回應",
+            "SYN 是否到 server、回程是否可達、觀測是否完整"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "ACK 證明 TCP 接收到了連續資料，不代表程式已讀",
+      "paragraphs": [
+        "q18 的 frame 29 在 Wireshark 相對時間 `.415` 由 `192.0.2.10:51003` 傳往 `198.51.100.20:9100`，seq=4001、tcp.len=13，承載 `REQ q18 GET`。frame 30 在 `.425` 由 server 反向回 ACK=4014；此值確認 client 方向 4001–4013 共 13 bytes，server 的 TCP 接收端下一個連續位置是 4014。它不表示 server 應用程式已呼叫 Read、完成解析或執行命令，因 ACK 可由對端 TCP 實作在應用程式取走資料前送出。",
+        "同一合成案例的 logs.csv 把交接往後補齊：q18 的 client `SEND` 在 `.418`，server `PARSE` 在 `.421`，`QUEUE depth=8` 在 `.425`，client `TIMEOUT deadline=500ms` 在 `.918`，server `COMPLETE READY; reply failed closed session` 在 `1.105`。因請求 ID 相同且此練習明訂雙方使用共同相對時鐘，可知範例中的請求進入解析與排隊，之後 client 等待逾時，而 server 的工作完成紀錄晚於期限。這些是合成 log 定義下的階段，不可拿來推定公司程式的 `SEND` 或 `COMPLETE` 有相同語義。",
+        "封包中看得到 ACK，卻沒有 q18 的 server 應用回覆資料；log 又記錄回覆因 session 已關閉而失敗。因此 client 逾時不能證明命令沒有完成，對 client 而言結果仍未收到。下一個有區分力的證據是 server 的 session 關閉原因與時間、實際回覆呼叫的結果，以及 server 側是否有對應回覆 segment；這可以分開查處理超出期限、回覆時 session 已關閉，或回程資料未到 client。"
+      ],
+      "table": {
+        "caption": "q18 中 transport 與 application 各自能回答的問題",
+        "headers": [
+          "觀測",
+          "具體證據",
+          "能確認到的交接點",
+          "不能據此確認"
+        ],
+        "rows": [
+          [
+            "TCP request",
+            "frame 29：51003→9100，seq=4001，len=13",
+            "client 方向的 13 bytes 出現在這個觀測點",
+            "server 是否收到或解析"
+          ],
+          [
+            "TCP ACK",
+            "frame 30：9100→51003，ACK=4014",
+            "server TCP 接收端確認 4001–4013 連續資料",
+            "應用是否已 Read、解析或完成業務"
+          ],
+          [
+            "server/client logs",
+            "PARSE、QUEUE、TIMEOUT、COMPLETE 與 q18 ID",
+            "範例程式執行到記錄的應用階段",
+            "client 是否收到成功回覆或 UI 是否採用結果"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "同一序號範圍重送，和應用再送一筆請求不是同一件事",
+      "paragraphs": [
+        "q19 在 frame 36、相對時間 `.515`，由 `192.0.2.10:51004` 向 `198.51.100.20:9100` 傳送 seq=5001、len=13 的 `REQ q19 GET`。frame 56 在 `.815` 又出現相同連線端點、相同 seq=5001、相同 13 bytes；frame 57 在 `.825` 反向 ACK=5014，frame 58 在 `.835` 出現 15-byte 的 q19 回覆。兩筆 request frame 覆蓋相同序號範圍 5001–5013，第二筆不是另一段新的 TCP stream bytes；在這份合成時間線裡，它呈現的是相同資料範圍再次傳送。",
+        "應用若在同一 TCP 連線逾時後重新寫入同一命令，TCP 會把新寫入放在後續新的序號範圍；如果程式重連，則要先按新連線分開序號空間，再比較應用 request ID。序號範圍能區分 transport 重新傳送同一 bytes 與 stream 中新增 bytes，但不單獨說明 server handler 是否執行一次或多次。q19 沒有配套應用 log，所以不能從這幾筆封包推斷業務是否重試或是否有副作用。",
+        "Wireshark 的 `tcp.analysis.retransmission` 是依目前擷取中同一 TCP flow 的序號歷史產生的分析提示；擷取位置、缺包與分析順序都可能影響分類。先比對端點、序號範圍、長度和 payload，再把 request ID 與應用紀錄接上；不要用 Info/Expert 標籤直接宣判路徑哪一段丟包，也不要因兩筆封包就判定命令執行兩次。"
+      ],
+      "table": {
+        "caption": "判斷重送的是既有 stream bytes，還是新業務資料",
+        "headers": [
+          "觀察層",
+          "transport 重送的跡象",
+          "應用重試的跡象",
+          "尚需的證據"
+        ],
+        "rows": [
+          [
+            "TCP 封包",
+            "同一連線、同一序號範圍與相同 bytes 再出現；q19 為 5001–5013",
+            "同連線的新寫入會占用後續序號範圍；新連線則另有連線世代",
+            "確認五元組/連線、seq、len 和 payload"
+          ],
+          [
+            "應用紀錄",
+            "重送可能不會再次進入應用收件流程",
+            "可能出現第二個 send/request 嘗試，需按實際 request ID 與日誌語義比對",
+            "client retry log、server parser/handler 次數及結果記錄"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "零窗口由廣告端指出接收壓力方向",
+      "paragraphs": [
+        "q21 在 frame 51、相對時間 `.715`，由 client `192.0.2.10:51006` 向 server `198.51.100.20:9100` 傳 13 bytes，seq=7001。下一筆 frame 52 在 `.725` 由 server 反向回 ACK=7014，並在 TCP header 廣告 window=0。ACK 確認剛才的 13 bytes；window 則是這筆封包的發送端，也就是 server，對自己接收能力的廣告。方向因此是：server 暫時沒有空間再接收 client→server 的新資料。",
+        "frame 65 在 `1.025` 仍由 server 傳送同一確認位置 ACK=7014，但 window 回到 4096；從 `.725` 到 `1.025`，這份檔案記錄到 300ms 的零窗口區間。零窗口不表示 client 的 q21 尚未被 ACK，也不表示 server→client 的回覆方向被封鎖。此連線沒有再記錄一筆 client 新資料，因此不能說 q21 實際多等了 300ms；只能說這段時間 server 廣告的接收窗口為零，會限制該方向後續資料。",
+        "窗口更新指出接收容量後來重新開放，卻不指出造成暫時無容量的程式位置。若相同現象在真實操作中與延遲相關，下一步比較 server 的接收/讀取進度、緩衝或排隊指標，以及同連線後續資料實際何時可傳；只有再把這些時間和業務期限對起來，才能判斷窗口壓力是否造成使用者可見的延遲。"
+      ],
+      "table": {
+        "caption": "q21 的 window 欄位由 server 發出，所以限制 client 往 server 的接收",
+        "headers": [
+          "PCAP 相對時間",
+          "方向",
+          "seq / ACK",
+          "window",
+          "可支持的結論"
+        ],
+        "rows": [
+          [
+            ".715，frame 51",
+            "client→server",
+            "seq=7001，len=13",
+            "4096",
+            "q21 資料送往 server"
+          ],
+          [
+            ".725，frame 52",
+            "server→client",
+            "ACK=7014",
+            "0",
+            "server 已確認 q21，並暫停接收 client 新資料"
+          ],
+          [
+            "1.025，frame 65",
+            "server→client",
+            "ACK=7014",
+            "4096",
+            "server 後續重新廣告可接收空間"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "lab",
+      "heading": "練習：把封包觀察轉成可交接的診斷紀錄",
+      "paragraphs": [
+        "開啟 `wireshark-maintenance-mixed.pcap`，以端點區分 51001、51002、51003、51004 和 51006 五條連線；保留 frame number、`frame.time_relative`、來源/目的端點、TCP flags、`tcp.seq_raw`、`tcp.ack_raw`、`tcp.len`、window 與 payload。對 q18 另讀 `wireshark-maintenance-logs.csv` 的 q18 rows。不要先看 manifest 的 scenario 名稱替自己下結論；先按封包和 log 寫觀察，再用 manifest 核對原始資料。",
+        "每個案例用同一格式交接：①完整 client/server 端點和觀測方向；②關鍵時間、flags、序號範圍、ACK 或 window；③證據到達 TCP、應用解析、排隊、處理或回覆中的哪個交接點；④目前仍未知的環節；⑤下一個最能區分剩餘假說的擷取點或 log 欄位。對 q19 額外寫出為何兩份資料占同一段序號空間；對 q21 額外標出廣告 window 的端點，避免反轉受壓方向。",
+        "檢查 `tcp.analysis.retransmission` 或 Expert Information 時，把它們當定位提示，回到原始端點、seq/ack、長度和時間核實，不能用標籤當根因。PCAP frame、manifest 欄位和 CSV 的題答已逐項核對；目前製作環境沒有 Wireshark/TShark，因此不宣稱 GUI 或 TShark 輸出已實測。"
       ]
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "爲什麼TCP可靠不代表遠端命令一定成功？",
+      "level": "application",
+      "question": "請比較 51001 和 51002。各自列出 client/server 端點、封包方向、關鍵 SYN/RST 與 seq/ack、目前到達的交接點、未知事項，以及一項能區分剩餘假說的下一個觀測。",
       "answer": [
-        "TCP提供連接內有序byte運輸與確認，業務格式、權限與執行是應用層規則。",
-        "ACK可由核心在應用處理前產生；連接也可能最終失敗。",
-        "要確認命令成功需按request ID與正式協議查回應或權威狀態，結果未知時不能盲目再執行。"
+        "51001：frame 18 在 `.235` 是 `192.0.2.10:51001 → 198.51.100.20:9100` 的 SYN，seq=2000；frame 19 在 `.245` 反向為 RST/ACK，ack=2001。觀察到建立前的 reset 回覆，尚不知道 RST 由目標主機還是路徑中的設備產生。下一步在 server 側同步抓相同端點的封包，找出 RST 首次出現的位置，並核對 server listener 狀態。",
+        "51002：frame 21、72、171 是 `192.0.2.10:51002 → 198.51.100.20:9100` 的 SYN，seq 都是 3000，時間為 `.285`、`1.285`、`3.285`；mixed 檔沒有反向封包。只能說這份 本檔合成觀測沒有記錄回應，還不知道 SYN 是否到達 server、回程是否遺失或 capture 是否缺資料。下一步在 server 側同時抓包並核對 9100 的監聽狀態；server 看見 SYN 後的具體反應可把請求去程、server 接收/策略和回程拆開。",
+        "51001已觀察到建立前的 RST；51002在本檔觀察期間未見連線建立成功的證據，也都不能從單一來源位址直接指認服務程序根因；差別是 51001 有 reset 封包回來，51002 在此觀測檔中完全沒有反向證據。"
       ]
     },
     {
-      "level": "foundation",
-      "question": "累計ACK爲何在收到後面段時仍停在缺口？",
+      "level": "reasoning",
+      "question": "用 q18 寫一份六欄診斷紀錄：端點、方向、TCP 序號範圍、已到達的交接點、仍未知、下一個區分證據。請把封包時間與 logs.csv stage 一起說明，並避免把 client timeout 寫成遠端命令失敗。",
       "answer": [
-        "ACK表示下一期待的連續byte位置，中間缺口阻止連續範圍推進。",
-        "後面的bytes可暫存在接收緩衝，SACK可能另告知，但累計邊界不同。",
-        "查seq區間與重傳補洞，而非把每個重複ACK直接當網絡設備故障。"
+        "端點與方向：request 從 `192.0.2.10:51003` 傳到 `198.51.100.20:9100`；回覆方向相反。frame 29 在 PCAP 相對時間 `.415` 帶 seq=4001、len=13，涵蓋 4001–4013；frame 30 在 `.425` 由 server ACK=4014。",
+        "到達的交接：ACK 表示 server TCP 接收端確認連續 bytes；同一 q18 的 logs.csv 顯示 client SEND `.418`、server PARSE `.421`、QUEUE `.425`、client TIMEOUT `.918`、server COMPLETE `1.105`，並記 `reply failed closed session`。所以範例可確認應用解析、排隊和處理完成有紀錄，且完成時 client 已超過 500ms deadline。",
+        "未知：client 沒收到應用回覆，但遠端工作是否成功不可由 timeout 推成失敗；log 提到回覆因 session 關閉而失敗，PCAP 又無對應應用回覆。仍需釐清 session 何時、由誰關閉，以及 reply API 是否送出資料。下一步取 server session-close 原因/時間和 reply 呼叫結果，並核對 server 側是否實際發出回覆 segment，藉此分開過慢處理、關閉競態與回程觀測缺口。"
       ]
     },
     {
       "level": "application",
-      "question": "陌生資料：起始SYN25000，數據25001 len120，再數據25121 len80；對端ACK25201。算確認範圍。",
+      "question": "q19 的 frame 36 與 56 都從 `192.0.2.10:51004` 傳往 `198.51.100.20:9100`，各為 seq=5001、tcp.len=13，應用資料為長度前綴 `00 0b` 加11-byte本文 `REQ q19 GET`；之後 frame 57 是 ACK=5014。為何這兩份 request frame 不能直接算成應用執行兩次？還需要哪份程式證據？",
       "answer": [
-        "SYN佔1，首數據起點25001；120bytes至25120，第二80bytes至25200。",
-        "ACK25201是下一期待，共確認200bytes連續數據。",
-        "若缺首段只見第二段，不能假設ACK應立即25201；補握手與捕捉完整性再推斷。"
+        "兩筆 frame 位於同一 TCP 連線並占用相同 5001–5013 序號範圍且 bytes 相同，表示已記錄的 stream 資料範圍再次傳送；應用在同一連線中重新寫入請求會占用新序號範圍，重連時則須先另分連線世代。",
+        "PCAP 可協助分類運輸資料，不能說明 server handler 執行次數。q19 沒有應用 log；需用 request ID、client retry/send 記錄，以及 server parser/handler 進入和完成記錄核對。若要判斷副作用是否重複，還要看業務結果或去重紀錄。"
       ]
     },
     {
-      "level": "application",
-      "question": "陌生資料：原seq9001 len50，.100發送，.450同seq同bytes，.470 ACK9051，.510業務回應。各間隔怎麼叫？",
+      "level": "understanding",
+      "question": "q21 的 window=0 出現在 frame 52。報告中應寫哪一端的什麼能力暫時為零、限制哪個發送方向？這個 300ms 觀察能證明 q21 業務等了 300ms 嗎？",
       "answer": [
-        "首送到重傳350ms；重傳到ACK20ms；首請求到業務回應410ms。",
-        "相同byte區間9001～9050，唯一50而總捕捉payload100。",
-        "410ms是該觀察請求到回覆，不是純網絡RTT；不能將全部410ms歸於路徑延遲。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：服務器ACK5000 Window0在2.0秒，Window2048在2.6秒。哪個方向受限？可以說應用死機嗎？",
-      "answer": [
-        "服務器廣告自身接收容量，所以客戶端繼續向服務器發送新數據受到限制。",
-        "觀察零窗口持續.6秒；恢復2048表明接收容量後來開放。",
-        "不能直接說死機，需接收線程與緩衝等證據；迴歸比較持續時間與業務時限。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：相同REQ q40兩份分別seq3001與3014，每份13bytes，服務器log處理兩次。這是TCP重傳嗎？",
-      "answer": [
-        "不是同範圍重傳，第二份是新的3014～3026bytes，可能業務重試。",
-        "相同ID但兩次應用處理需查去重契約與重試策略；TCP不會自動只執行一次業務。",
-        "有限修正按協議處理冪等或結果查詢，再注入逾時驗證沒有重複副作用。"
+        "frame 52 是 `198.51.100.20:9100 → 192.0.2.10:51006`，server 發出的 window=0 廣告其 TCP TCP 所宣告的接收窗口暫時為零，因此限制 client 向 server 傳送後續新資料。",
+        "frame 52 在 `.725`，frame 65 的同方向 window=4096 在 `1.025`，兩觀測相隔 300ms；q21 的 13 bytes 已在 frame 52 的 ACK=7014 獲確認。這份連線後面沒有新的 client 資料，因此只能報告零窗口廣告持續 300ms，不能說 q21 等待或業務期限因此延長 300ms。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "只見SYN三次，沒有SYN/ACK，如何區分請求路徑與回應路徑？",
+      "question": "你在一端的真實擷取中看到：完整 SYN 有三次、沒有任何反向封包。列出一項不應直接下的結論，以及最能先區分「SYN 未到 server」和「server 已收到但未回」的觀測。",
       "answer": [
-        "在服務器側同窗口抓包：若不見SYN，先查兩觀測點之間與抓包完整性。",
-        "若見SYN並送SYN/ACK但客戶端不見，重點追反向路徑；若見SYN卻不回應，查監聽與策略。",
-        "每條結論仍受觀測位置與漏抓限制；不要把重複次數直接等於防火牆故障。"
-      ]
-    },
-    {
-      "level": "diagnosis",
-      "question": "陌生資料：TCP握手及ACK正常，所有應用回應延遲，但服務器隊列由2增至40；重傳率沒變。最合理修正與驗證是什麼？",
-      "answer": [
-        "證據較支持服務處理容量或排隊，而非先改網絡重傳。",
-        "查入隊速率與處理耗時，有限優化長處理或併發策略，保留同負載正常對照。",
-        "迴歸記錄隊列、完成時間和timeout比例，確認吞吐與正確性；僅延長timeout可能掩蓋壓力，不算原因修復。"
+        "不能只憑本端畫面寫「server 沒開服務」或「防火牆丟了 SYN」；同一畫面也符合請求去程不可達、回程不可見或擷取條件不完整。",
+        "在 server 側同時間擷取該目的 IP/Port，核對 listener/bind 與 TCP 回覆：server 不見 SYN 時查路徑和捕捉範圍；server 看見 SYN 卻無 SYN/ACK 或 RST 時查本機 listener、資源與策略；server 已送回覆時追反向路徑和 client 觀測。提交時附完整端點、兩端觀測方向、SYN 序號，以及每個假說各自預期會看到什麼。"
       ]
     }
   ],
   "recap": [
-    "能解釋連接建立、byte流、累計ACK、重傳與窗口之間的因果。",
-    "能按原始seq/ack及時間區間區分運輸現象與應用等待。",
-    "能對同症狀提出競爭假說，有限修正並設計迴歸驗證。"
+    "收到 RST 與只看到重複 SYN 是兩種不同的建立階段證據；單點擷取無法獨自定位 RST 來源或沉默原因。",
+    "ACK=4014 確認 q18 的 4001–4013 TCP bytes，不代表應用已讀；要用同 request ID 的程式紀錄追後續交接。",
+    "q19 的重複 frame 使用同一 TCP 序號範圍；是否發生業務重試及 handler 執行幾次仍要查應用紀錄。",
+    "window=0 由 server 封包廣告，限制 client→server 的後續接收；觀察窗口持續時間不等同量得業務等待時間。",
+    "報告寫明端點、方向、序號/ACK 範圍、已到達交接點、未知項目和下一項區分證據；不要讓 Wireshark analysis 標籤代替因果證據。"
   ],
   "sources": [
     {
-      "label": "Wireshark 官方：TCP 分析旗標的判定條件",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvTCPAnalysis.html"
-    },
-    {
-      "label": "IETF RFC 9293：TCP 序號與接收確認",
+      "label": "IETF RFC 9293 §3.4：TCP 序號與確認欄位",
       "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4"
     },
     {
-      "label": "Wireshark 官方：校驗和與硬體卸載",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvChecksums.html"
+      "label": "IETF RFC 9293 §§3.5.2–3.5.3：RST 的產生與處理",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.5.2"
     },
     {
-      "label": "Wireshark 官方：TShark 讀檔、篩選與匯出",
-      "url": "https://www.wireshark.org/docs/man-pages/tshark.html"
+      "label": "IETF RFC 9293 §3.8.6：TCP 接收窗口與窗口管理",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.8.6"
+    },
+    {
+      "label": "Wireshark User's Guide §7.5：TCP analysis 標籤的分析條件與限制",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvTCPAnalysis.html"
     }
   ],
   "resources": [
     {
       "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
-      "label": "第二版對照觀測 PCAP",
-      "description": "172 個合成 frame；與混合檔的遺漏位置不同，可練習觀測不完整的推理。"
+      "label": "離線練習檔：171-frame TCP 維護案例",
+      "description": "本篇使用的合成混合 PCAP；frame 編號、端點和時間只適用於本檔，與 13-frame HTTP 練習及 Q42 教學時間線獨立。"
     },
     {
       "path": "./assets/labs/wireshark-maintenance-logs.csv",
-      "label": "合成程式紀錄",
-      "description": "配合 q17 與 q18 對時分析；時間為捕捉起點的相對秒，不是實際公司 log。"
+      "label": "合成應用紀錄：q17 與 q18",
+      "description": "本篇只用 q18 的 SEND、PARSE、QUEUE、TIMEOUT 和 COMPLETE 欄位，配合同一合成案例的 request ID 與相對時鐘判斷交接；不代表公司 log 定義。"
     },
     {
       "path": "./assets/labs/wireshark-maintenance-manifest.json",
-      "label": "可重現資料清單",
-      "description": "檔案雜湊、frame 的原始欄位與合成情境名稱；先獨立分析，再用清單核對。"
+      "label": "合成 PCAP 欄位與時間核對清單",
+      "description": "可在先自行判讀封包後，核對各 frame 的端點、時間、flags、序號、資料長度和窗口。"
     }
-  ],
-  "studyTime": {
-    "reading": [
-      12,
-      20
-    ],
-    "practice": [
-      45,
-      70
-    ],
-    "exercises": [
-      40,
-      60
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

@@ -1,267 +1,213 @@
 {
-  "contentVersion": 2,
-  "intro": "面對成千上萬封包，逐筆讀會迷失；直接看總流量又會錯把大流當故障。你需要不同尺度：端點找誰在活動、對話找哪兩端互動、串流讀應用資料、時間圖找變化。本章說清每種統計的計數對象與限制，並用重傳和觀測遺漏展示為何「包數多」不是「處理多」。",
+  "contentVersion": 3,
+  "intro": "統計視窗的價值，在於把調查範圍從「哪個主機」縮到「哪一對端點、哪一段時間」；它的風險則是讓不同計數對象看起來像同一個數字。本章以 Wireshark 的 Endpoints、Conversations 和 I/O Graphs 建立一條選擇路徑，說清方向、bytes、時間桶與分母各自代表什麼，再用一份合成維護擷取檔判斷：兩個方向的封包總數相同，是否足以說媒體流正常。",
   "prerequisites": [
-    "知道 IP 是主機位址、Port 是應用端點；本章遇到傳輸與擷取新概念會從機制解釋。",
-    "可以使用自己電腦上的 Wireshark 開檔；未安裝時可先讀本章完整資料與推導，再進行操作。"
+    "已會開啟 Wireshark 擷取檔、辨認 IP、Port、TCP 與 UDP，並可套用既有 display filter。這篇不重教封包解碼或 filter 語法；重點是選對統計範圍並解讀數字。",
+    "知道一個應用操作可能經過多個通訊端點；如果需要讀 TCP 應用本文，先修本系列的〈第一次抓包：從開檔到找到請求〉，其中已介紹 Follow TCP Stream。本章不重教 TCP 重組、序號或故障診斷。"
   ],
   "goals": [
-    "能區分端點、對話、TCP串流與應用請求，不混用識別範圍。",
-    "能解釋Follow如何重建bytes及何時不完整。",
-    "能用方向、區間與統計層級比較故障，而非只按流量排序。"
+    "能根據問題選擇 Endpoint、Conversation、單一 TCP Stream 或 I/O Graph，並指出每種觀測的計數母體。",
+    "能解釋方向計數、bytes、Duration、平均 bits/s 及 I/O Graph 時間桶的單位與分母。",
+    "能調整統計的協定層、過濾範圍、方向與時間粒度，避免把總數、平均值或單一擷取點誤認為應用程式結果。",
+    "能由統計圖定位下一段封包，再說明還需要哪一份證據才能判斷故障原因。"
   ],
   "sections": [
     {
       "kind": "concept",
-      "heading": "Endpoint、Conversation、Stream、Request各代表什麼",
+      "heading": "先問要觀察誰，再打開統計視窗",
       "paragraphs": [
-        "Endpoint是某層的一個端點：Ethernet可按MAC，IP可按地址，TCP/UDP通常還包括Port。Conversation把兩個端點之間的交互合起來統計，方向A→B與B→A仍可分開。它適合回答誰跟誰交換多少資料，不會自動辨認「切換成功」或「第幾次查詢」。同一主機可有很多應用端點，同一對主機也可同時跑不同協定。",
-        "TCP Stream代表一條被工具識別的連線。四元組是來源IP、來源Port、目的IP、目的Port，協定使它構成常說的五元組；長時間檔案還可能出現端點重用，所以握手、初始序號及時間範圍有助區分不同生命週期。tcp.stream是Wireshark檔案內的索引，不是原始封包欄位；重新裁檔後索引可能改變。",
-        "Request是應用協定的單次操作，例如q17。長連線可傳很多request，一個request也可能有多次重試或經多個服務。這是為何把「這條stream有回覆」直接當作「我的q18有回覆」會出錯。從對話統計找候選後，還要用應用ID、格式及時間關係去關聯，最後才讀回覆內容。"
+        "看到故障時，先把問題改寫成一句可驗證的話：是哪一個節點在某段時間變得異常？是哪一對程式端點交換的資料改變？還是特定連線在某一小段時間停住？問題不同，統計母體就不同。母體是「這個數字究竟從哪些封包、哪些端點、哪段時間算出來」；沒有先定義母體，排序第一名只代表它在目前條件下數值最大。",
+        "Endpoints 將同一協定層的封包按端點彙整。IP 頁看主機位址；TCP 或 UDP 頁會把位址與 Port 一起當端點，所以同一台主機的兩個程式端點可以分開。它回答「哪些端點在這份擷取中最活躍」，但主機 IP 本身不等於程式或功能。單一封包經過端點 A 到 B，會同時出現在 A 和 B 的端點列；把端點列相加會重複計算。",
+        "Conversations 將特定協定層中兩個端點的往返封包放進同一列，並保留 A→B 與 B→A 的方向計數。它回答「哪一對端點互相交換多少封包、何時開始、最後觀測到何時」，但不辨認一筆業務請求是否成功。同一台服務可以有多個 Conversation；一條長 TCP 連線也可能承載許多次應用操作。",
+        "TCP Stream 是 Wireshark 在目前擷取檔中辨識的一條 TCP 連線索引。它比 TCP Conversation 更適合縮到單一連線，但不是跨公司或跨檔案通用的連線識別碼，也不是 request ID；同一 stream 裡可有多個應用請求。若問題是應用本文實際包含哪些 bytes，可從已選定的 stream 開啟 Follow TCP Stream，並回到〈第一次抓包：從開檔到找到請求〉解讀。UDP 沒有 TCP Stream 的連線語意；Wireshark 的 udp.stream 是工具分組索引，不能因此假設 UDP 本身建立了連線。"
       ]
     },
     {
       "kind": "mechanism",
-      "heading": "Follow TCP Stream：依序號恢復資料，不是原封包播放器",
+      "heading": "讀統計時，數字後面要接上單位與分母",
       "paragraphs": [
-        "TCP把程式寫入的bytes切成傳輸片段，接收時再組成連續流；單次send與單個segment或recv沒有一對一關係。Follow依捕捉到的序號範圍重建各方向資料，將重送與亂序的傳輸細節整理成較接近應用讀到的內容。所以你可用它讀全文，但不能用全文的排版推導每次send大小或封包到達順序。",
-        "若同一13-byte區間送兩次，TCP正常接收不應將它當兩個應用請求交付；Follow通常也不重複拼入同樣範圍。若應用真的重送REQ q17，其第二次可能使用新的TCP序號，是新bytes但同request ID。前者是傳輸重傳，後者是業務重試；統計丟包與檢查重複執行時要分清兩種機制。",
-        "捕捉缺一段時，工具不能憑空填回內容；開始抓在連線中途時，也可能缺最初格式、協商或資料。以ASCII顯示看到點號常是不可列印bytes，例如長度前綴，不代表每個點號都是遺失。要看二進位協定選Hex Dump或Raw，並回到原始seq核對連續範圍。加密資料即使重組完整，也仍是加密bytes。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題一：重送為何有26bytes流量卻只有一個請求",
-      "paragraphs": [
-        "在mixed用tcp.port == 51004隔離q19：客戶端.530和.830各送13bytes，兩次原seq都是5001，bytes完全相同。依序號區間，兩段都佔5001～5013；第二次不是新資料5014以後。若把tcp.len直接相加得到26，只代表捕捉到26bytes的傳輸副本，不是應用收到兩個13-byte請求。",
-        "後續ACK5014確認連續到5013，服務器.850回15-byte RSP q19 READY。Follow選擇客戶端方向，應讀到一份00 0b加REQ q19 GET；服務器方向一份15-byte回覆。這與packet列表的兩條13-byte發送不矛盾，它們計數對象不同。報告可以同時保存「可見傳輸payload26」與「唯一序號範圍13」。",
-        "接收端reference沒有.530第一份，只有.830副本；兩端聯合說明本合成情境第一份未在接收觀測出現。實務仍要確認抓包未丟棄、位置正確和時鐘關係，才能支持兩點之間的遺失假說。Follow摘要無法指出第一份在哪消失，所以仍要保留packet視圖作爲傳輸證據。"
+        "切換統計視窗或協定頁籤時，封包可能以不同協定層重新分組。以 UDP Conversation 的 Bytes 欄為例，Wireshark 的 UDP 統計會把該封包的原始 frame 長度計入方向總量；那包含 Ethernet、IP、UDP 與上層資料，並不等於應用本文 bytes。若要回答「應用送了幾個有效資料 bytes」，應另取相應協定欄位或依格式計算，不能把統計窗的 Bytes 改名為應用資料量。使用 snap length 而截短 frame 時，原始長度可能大於檔案實際保存的 bytes；此時還要回到封包細節比較 `frame.len` 與 `frame.cap_len`，延伸判讀可回看封包位元組篇。",
+        "Conversations 的 Duration 是該列中第一筆到最後一筆已觀測封包的時間差，不是程式宣告的逾時值，也不包括擷取前後未保存的閒置時間。每方向的平均 bits/s 以該方向的 byte 計數換算成 bits，再除以這段觀測 Duration；同一批 bytes 換一個觀測窗口，平均值就會改變。對突發、間歇或剛好截在活動期間的連線，平均值很容易掩蓋短暫間隔。",
+        "I/O Graphs 把符合該列 filter 的 frame 放進固定寬度的時間桶（interval）。Y 軸選 Packets 時，每桶的單位是「封包／桶」；選 Bytes 時，是匹配 frame 的 byte 總和／桶；選 Bits 時則是 bit 總和／桶。若勾選 Avg over Time，這些量會再按桶的長度換成每秒平均率。操作時要記錄 X 軸起點、桶寬、Y 軸項目、是否勾 Avg over Time 與每列 filter。空桶是這段擷取沒有符合條件的封包，不是 Wireshark 證明網路完全沒有流量。",
+        "三種表不要混成一個排名：Endpoints 找主機或程式端點，Conversations 找兩端之間的路徑，TCP Stream 找某條 TCP 連線，I/O Graphs 比較所選 frame 隨時間如何分布。Packet 數量不會去重；Bytes 也不會自動等於新資料或業務資料。遇到數字不一致，先比對協定層、filter、方向、時間窗和單位，才判斷工具是否有問題。"
       ],
       "table": {
-        "caption": "同一串資料的三種計量",
+        "caption": "每個統計量都要一起交代的計數範圍",
         "headers": [
-          "計量",
-          "q19觀測值",
-          "用途"
+          "觀測方式",
+          "一列／一點在數什麼",
+          "時間或比率分母",
+          "能支持的判斷與限制"
         ],
         "rows": [
           [
-            "發送捕捉tcp.len總和",
-            "26 bytes",
-            "可見負載含重送"
+            "Endpoint",
+            "選定協定層的一個端點；Packets/Bytes 是擷取中該端點相關的封包與長度",
+            "原始累計沒有時間分母；方向列依端點收送方向",
+            "找出活躍節點或 TCP/UDP 程式端點。每個封包可同時計入來源與目的端點，不能加總端點列來算全檔總數。"
           ],
           [
-            "唯一Seq覆蓋範圍",
-            "13 bytes",
-            "TCP新資料量"
+            "Conversation",
+            "選定協定層的一對端點；A→B、B→A 分別累計 packets 與 bytes",
+            "Duration 是該列首末觀測時間差；平均 bits/s 的分母是此 Duration",
+            "找出哪一對端點有互動和方向不平衡。不能推導 request 數、處理成功或使用者體感。"
           ],
           [
-            "應用本文",
-            "11 bytes",
-            "協定命令內容"
+            "TCP Stream",
+            "目前 PCAP 中一條 TCP 連線及其雙向資料",
+            "索引本身沒有時間分母；需要按封包時間另行觀察",
+            "隔離連線並進入串流內容。連線可能有多筆 request；stream 編號只在目前擷取上下文有意義。"
+          ],
+          [
+            "I/O Graph",
+            "符合該列 filter 的 frame 在每個時間桶中的數量或欄位統計",
+            "原始計數的分母是固定 interval；Avg over Time 會再換成每秒率",
+            "找到忙碌、停頓或變化的時間區段。大桶會合併短事件，小桶會放大零星變化；圖不解釋原因。"
           ]
         ]
       }
     },
     {
       "kind": "worked-example",
-      "heading": "例題二：Follow看不到回覆，ACK卻已確認它",
+      "heading": "維護案例：兩邊各有 20 個 frame，仍值得檢查時間分布",
       "paragraphs": [
-        "在mixed用tcp.port == 51005找q20，客戶端.630請求13bytes，服務器.640 ACK6014；隨後客戶端.660 ACK9016，但這份檔沒有服務器seq9001～9015的15-byte回覆。ACK9016說明客戶端TCP聲稱已連續收到該區間；它與「服務器從未送」這個簡單解釋衝突。不能因Follow服務器方向爲空就斷定沒有回覆。",
-        "打開reference同端點，.650能找到seq9001 len15 RSP q20 READY，客戶端確認與原檔一致。合成模型的差異是mixed漏存了這一筆，不是協議真的沒發送。Follow只能使用當前檔，無法跨文件猜內容；換reference後纔有完整資料。將兩個文件的端點、seq和payload對照，解釋比截圖Follow空白更有力。",
-        "真實現場可能是抓包遺漏、只抓單方向、截斷、重複鏡像或文件時間窗不足，reference本身也可能不完整。合理結論是本檔存在ACK覆蓋未捕獲bytes的證據，需查觀測完整性；不是在第一次看到ACK就直接認定設備狀態爲READY。ACK確認運輸bytes而非應用已解析，仍需應用層證據。"
-      ]
+        "維護情境是「通話偶爾有一小段不連續；整體流量圖看起來正常」。本章只使用 wireshark-maintenance-mixed.pcap 這一份合成檔：171 個 Ethernet frame，從第一個 frame 起算的時間範圍為 0 到 3.285 秒。以下 frame 編號、端點和時間都只屬於這份檔案，不和其他 PCAP 拼成同一通話或同一事件。",
+        "先看 Endpoints 的 UDP 頁，確認語音媒體不只一個端點；DNS 和其他 UDP 服務也存在。按 IP 排序會把同一主機上的不同程式混在一起，所以再用 Conversations 找到 UDP 端點對 192.0.2.10:40000 ↔ 198.51.100.20:40002。它是本檔其中一條媒體流；SIP 信令和另一條媒體流是其他對話，不能僅因端點相同就併入這一列。",
+        "從實際 PCAP records 和 manifest 重算，此 UDP 對話的來源到目的方向有 20 個 frame，反向也有 20 個。這 40 筆在 Ethernet 層每筆 frame 長度都是 214 bytes，因此按本檔 record 長度計算為每方向 4,280 frame-bytes，合計 8,560 frame-bytes；這不是音訊本文大小。兩方向首末觀測點跨越 0.390 秒。若用每方向 4,280 bytes 算平均擷取速率，4,280×8÷0.390 ≈ 87,795 bits/s。若錯把整份檔案 3.285 秒當作這條對話的活動 Duration，會算出約 10,423 bits/s；兩者差異來自分母不同，不是封包內容變了。",
+        "方向總數相同仍會掩蓋時間位置。把 I/O Graph 設為 X 軸 capture-relative time、Y 軸 Packets、Avg over Time 關閉、Interval 20 ms；使用 Line 或 Bar 樣式，因 Scatter 樣式會隱藏零值。不要套用自訂 time reference，讓時間基準保持在擷取起點。兩列分別使用下方的入站與出站 filter。入站在 [1.66, 1.68) 有 1 個 frame、[1.68, 1.70) 沒有 frame、[1.70, 1.72) 又有 1 個；在 [1.82, 1.84) 則有 2 個 frame。出站在同一區段維持每桶 1 個。若改成 1 秒桶，整個 [1, 2) 只會呈現 20 個入站 frame，空桶與雙筆桶彼此抵消。",
+        "展開該入站區段的 RTP 欄位，manifest 顯示本檔沒有序號 305，而序號 312 出現兩次。這能說明「封包總數相等」不能代替序列與時間檢查；但單一合成觀測點仍不能證明真實網路丟包、重複的來源或使用者實際聽到中斷。下一步應取同一實際通話、同一時間窗的另一觀測點或接收端媒體／播放記錄，再用同步時鐘和通話識別資訊核對。資料夾裡其他 PCAP 是分開製作的練習，不可拿它們的 frame 編號或時間補進這條時間線。"
+      ],
+      "table": {
+        "caption": "從全域計數到局部時間桶：同一個方向集合",
+        "headers": [
+          "層級與範圍",
+          "從本檔重算的值",
+          "解讀界線"
+        ],
+        "rows": [
+          [
+            "UDP Conversation，client→server",
+            "20 frames；每筆 Ethernet frame 214 bytes，共 4,280 frame-bytes",
+            "只計本擷取中此方向保存的 frame；不是 20 次音訊播放成功。"
+          ],
+          [
+            "UDP Conversation，server→client",
+            "20 frames；每筆 Ethernet frame 214 bytes，共 4,280 frame-bytes",
+            "總數與另一方向相同，但不包含封包間隔或序列連續性的結論。"
+          ],
+          [
+            "同一 server→client filter，20 ms 桶",
+            "1、0、1、2 frames 分別落在上述四個時間桶",
+            "空桶和雙筆桶定位異常區段；要讀序號、時間戳及接收結果才能判斷其意義。"
+          ],
+          [
+            "同一 filter，1 秒桶 [1, 2)",
+            "20 frames",
+            "短時間缺口和相鄰雙筆在總數中抵消，選較粗 interval 會失去定位能力。"
+          ]
+        ]
+      }
     },
     {
       "kind": "mechanism",
-      "heading": "Conversations：誰大、誰久、哪個方向，不是哪個最壞",
+      "heading": "用 I/O Graphs 做比較時，固定範圍後只改一個變因",
       "paragraphs": [
-        "在Statistics→Conversations選擇TCP，可按包數、Bytes、Duration排序。排序適合發現候選：短時大量建立可能是重試，長時高字節可能是正常媒體或文件傳送。統計列通常計frame或協議相關的包長，不等於應用有效bytes。若要比較有效負載，明確導出tcp.len；若要比較捕捉流量，明確使用frame.len，並納入重傳。",
-        "雙向不平衡不自動異常。DNS常是小查詢大回復，媒體可能單向廣播，控制協議可能大部分時間只有心跳。先建立正常對話預期，再看偏離。q18的客戶端發送與服務器純ACK可以形成有包數、有bytes的雙向對話，卻沒有業務回覆；對話存在只能證實網絡互動，不保證功能正常。",
-        "Limit to display filter等選項影響統計樣本，開窗時記當前filter與選項狀態。有些視圖顯示全集，也有只計符合條件；不能看一張截圖猜範圍。建議先清空過濾取得全集基準，再應用已驗證的目標集合，比較統計。拿兩個文件做對照時，時間窗、端點範圍和計量單位都應一致。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "I/O Graphs：桶寬、單位與平均會改變故事",
-      "paragraphs": [
-        "時間圖把數據分到固定時間區間，稱爲bucket。若bucket寬1秒，1.00至1.99的突發會合成一根；寬100ms可顯現更細變化，但噪聲也會更明顯。Y軸可以是包數、bytes、bit率或字段聚合等，必須記錄實際選項。每秒包數是傳輸事件頻度，每秒bytes是可見流量，二者對小包與大包會呈現不同印象。",
-        "本套件DNS噪聲每50ms一筆，而q19重傳相隔300ms。若畫所有包數，DNS可能掩蓋目標重傳；若先篩到51004，圖會顯現握手、發送與等待間隔。圖只能幫助你定位時間段；用寬bucket看到某秒20包不能說明每50ms準時一包，也不能代替逐筆相鄰間隔。",
-        "比率要有分母，區間也要有意義。假設一個200ms窗口內有10包，總1000bytes，簡單平均是50packets/s、5000bytes/s；改用1秒包含閒置後會變成10packets/s與1000bytes/s。這不是系統性能真的改變，是窗口不同。報表必須寫清時間範圍、是否包含閒置、樣本數與單位，才能單看結論瞭解前因後果。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題三：兩個方向各20筆，仍可有遺失與重複",
-      "paragraphs": [
-        "媒體A→B seq100～119有20筆；B→A原本seq300～319，但mixed未收錄305，又多了一份312，所以這方向仍有20筆。Endpoints或Conversations包數看似對稱，並不能保證序號連續。對相同SSRC，實際唯一序號數19，聲明範圍20。需要按方向、來源與序號去重後才能區分觀察的缺口。",
-        "如果總計frame bytes一樣，更會讓人誤說完全正常，因爲每筆音頻封包長相同。實際一個預期幀沒在當前檔出現、另一個重複出現，合計數量抵消。這個例子讓統計有正確定位：先發現規模與方向，再用協議規則驗證完整性；不是證明統計沒用，而是別用總和回答順序和內容的問題。",
-        "另一路lab-b SSRC0x33333333只有8筆，但它的時間窗較短且是一條獨立呼叫。把它跟A的另一方向加總更會扭曲結果。需要把集合與窗口選擇寫在統計旁，再決定某指標應怎樣比較。媒體質量還要考慮晚到、解碼和播放，單憑接收數量不足以下結論。"
+        "先用全檔或已確認的端點範圍建立基準，再新增目標對話和兩個方向的 graph rows。可沿用已學過的 filter 語法，不需要在本章重學欄位：入站為 ip.src == 198.51.100.20 && udp.srcport == 40002 && ip.dst == 192.0.2.10 && udp.dstport == 40000，出站則將來源與目的端完整反轉。在同一張圖上比較方向時，兩列必須用相同時間起點、Y 軸、interval 和平均設定；保持 capture-relative time、不設自訂 time reference，並選 Line 或 Bar 才看得見空桶。若一列顯示 Frames、另一列顯示 Bytes，曲線高度沒有可比性。",
+        "先把 interval 設為 1 秒，觀察整體活動；再只把 interval 改成 20 ms，其他設定不動。大桶適合回答「這一秒總共多少」，小桶適合定位「哪個短區段沒有符合條件的 frame」。小桶中零星空白可能只是該協定本來不規則；不應看到空白就認定故障。圖的工作是決定下一段要檢查的 frame 和觀測點，不是替你產生根因。",
+        "Conversations 視窗的 Limit to display filter 會影響列出的樣本；先套用 display filter 再開視窗時，Wireshark 可能自動勾選它。I/O Graph 每列也有自己的 display filter。開始前檢查目前條件，記錄是否限縮統計，避免拿「過濾後資料」冒充全檔基準。需要看 TCP 本文時，從已核對端點的 TCP Conversation 進入該 TCP Stream；Follow TCP Stream 適用於查看重建後資料，不會把圖表中的每個封包或每次應用呼叫變成一筆業務結果。"
       ]
     },
     {
       "kind": "lab",
-      "heading": "實作：同一資料建立流、負載和時間三份摘要",
+      "heading": "練習：留下別人能重算的統計條件",
       "paragraphs": [
-        "打開mixed，先在Conversations記錄51000、51003、51004、51005、51006等TCP端點，並導出或抄錄方向、包數與持續範圍。然後Follow 51000與51004，選擇Hex查看前綴，分別保存各方向的可見應用bytes。保存內容時註明重組文件，不把它命名爲原始單封包。",
-        "建立兩張I/O Graphs：全集包數圖與tcp.port == 51004目標圖，先選100ms間隔再換1秒，記錄差異。變因只改bucket，不改數據或端點。隨後導出51004原始seq、tcp.len與時間，計算總26和唯一13；換reference覈對第一份.530不存在。再對51005用ACK與reference找出缺失回覆。",
-        "驗收需提交三種不同尺度的摘要，每一份說明用途與侷限；q19總傳輸payload26、唯一13、回應15；q20當前檔缺15但ACK9016覆蓋該區間。圖的單位、範圍、過濾式與bucket均記錄。若Follow顯示不可列印點號，改Hex確認，不把點號當異常。GUI尚未在製作環境測試，原始值以獨立解析覈驗。"
+        "打開 mixed PCAP，先不套 filter，記錄檔案總 frame 數和時間範圍。到 Endpoints 分別查看 IP 與 UDP 頁：說明兩者的列各自代表什麼，再找到媒體端點 192.0.2.10:40000。切到 Conversations 的 UDP 頁，找到和 198.51.100.20:40002 配對的一列，核對兩方向的 frame 數與首末觀測時間。",
+        "建立兩個獨立的 I/O Graph rows，分別貼上本章的入站與出站 filter，Y 軸選 Packets，關閉 Avg over Time，樣式選 Line 或 Bar，時間軸用擷取相對時間且不要設自訂 time reference。先記錄 1 秒 interval 下 [1, 2) 的值，再換成 20 ms interval，逐一記錄 [1.66, 1.68)、[1.68, 1.70)、[1.70, 1.72) 和 [1.82, 1.84)。如果你安裝的 Wireshark 版本對 interval 輸入方式不同，照介面可接受格式選 20 ms，並在筆記中記錄版本和實際顯示設定。",
+        "最後只寫三個判斷：哪些值是 frame count、哪些 bytes 依據 Ethernet record 長度、20 ms 圖比一秒圖多回答了什麼，以及還不能從這份合成擷取斷言什麼。完成 Wireshark 操作後再用 manifest 獨立核對；若 GUI 讀值不同，先檢查 interval 單位、時間參考、方向條件和目前 Wireshark 版本。"
       ],
       "code": {
-        "title": "不用假設固定stream索引的欄位匯出",
-        "text": "tshark -r wireshark-maintenance-mixed.pcap -Y \"tcp.port == 51004\" -T fields -E header=y -E separator=, -e frame.time_relative -e tcp.stream -e tcp.seq_raw -e tcp.ack_raw -e tcp.len"
+        "title": "方向化的統計範圍（Display Filter）",
+        "text": "入站：ip.src == 198.51.100.20 && udp.srcport == 40002 && ip.dst == 192.0.2.10 && udp.dstport == 40000\n出站：ip.src == 192.0.2.10 && udp.srcport == 40000 && ip.dst == 198.51.100.20 && udp.dstport == 40002"
       }
-    },
-    {
-      "kind": "diagnostic-case",
-      "heading": "流量最大的那條不是根因：用競爭假說取證",
-      "paragraphs": [
-        "症狀是q18在500ms期限內無業務回應，畫全局圖恰有DNS持續流量。候選一是網絡擁塞，候選二是服務器應用排隊；圖上DNS最多不直接支持擁塞，它可能一直是正常背景。先與正常q17及ACK時序比較：q18請求後的純ACK只相隔10ms，運輸能收到並回確認，但沒有應用資料。",
-        "補充服務器log顯示q18已解析並進入depth8隊列，完成發生在期限後；若同窗口q17及其他TCP都穩定，應用排隊比全網擁塞更符合證據。有限修正應針對隊列服務能力或非必要工作，不先把所有DNS關掉。即使暫時關DNS後成功，也可能是偶然時段變化而非因果。",
-        "驗證需在相同負載與請求範圍記錄隊列長度、處理時間、TCP重傳與業務回覆時間，比較修正前後。圖用來定位變動窗口，log解釋應用狀態，協議字段說明運輸。三者各有用途，組合後才構成工程結論；只貼最大流量排名沒有因果說明。"
-      ]
-    },
-    {
-      "kind": "maintenance",
-      "heading": "導出的摘要必須保留計數對象與原檔路徑",
-      "paragraphs": [
-        "交接時不要只給CSV一列Bytes。至少註明過濾式、起止時間、端點方向、工具版本、單位層級與是否計重送。附上原檔與關鍵frame範圍，下一人才能重算。不同統計視圖得出不同byte總數時，先查對象是否frame、payload或唯一數據，不馬上認定工具bug。",
-        "每個複雜問題先建立一張連接地圖：TCP用端點和生命週期，UDP媒體用協商端點和SSRC，應用用請求ID。三種ID互相鏈接但不互相替代。未知協議不需要硬套HTTP或SIP，使用實際格式定義；工具暫時只識別Data時仍可按端點和bytes排查。",
-        "統計也是取樣：觀測窗太短會遺漏故障前狀態，過濾只保留重傳會失去原發送，開始抓在中途會破壞流索引與重組。保留足夠上下文後再製作重點視圖。能夠解釋爲什麼某數變了，比宣稱「這個工具說異常」更有維護價值。"
-      ]
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "同一TCP長連接有q30與q31，stream有回覆是否足以說q31成功？",
+      "level": "understanding",
+      "question": "同事把 Endpoints 中兩個主機的 packet count 相加，稱為這條線路一共看見的封包數。指出計數母體上的錯誤，並說明應改看哪個視窗。",
       "answer": [
-        "不夠，stream是傳輸連接而request是單次業務操作。",
-        "應解析回應ID、格式與發生時間，確認屬於q31而非q30。",
-        "再依協議成功語義驗證；傳輸數據存在與業務成功不同。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "Follow中點號與packet列表兩筆相同數據分別怎樣解釋？",
-      "answer": [
-        "點號可表示不可列印byte，例如長度前綴，應換Hex覈對。",
-        "相同payload兩筆可能同seq重傳，也可能新seq的業務重試；先比較範圍。",
-        "Follow是重建流不是逐筆播放器，不能由文本重複與否反推所有傳輸事件。"
+        "Endpoints 的一列是某個協定層的端點統計；一筆封包會同時被算在來源端點和目的端點的統計中，因此把兩個端點列相加會重複計入。",
+        "若問題是某一對端點在擷取中交換多少封包，改看對應協定頁的 Conversations。若要算整份檔案唯一保存的 frame 數，查看 capture file 的總 frame 數；不要用端點列加總替代。"
       ]
     },
     {
       "level": "application",
-      "question": "陌生資料：seq2001 len30；seq2001 len30再次；seq2031 len10。算可見payload總量與唯一範圍。",
+      "question": "本例的 UDP 對話兩個方向各有 20 個 frame，但入站 20 ms 桶中出現 1、0、1、2。這些數字的單位與分母是什麼？為什麼改成 1 秒桶後會看不到同樣的形狀？",
       "answer": [
-        "總量30＋30＋10＝70bytes。前兩筆佔同一2001～2030區間，第三筆2031～2040。",
-        "唯一連續範圍2001～2040共40bytes；第二筆是重複覆蓋30。",
-        "若是同方向同連接，ACK2041可確認連續40；這些計算不證明有幾個業務請求，仍需framing。"
+        "Y 軸 Packets 且 Avg over Time 關閉時，數值是匹配 filter 的 frame 數／20 ms 桶，不是每秒率；Direction filters 分別限定 server→client 或 client→server。",
+        "1 秒桶 [1, 2) 把本區間所有 20 個入站 frame 合成一個數，原本缺一筆的桶和另一桶多一筆會抵消。改 interval 只改聚合時間窗，沒有改 PCAP。"
       ]
     },
     {
-      "level": "application",
-      "question": "陌生資料：400ms窗口8包共1600bytes；另外600ms閒置。分別按活動窗與整秒算packets/s和bytes/s。",
+      "level": "reasoning",
+      "question": "依 mixed PCAP，每方向有 4,280 Ethernet frame-bytes，Conversation 的首末觀測時間差是 0.390 秒。請計算這個時間窗的平均 bit rate，並指出它不代表什麼。",
       "answer": [
-        "活動窗.4秒：8/.4＝20packets/s，1600/.4＝4000bytes/s。",
-        "整秒：8/1＝8packets/s，1600/1＝1600bytes/s。",
-        "註明窗口與閒置是否包含，不能拿兩種分母直接比較機器效率。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：SSRC X序號10、11、13、13、14，SSRC Y序號900、901。總7筆是否說明X完整？",
-      "answer": [
-        "X獨立範圍10～14應有5個不同序號，實際唯一4缺12，13重複一次。",
-        "Y是獨立來源，不能補X的缺口；總包數只是計量。",
-        "報告X觀測缺口與重複，需另一觀測點確認未發送、路徑遺失或抓包遺漏。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：當前檔沒有seq7001～7020的服務器data，卻有客戶端ACK7021。下一步該補何證據？",
-      "answer": [
-        "ACK覆蓋該20-byte區間，支持客戶端TCP已收到連續到7020的聲明，與從未發送不一致。",
-        "覈對連接基準、時間窗與雙向抓包，查reference同區間，排除選錯連接或捕捉遺漏。",
-        "不能憑ACK猜內容，若需正文必須取得完整觀測或應用log。"
+        "每方向 4,280 bytes × 8 = 34,240 bits；34,240 ÷ 0.390 ≈ 87,795 bits/s，約 87.8 kbit/s。",
+        "此值使用捕獲 frame 長度及首末觀測間隔，不是 RTP 音訊 payload 專屬速率、整份 3.285 秒擷取期間的平均速率，也不能單獨證明媒體品質正常。計算報告應標明單位與時間分母。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "對話Bytes最高的是備份服務，故障是PTT首音延遲；如何避免錯誤歸因？",
+      "question": "圖表顯示 20 ms 桶先為 0、接著某桶為 2。你可以直接回報「網路丟了一包，然後重傳」嗎？依本例說明現有證據支持什麼，以及下一步要補什麼。",
       "answer": [
-        "高流量只產生候選，不證明擁塞；比較故障時段的目標流延遲、重傳、隊列或丟棄。",
-        "對照無備份時和有備份時的相同PTT操作，保持其他條件，記錄端點與時間。",
-        "若目標網絡穩定卻音頻緩衝增長，轉查應用媒體鏈；有限修正後用同一指標迴歸。"
-      ]
-    },
-    {
-      "level": "diagnosis",
-      "question": "導出只含重傳的PCAP之後Follow亂碼，與原檔正常。可能因何？",
-      "answer": [
-        "衍生檔缺原發送、其他區間或應用頭；重組上下文不足可導致內容不完整。",
-        "回原檔用完整stream或足夠窗口導出，保留雙向與握手。",
-        "比較seq覆蓋範圍及bytes，驗收是恢復完整數據；不是修改發送端協議來遷就不完整衍生檔。"
+        "不能。圖表只指出該 direction filter 在兩個時間桶分別保存了 0 和 2 個 frame；它沒有解釋協定序號，也不能將 UDP frame 說成 TCP 重傳。",
+        "本例 manifest 顯示該方向沒有 RTP 序號 305，而序號 312 重複，這是合成 PCAP 中可檢查的序列證據；單一觀測檔仍不能證明封包在哪裡消失或使用者是否聽到斷音。",
+        "真實案件應取得同一通話和同一時間窗的第二觀測點、接收端 jitter/playout 或應用記錄，先確認兩邊時鐘與會話識別一致，再判斷缺口位於傳送、網路、接收緩衝或播放階段。"
       ]
     }
   ],
   "recap": [
-    "能區分端點、對話、TCP串流與應用請求，不混用識別範圍。",
-    "能解釋Follow如何重建bytes及何時不完整。",
-    "能用方向、區間與統計層級比較故障，而非只按流量排序。"
+    "Endpoint 用來看節點或程式端點，Conversation 用來看一對端點往返，TCP Stream 用來看一條 TCP 連線，I/O Graph 用來看符合條件的 frame 如何隨時間分布。",
+    "每個統計值都要說出計數單位、協定層、方向、filter、時間範圍及分母。Conversation Duration 是擷取中首末觀測時間差；平均 bits/s 隨分母改變。",
+    "本例的雙向各 20 個 frame 不代表每個時間桶都均勻。20 ms graph 找到空桶與雙筆桶；它定位問題，仍需協定欄位與同事件的其他觀測點驗證原因。",
+    "統計是選擇和壓縮證據的方法，不是故障結論。不同 PCAP 的 frame 編號與時間不可拼成同一事件。"
   ],
   "sources": [
     {
-      "label": "Wireshark 官方：Conversations 統計",
+      "label": "Wireshark User's Guide：Conversations 統計與方向、Duration、平均 bits/s",
       "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChStatConversations.html"
     },
     {
-      "label": "Wireshark 官方：I/O Graphs 的統計量",
+      "label": "Wireshark User's Guide：Endpoints 的協定層與端點分類",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChStatEndpoints.html"
+    },
+    {
+      "label": "Wireshark User's Guide：I/O Graphs、interval、Y 軸與 Avg over Time",
       "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChStatIOGraphs.html"
     },
     {
-      "label": "Wireshark 官方：追蹤協定串流",
+      "label": "Wireshark User's Guide：相對擷取時間與 time reference",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChWorkTimeFormatsSection.html"
+    },
+    {
+      "label": "Wireshark source：UDP Conversations/Endpoints 將封包長度計入方向統計",
+      "url": "https://gitlab.com/wireshark/wireshark/-/blob/master/epan/dissectors/packet-udp.c"
+    },
+    {
+      "label": "Wireshark User's Guide：Follow Stream 操作",
       "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvFollowStreamSection.html"
-    },
-    {
-      "label": "Wireshark 官方：TCP 與應用資料重組",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvReassemblySection.html"
-    },
-    {
-      "label": "Wireshark 官方：TShark 讀檔、篩選與匯出",
-      "url": "https://www.wireshark.org/docs/man-pages/tshark.html"
     }
   ],
   "resources": [
     {
       "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
-      "label": "第二版對照觀測 PCAP",
-      "description": "172 個合成 frame；與混合檔的遺漏位置不同，可練習觀測不完整的推理。"
+      "label": "合成維護擷取檔（本章唯一時間線）",
+      "description": "171 個合成 Ethernet frame，涵蓋多條 TCP、UDP、DNS、SIP 與 RTP 流量；本章統計案例只使用此檔，地址與媒體均為教學資料。"
     },
     {
       "path": "./assets/labs/wireshark-maintenance-manifest.json",
-      "label": "可重現資料清單",
-      "description": "檔案雜湊、frame 的原始欄位與合成情境名稱；先獨立分析，再用清單核對。"
+      "label": "逐 frame manifest",
+      "description": "記錄各檔案自己的 frame 欄位、時間、長度和合成情境；可重算本章數值，但不同檔案的時間與 frame 編號不得合併成同一事件。"
     }
-  ],
-  "studyTime": {
-    "reading": [
-      12,
-      20
-    ],
-    "practice": [
-      40,
-      60
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

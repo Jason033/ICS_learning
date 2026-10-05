@@ -1,276 +1,180 @@
 {
-  "contentVersion": 2,
-  "intro": "要維護一個使用 Ozeki 的 C# 程式，先要看懂誰擁有什麼、誰呼叫誰、事件從哪裡回來。這章從函式庫、SDK、物件與參考開始，建立可以追到一通電話與雙向音訊的完整模型；程式例子用來驗證模型，而不是代替概念解釋。",
+  "contentVersion": 3,
+  "intro": "先把電話放在一旁，追一段本機音訊：麥克風資料如何進入程式，經過可選的處理，再交給喇叭或錄音端。這條圖能用於測試音訊裝置，也能成為通話的本地前半段。學會依資料方向辨認來源、接收端與觀測位置，比背一串 SDK 類別名稱更能幫助維護。",
   "prerequisites": [
-    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
-    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
+    "已完成 Ozeki 版本盤點，知道下文的類別與 API 範例都要按本地版本核對。",
+    "知道取樣率、PCM、裝置驅動等名詞即可；本章不重教數位音訊形成，也不要求硬體電路知識。"
   ],
-  "studyTime": {
-    "reading": [
-      14,
-      24
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 graph 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
-  },
   "goals": [
-    "解釋 API、SDK 與公司封裝層的分工，並從宣告辨認實際型別。",
-    "區分 softphone、phone line、phone call 與媒體元件的生命週期。",
-    "逐步追蹤物件參考、命令、事件與狀態，找出修改錯誤物件的原因。"
+    "從需求畫出資料來源、處理節點、輸出端與每段責任。",
+    "區分裝置就緒、資料正在產生、程式路由存在和接收端有輸出。",
+    "從一組紀錄定位第一個尚未被證明的交接點。"
   ],
   "sections": [
     {
-      "heading": "API 是操作約定，SDK 是提供實作的工具包",
-      "kind": "concept",
+      "kind": "mechanism",
+      "heading": "本機聲音程式由多個責任交接，不是單一播放按鈕",
       "paragraphs": [
-        "假設你要把「撥一通電話」加入 C# 程式。自行實作要處理 SIP 訊息、伺服器認證、通話協商、音訊編解碼、裝置與網路收發；這些工作不是一個按鈕就能完成。函式庫把部分工作寫好，編譯成程式可參考的組件；你的程式呼叫它公開的方法，就使用了它的能力。API 指雙方約定可用哪些型別、方法、參數、結果與事件，並不是網路網址的同義詞。Ozeki 的 C# API 可以是對同一程式內物件的方法呼叫。",
-        "SDK 是更大的交付單位，通常含函式庫、文件、範例與相關工具。你下載 SDK 不代表專案已參考正確 DLL；專案能編譯也不代表執行時載入的是同一份 DLL。因此「我有安裝 Ozeki」只說明機器有檔案，維護時還要找到 csproj 的 Reference 或 PackageReference、組件的實際載入位置，以及對應文件。這些位置決定你呼叫的 API 究竟由哪份程式實作。",
-        "公司通常另寫一層包裝，讓上層只看見 Dial、Answer、End 等業務操作。包裝可以統一紀錄、設定、UI 與錯誤處理，但也能藏住 SDK 的狀態。讀到名為 Softphone 的 class 時，不能單靠名稱認定它是廠商型別；先跳到定義，看命名空間、宣告所在檔案與組件。官方教學也自己寫 Softphone.cs 包裝 ISoftPhone，因此範例作者的 Register 方法未必是 ISoftPhone 的成員。"
+        "以麥克風測試為例，作業系統先提供可用的擷取端點；音訊 SDK 或 wrapper 選擇裝置並建立捕捉物件；來源 handler 將音訊資料交給後續節點；可選的格式轉換、增益、靜音或混音節點接收並產生另一份資料；最後 speaker handler 將它提交到作業系統輸出端。檔案錄音器也是一個接收端，但它寫入檔案的完成條件和聲音是否送到喇叭不同。",
+        "每個交接都可能有獨立狀態：裝置是否被找到、handler 是否初始化、來源是否啟動、路由是否建立、資料格式是否相容、目的端是否能消耗資料。畫面顯示「已播放」可能只代表 UI 命令送出；除非程式記錄並驗證更後面的狀態，不能將它當作系統音訊已出聲的證據。",
+        "維護時要能回答「誰持有此物件、誰啟動它、資料往哪裡、哪個觀測證明它工作」。這也是閱讀 C# 的入口：欄位保存長期資源、方法建立連線、事件回呼回報改變、`Dispose` 釋放資源。先沿呼叫和物件關係追蹤，不必先重學 if/loop 或物件導向定義。"
       ]
     },
     {
-      "heading": "型別、物件、變數和參考：四個容易混在一起的東西",
       "kind": "concept",
+      "heading": "把來源與接收端放到有方向的資料圖",
       "paragraphs": [
-        "型別像一份規格：宣告此類物件能保存哪些資料、執行哪些操作。物件是執行時建立的一份實例。變數是程式用來保存值的位置；對 class 或 interface 型別而言，常保存的是指向物件的參考，不是整份物件的複本。IPhoneCall 是介面型別，描述可用操作；CreateCallObject 回傳一個實作該介面的物件。知道介面能呼叫什麼，不代表知道實作內部所有執行緒與網路細節。",
-        "想像通話物件 C1 有狀態 Dialing。把 call 指派給 local，不是複製一通新電話，而是讓兩個變數都指向 C1。經 local 呼叫 HangUp，操作的也是 C1。把 call 改指向 C2，local 仍然指向 C1；這正是舊事件或延遲工作可能持續操作舊通話的原因。call = null 只清除這個變數的參考，不等同於掛斷、取消訂閱或釋放 SDK 的底層資源。",
-        "這個區分有直接工程後果。你看到全域 call 不為 null，只能說變數有參考；不能直接推定電話接通。你看到它被設為 null，也不能推定通話停止。如果事件發布者仍保存一個 handler，而 handler 又引用表單或服務，那些物件可能仍可達，垃圾回收就不會清掉它們。追物件必須同時追建立、指派、使用、訂閱與終止。"
-      ]
+        "在 Ozeki 公開 Media API（文件頁標 1.8.12）中，`Microphone` 作為 `IAudioSender` 提供資料；`Speaker` 作為 `IAudioReceiver` 接收資料。MediaConnector 的 `Connect(sender, receiver)` 建立單向連線。類別名稱 sender/receiver 是資料流角色：播放端是本機輸出裝置，但在程式圖裡仍是接收音訊資料的 receiver。不要用「輸入/輸出」而不交代是使用者、程式或裝置的視角。",
+        "例如 `microphone → processor → speaker` 表示來源資料先被處理，再到播放端。`file playback → speaker` 則是檔案播放來源到相同輸出端；若把來源改成 `microphone`，不要只改一個 UI 標籤就假設路由跟著變。資料圖是一組實際生效的連線，必須查建立/拆除程式碼與目前物件，而非依畫面上的預期架構推斷。",
+        "裝置也有 OS 邊界。預設麥克風可能因插拔、權限、遠端桌面或裝置優先序改變；同一個顯示名稱也未必是同一穩定識別。先記錄 SDK 回報的裝置識別、裝置狀態和格式，再確認來源資料是否到達下一個 handler。遇到裝置不存在或被其他元件占用，問題還沒進到網路傳輸或電話協商。"
+      ],
+      "code": {
+        "title": "兩條本機路徑與各自交接",
+        "text": "麥克風 →（擷取 handler）→（可選處理/轉換）→ speaker → 作業系統輸出端\n                                     └→ recorder → 檔案系統\n\n檔案/串流來源 →（播放 handler）→ speaker\n\n箭頭表示音訊資料方向。方括號代表職責，不保證公司專案使用同名型別。"
+      }
     },
     {
-      "heading": "電話核心、線路與單通電話為什麼分成三層",
-      "kind": "concept",
+      "kind": "code-reading",
+      "heading": "從型別與連線呼叫讀懂程式做了什麼",
       "paragraphs": [
-        "ISoftPhone 可當作程式內的電話核心：提供建立線路、註冊線路、建立通話及收到來電的入口。IPhoneLine 對應帳號／線路設定及註冊狀態；它不是正在通話的電話，也不是作業系統的 socket。IPhoneCall 對應一次通話的控制與狀態。核心可長期存在，線路在帳號配置期間存在，一通電話從建立到終止存在，三者壽命不同。",
-        "分成這三層是為了把可重用與短期狀態隔開。同一線路可以今天打給 2001，再打給 2002；第二通不應沿用第一通的 Dialing 或結束狀態。相反地，每次掛斷都摧毀整個電話核心，會把帳號註冊與其他通話一併影響。多線路系統還可能有兩個帳號同時註冊，發話時必須知道使用哪一條 line，而不能只拿「任意已成功的線路」。",
-        "維護圖可以畫成 Engine E1 建立 L1、L2，C1 使用 L1，C2 也使用 L1，C3 使用 L2。使用關係不必然等於擁有關係：C1 用到 L1，不代表 C1 結束時能 Dispose L1。誰建立並負責最終釋放，誰才是資源擁有者。官方多通話教學建立每通 CallHandler，也是在避免把不同電話的短期狀態塞進一組共用欄位。"
+        "若在 legacy 範例看到 `Microphone mic`、`Speaker speaker`、`MediaConnector connector`，這三個變數分別代表來源裝置、輸出裝置與路由管理者。`connector.Connect(mic, speaker)` 不是「建立電話」，而是在兩個本機媒體端點之間接資料。`mic.Start()` 讓來源開始捕捉；`speaker.Start()` 讓接收端開始播放。這些具體名稱在本系列一律指向標明版本的公開 API 頁，請先完成前一章的版本核對。",
+        "在自己的程式裡，從欄位宣告找物件長期活多久，從 `new` 或工廠方法找建立者，從 `Connect` 呼叫找資料邊，從 `Start/Stop` 找啟停者，從 `Dispose` 找釋放者。事件訂閱（例如來源 level 變化或停止通知）則提示狀態由另一個執行緒回報；回呼是否需要切回 UI 執行緒，要看應用程式框架與呼叫端怎麼更新畫面。",
+        "把 `Started = true` 之類的公司欄位當成 wrapper 的狀態，不要等同 SDK `State` 或真正有聲資料。檢查欄位被誰寫入、寫入時機、例外是否被吞掉，以及狀態是命令成功還是觀察結果。這是閱讀第三方整合程式時常見的陷阱：變數名稱說明作者意圖，不保證底層已完成。"
+      ],
+      "code": {
+        "title": "官方 1.8.12 API 名稱的讀碼例（需先比對本地版本）",
+        "text": "Microphone microphone = Microphone.GetDefaultDevice();\nSpeaker speaker = Speaker.GetDefaultDevice();\nMediaConnector connector = new MediaConnector();\n\nconnector.Connect(microphone, speaker);  // source -> receiver\nmicrophone.Start();                       // 開始擷取\nspeaker.Start();                           // 開始播放\n\n// 只示範公開 1.8.12 文件中的型別／呼叫關係；\n// 不代表公司 wrapper 或 SDK 10.x 的可直接編譯範例。"
+      }
+    },
+    {
+      "kind": "worked-example",
+      "heading": "用證據表找出來源之後的第一個空白交接",
+      "paragraphs": [
+        "以下是假資料的成功基準。T0 應用選擇 device=Mic-A；T1 SDK 回報初始化完成，格式 16 kHz/mono；T2 使用者對麥克風說測試詞，Level 由 0 上升；T3 connector graph 顯示 mic→speaker；T4 播放端開始；T5 使用者在本機聽見測試詞。每一點只證明當層觀察，且「聽見」來自人耳驗收，不能拿來替代可自動化的格式和路由檢查。",
+        "若紀錄停在 T2，先查連線是否建立、實際連到哪個 speaker、接收端是否啟動；若 T1 之前失敗，查裝置枚舉、權限、驅動或初始化例外；若 Level 不變，先測來源是否選錯或被靜音。這種由相鄰節點往前定位的方式，比一次調大音量、重建全部物件更能保留因果。",
+        "若同時有錄音檔，檔案存在只證明某個寫檔路徑建立過；還需檢查檔案長度可增長、關閉後可解析、播放內容不是靜音。反過來，喇叭有聲也不代表錄音 handler 在同一支路上。把要維護的每一個輸出列成單獨目標並提供自己的驗收證據。"
       ],
       "table": {
-        "caption": "三層的責任與壽命",
+        "caption": "合成的本機基準紀錄；用來練習定位，不是實機量測",
         "headers": [
-          "層",
-          "責任",
-          "常見錯誤"
+          "時間／階段",
+          "資料",
+          "能證明什麼",
+          "仍未知什麼"
         ],
         "rows": [
           [
-            "ISoftPhone",
-            "管理電話核心與來電入口",
-            "每次掛斷都重建核心"
+            "T0／選裝置",
+            "Mic-A",
+            "應用嘗試選擇這個識別",
+            "OS 是否允許且實際取得端點"
           ],
           [
-            "IPhoneLine",
-            "帳號配置與註冊狀態",
-            "用 A 帳號的成功開啟 B 撥號"
+            "T1／初始化",
+            "ready=true, 16 kHz mono",
+            "SDK 或 wrapper 回報裝置可用與格式",
+            "是否持續捕捉有效樣本"
           ],
           [
-            "IPhoneCall",
-            "一次電話的控制與狀態",
-            "第二通仍操作第一通物件"
+            "T2／來源",
+            "level=0→21",
+            "有音量變化指標",
+            "指標刻度與資料內容，不保證語音清楚"
           ],
           [
-            "媒體元件",
-            "取得、路由或輸出音訊",
-            "把聲音附著到舊通話"
+            "T3／路由",
+            "Mic-A→Speaker-B",
+            "記錄的圖包含預期邊",
+            "connector 是否仍活著、speaker 是否啟用"
+          ],
+          [
+            "T4／人耳驗收",
+            "測試詞可聽見",
+            "本次測試端到端發聲成功",
+            "錄音支路、長時間穩定性是否正常"
           ]
         ]
-      },
-      "image": {
-        "src": "./assets/diagrams/ozeki-object-map.svg",
-        "alt": "核心、線路與兩通獨立電話的責任關係。",
-        "caption": "原創教學圖；依實際版本及物件所有權核對。"
       }
     },
     {
-      "heading": "方法是請求，事件是通知，狀態是某時刻的觀測",
-      "kind": "concept",
-      "paragraphs": [
-        "呼叫方法像把工作交出去。Start 通常啟動呼叫流程；Answer 表示接受來電；HangUp 表示要求結束。方法回來能說明目前這段同步呼叫已完成，但遠端設備和 SIP 交涉可能仍進行中。若先顯示「已接通」再等待事件，你把自己的意圖當成了系統結果，畫面會在忙線或拒絕時誤導使用者。",
-        "事件是物件向訂閱者報告變化。C# 的 event 使用委託描述「通知時可呼叫哪種方法」；+= 把 handler 加入訂閱集合，-= 解除同一個 handler。handler 是處理通知的程式，不是持續輪詢的執行緒。普通 .NET event 的具體觸發方式由發布者實作；SDK 是否用背景執行緒、是否同步、是否保序，必須查契約並量測，不能從 event 關鍵字推定。",
-        "狀態欄位與事件也不同。你訂閱前，物件可能已從 Created 變成 Dialing；事件未必重播歷史。反過來，一個較早事件正在 UI 佇列中等待顯示時，物件目前狀態可能已經結束。所以記錄要包含物件身分、事件狀態、接收時間與處理時間。工程師不是只背 CallState 的值，而是知道「這個值在哪個物件、哪個時間、由誰產生」。"
-      ]
-    },
-    {
-      "heading": "把控制路徑和音訊路徑分開，才能看出接通為何還會無聲",
-      "kind": "concept",
-      "paragraphs": [
-        "通話控制回答是否振鈴、接受、拒絕與結束；音訊路徑回答聲音從哪裡來、送到哪裡。官方範例中，麥克風先透過 MediaConnector 接到 PhoneCallAudioSender，sender 再 AttachToCall 到這通電話；接收方向則由 PhoneCallAudioReceiver 接到喇叭。聲音方向是兩條路，任何一條不完整都可能單向無聲。",
-        "Connect 是元件間的資料路由，Attach 是媒體處理器與通話的關聯，Start 是啟用裝置或來源的工作。把這三種關係混成「已初始化」很難除錯。你可能有 sender 卻沒 Connect 麥克風、有完整連線卻沒 Start、有聲音資料卻 Attach 到 C1 而目前通話是 C2。這三種錯誤產生的畫面都可能是 InCall，因為控制狀態沒有描述完整音訊圖。",
-        "SIP 與 SDP 協商遠端和媒體參數，RTP 搬運媒體資料，SDK 在它們上面提供物件操作。維護時要畫兩張對得上的圖：本機 C# 物件及音訊連線圖，以及網路端點和協商圖。兩張圖在通話與媒體交界相接，不能拿「REGISTER 200」代替「麥克風有資料」，也不能拿喇叭有聲推定我方送音正常。"
-      ]
-    },
-    {
-      "heading": "例題一：兩個變數是不是兩通電話？",
-      "kind": "worked-example",
-      "paragraphs": [
-        "輸入是新建 L1，再建立 C1 與 C2；alias 指向 C1。我們讓 alias 變成 Active。逐行判讀時，MakeCall 每次建立不同 LabCall，因此 C1、C2 的狀態獨立；指派 alias = first 沒有建立新物件。Emit 經 alias 呼叫，實際修改 C1。輸出應是 C1=Active、C2=Created，兩通共享同一 L1，但不是同一通。",
-        "如果改成 second = first，就不再有獨立 C2；對 second 掛斷會影響 first。這個實驗教的不是 Lab 方法名稱，而是讀公司程式時如何用指派與 new／factory 回傳值推導身分。真實程式若把單一全域 call 覆寫，必須追舊物件的 handler、媒體與延遲工作還保存在哪裡，才知道第二通為什麼受影響。"
-      ],
-      "code": {
-        "title": "完整 Lab 物件參考推導；對應 graph 情境",
-        "text": "var engine = new LabEngine();\nvar line = engine.MakeLine(\"L1\");\nvar first = engine.MakeCall(\"C1\", line);\nvar second = engine.MakeCall(\"C2\", line);\nvar alias = first;\nalias.Emit(LabCallState.Active);\nConsole.WriteLine(first.State);  // Active\nConsole.WriteLine(second.State); // Created\nConsole.WriteLine(ReferenceEquals(alias, first)); // True\nConsole.WriteLine(ReferenceEquals(first, second)); // False"
-      }
-    },
-    {
-      "heading": "例題二：事件訂閱位置不同，看到的歷史就不同",
-      "kind": "worked-example",
-      "paragraphs": [
-        "輸入是 line 尚未註冊，UI 的 observed 起始值 NotRegistered。錯誤順序先 Register(200)，LabLine 在方法內把狀態改 Registered 並發出 Changed；當時沒有 handler，所以 observed 維持舊值。之後訂閱不會補送。結果是實際已註冊、畫面卻沒看見成功。把 handler 訂閱放在 Register 前，事件就能把 observed 改成 Registered。",
-        "這種情況和真正註冊失敗有相同畫面，原因卻位於應用程式邊界。真實 SDK 可能異步通知，因此這個錯誤不一定每次重現；如果在慢環境正常、快環境失敗，也不能靠加 Sleep 修好。正確做法是先建立完整接收能力，再啟動工作；必要時按 SDK 契約讀取當前狀態，並把初始快照與後續事件合併。"
-      ],
-      "code": {
-        "title": "同一 Lab 型別，兩種完整順序",
-        "text": "var wrong = new LabLine(\"L1\");\nstring observed = \"NotRegistered\";\nwrong.Register(200);\nwrong.Changed += e => observed = e.State;\nConsole.WriteLine($\"actual={wrong.State} UI={observed}\");\n// actual=Registered UI=NotRegistered\nvar right = new LabLine(\"L2\");\nright.Changed += e => observed = e.State;\nright.Register(200);\nConsole.WriteLine($\"actual={right.State} UI={observed}\");\n// actual=Registered UI=Registered"
-      }
-    },
-    {
-      "heading": "官方 API 閱讀錨點：辨認包裝層和 SDK 層",
-      "kind": "code-reading",
-      "paragraphs": [
-        "下列最小片段的成員名稱已對照 Ozeki 官方註冊與通話教學。它表達先建立核心、建立線路、訂閱線路事件、註冊、建立通話、訂閱通話事件、開始的順序。OnRegistration 和 OnCallState 是你的 handler 名稱；不是 SDK 預設自動提供的功能。SIPAccount 的具體建構參數在註冊章逐一說明。",
-        "片段是閱讀用，省略欄位、handler 宣告與錯誤處理；本專案沒有實際 SDK，未聲稱可直接編譯它。與可跑的 Lab 分開不是迴避實作，而是避免把我們自己定義的狀態和方法冒充廠商契約。拿到公司專案時，先在 Object Browser 確認同名成員的完整宣告，再沿 OnCallState 追到 UI、媒體和清理。"
-      ],
-      "code": {
-        "title": "已核對的 Ozeki 方法順序；需實際 DLL 與完整類別才能編譯",
-        "text": "ISoftPhone core = SoftPhoneFactory.CreateSoftPhone(5000, 10000);\nIPhoneLine line = core.CreatePhoneLine(account);\nline.RegistrationStateChanged += OnRegistration;\ncore.RegisterPhoneLine(line);\nIPhoneCall call = core.CreateCallObject(line, \"2001\");\ncall.CallStateChanged += OnCallState;\ncall.Start();"
-      }
-    },
-    {
-      "heading": "追碼實作：把程式畫成物件和事件圖",
-      "kind": "lab",
-      "paragraphs": [
-        "練習環境是 .NET 10 Console，下載本主題的 Lab 專案，執行 graph，再執行 registration。它沒有 SDK、音訊設備或網路。先在 Graph 中 MakeCall、alias.Emit 設中斷點，畫 E1、L1、C1、C2 和 alias 的箭頭；再進入 Registration，看事件發出時訂閱集合是空還是非空。驗收不是「程式沒出錯」，而是你能在執行前寫出每個變數與物件的狀態。",
-        "變因只改一個：把 alias 指向 second，預測 C1/C2 狀態對調；或者把正確註冊的訂閱移到 Register 後，預測 failure_is_observed 斷言失敗。恢復後重跑 all，確保其他情境仍通過。用斷言失敗證明你的推導，比只看到 PASS 更能建立理解。最後寫一張閱讀卡：建立者、使用者、訂閱者、媒體來源、結束者各是誰。"
-      ],
-      "code": {
-        "title": "本機指令",
-        "text": "dotnet run --project ozeki-maintenance-lab.csproj -- graph\ndotnet run --project ozeki-maintenance-lab.csproj -- registration\ndotnet run --project ozeki-maintenance-lab.csproj -- all"
-      }
-    },
-    {
-      "heading": "同一個「按撥號沒反應」，可能卡在不同物件",
       "kind": "diagnostic-case",
+      "heading": "把症狀改寫成能推翻的假設",
       "paragraphs": [
-        "案例輸入是按鍵紀錄有 DialClick，畫面仍 Ready。候選原因甲：按鍵呼叫包裝中的 Start，但分支 call != null 直接返回，這個 call 其實是已結束的 C1。原因乙：確實建立 C2 並呼叫 Start，但通話狀態 handler 訂到 C1，C2 的變化沒有進畫面。兩者都不能靠重裝音訊驅動修好，因為第一個問題在控制入口，第二個在事件路由。",
-        "第一個補證是記錄分支條件與目標物件ID。若沒有 Create C2／Start C2，檢查誰應在C1終止後清空目前槽位；修正僅涉及這個槽位的終止處理，回歸測取消、遠端掛斷、錯誤結束。若已有 Start C2，再查 subscribe publisher=C1 還是C2。訂到舊物件時，把訂閱放入建立C2的同一條路徑，並在C1清理時解除；回歸必須包含兩通連續呼叫和舊C1事件晚到。",
-        "修正驗收應分兩層：程式控制層確認新物件收到 Start、後續事件歸屬正確、舊物件不再更新當前狀態；真實SDK層再核對SIP建立與雙向媒體。只看按鈕從Ready變InCall會漏掉“畫面修好了，但聲仍接舊通”的錯誤。你現在已能從基本物件機制提出具體候選原因，而不是遇到症狀就猜設備壞。"
+        "症狀「按下測試後沒有聲音」範圍太大。可先拆成：來源未啟動或讀到靜音；來源有資料但連線不在；接收端未啟動或選錯設備；轉換/播放端消耗不及；人耳測試方法不可靠。選一個能分開假設的下一步，例如同步記錄裝置識別、初始化結果、Level/資料計數、當前連線與 speaker 狀態。",
+        "若 Level 變化且 recorder 檔案長度增長，但 speaker 沒聲音，來源鏈已至少到 recorder；比較兩條分支最後共同的上游和各自下游，優先查 speaker 支路。若 recorder 和 speaker 同時沒資料，回頭查 source 或它之前的格式/狀態。這種比較使用資料圖定位共享節點，而非假設每個 handler 都一定有官方計數器。",
+        "最小修正要能回復。例如只選回已知的 Mic-A，不同時升級 SDK、改取樣率及重建路由；用固定測試詞驗證一次，再插拔裝置、重啟應用確認復原。維護結論應說「目前資料支持哪一段」和「下一項驗收」，不把尚未觀察的原因寫成確診。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【基礎】公司程式有 class Softphone : IDisposable，內含 ISoftPhone _core。兩個 Softphone 名稱代表同一種東西嗎？",
       "level": "foundation",
+      "question": "圖上的 `Microphone → Speaker` 中，兩者分別扮演什麼資料角色？",
       "answer": [
-        "先看型別宣告：class Softphone 是公司或範例的包裝類別，ISoftPhone 是它保存的 SDK 介面。",
-        "外層可加業務規則，內層才實作廠商操作。名稱相近不構成同一型別的證據。",
-        "跳到定義和組件來源，建立「包裝→SDK」箭頭；追 Register 應追到 _core 的實際方法。"
+        "Microphone 是提供媒體資料的來源，Speaker 是接受資料並交給本機播放端的接收器。",
+        "此名稱按程式資料方向區分，不能以使用者「輸入/輸出」視角混淆。",
+        "這條邊只表示本機播放，不含 SIP、RTP 或電話建立。"
       ]
     },
     {
-      "question": "【基礎】a 指向 C7，b=a；之後 a=null，再 b.HangUp()。C7 是否還能被操作？",
-      "level": "foundation",
-      "answer": [
-        "b=a 保存同一物件參考，沒有複製電話。",
-        "a=null 只移除 a 的參考，b 仍指向 C7，因此 b.HangUp 操作 C7。",
-        "掛斷是否完成仍要看事件；這題不能把變數清空當設備結束。"
-      ]
-    },
-    {
-      "question": "【基礎】一條已註冊線路先後打三通，至少應區分哪些身分與壽命？",
-      "level": "foundation",
-      "answer": [
-        "核心與線路通常可跨通話存在，三通各有短期通話物件。",
-        "每通的 handler、媒體附著與結束記錄要歸屬各自通話。",
-        "驗收一通結束不能清除線路或第三通狀態；物件數和資源共享政策需從實作查明。"
-      ]
-    },
-    {
-      "question": "【應用】LabLine先Register(403)，之後才訂閱，最後State=Failed、handler次數=0。能推定SDK沒通知失敗嗎？",
       "level": "application",
+      "question": "在 Ozeki 1.8.12 公開參考語境，`Connect(microphone, speaker)`、`microphone.Start()`、`speaker.Start()` 各在流程中證明什麼？",
       "answer": [
-        "Lab的通知發生在Register內，當時訂閱集合為空，因此後訂閱看不到事件。",
-        "這只能證明觀察順序漏掉Lab事件，不能推定真實SDK行為。",
-        "改為先訂閱，預期handler一次且狀態Failed；再用真實版本核對回呼與快照機制。"
+        "Connect建立來源到接收端的單向路由；Start對應來源開始擷取、接收端開始播放。",
+        "呼叫返回不自動證明內容可聽見；仍需檢查裝置狀態、資料活動和端到端驗收。",
+        "若公司版本不同，先確認本地方法簽名和狀態契約。"
       ]
     },
     {
-      "question": "【應用】C8、C9 共用 L3。C8結束時 Dispose(L3)，C9也斷線。修正時先問什麼？",
-      "level": "application",
+      "level": "understanding",
+      "question": "為什麼「UI 顯示已播放」與「使用者聽見聲音」之間仍有多個可能失敗點？",
       "answer": [
-        "首先查L3擁有者和用途。共享線路不能由單通C8擅自釋放。",
-        "將通話清理限於C8自己的訂閱和媒體；線路清理交由配置或核心擁有者。",
-        "回歸測C8結束而C9繼續、帳號切換和整個程式關閉，確認終止範圍正確。"
+        "UI可能只記錄命令已送出或 wrapper 設定完成，尚未證明裝置初始化、來源資料、路由和播放緩衝。",
+        "裝置選錯、權限、靜音、格式或 OS 輸出端問題都可能讓後段未完成。",
+        "要沿資料方向設觀測，不把意圖欄位當成底層完成證據。"
       ]
     },
     {
-      "question": "【應用】目前C4已Active，Connect(mic,sender)完成，但SenderCall=C3。預期哪個方向有風險？",
-      "level": "application",
+      "level": "reasoning",
+      "question": "合成紀錄顯示 recorder 檔案增長、speaker 沒聲音。如何利用拓樸決定排查順序？",
       "answer": [
-        "mic→sender 是本端發送方向，但sender仍附著C3。",
-        "C4的控制成功不會自動把sender搬到C4，因此本端聲音不一定送到C4。",
-        "查Attach目標與C3清理；修正後比對C4發送與接收資料，並確認沒有C3殘留。"
+        "檔案增長支持資料已到錄音支路，但不證明 speaker 支路同樣連接。",
+        "先檢查 graph 是否有正確 speaker 邊及該接收端狀態，再檢查 OS 裝置選擇與播放結果。",
+        "如果兩個支路共用同一處理 handler，檢查分叉前是否有資料、分叉後各自差異。"
       ]
     },
     {
-      "question": "【診斷】DialClick後只有return current!=null，current=C2且C2已Ended。列最小修正與回歸。",
       "level": "diagnosis",
+      "question": "初始化成功且裝置 ID 正確，但 level 一直為 0；你會先查哪兩項，為什麼不先改路由？",
       "answer": [
-        "已知入口被舊參考擋住，尚未建立新通，先修當前槽位的終止規則。",
-        "在C2確實終止且仍為目前物件時清槽；不要在任意舊物件事件來時清掉新通。",
-        "回歸正常掛斷、拒絕、取消與C2晚到事件；每次允許建立下一個物件，且C3不被清掉。"
-      ]
-    },
-    {
-      "question": "【診斷】Start C5已記錄、SDK紀錄C5=InCall，UI仍Ready；麥克風驅動正常。如何區分兩種應用原因？",
-      "level": "diagnosis",
-      "answer": [
-        "比較CallStateChanged的publisher身分、handler入口及UI處理紀錄。",
-        "若handler訂在C4，是錯物件；若handler收到C5但UI佇列未執行，是畫面處理或執行緒阻塞。",
-        "前者修綁定及解除，後者查UI等待／派送。驗收需C5正確更新、舊C4事件不影響、畫面可互動。"
+        "先確認實際捕捉是否在執行，並檢查 mute、OS 權限、輸入增益和測試時是否有聲源。",
+        "Level 是來源側觀察；若來源目前沒有可辨認活動，改下游路由不會產生音訊。",
+        "來源測試通過後再檢查 connector 和 speaker，保持每次只改一個因素。"
       ]
     }
   ],
   "recap": [
-    "API是約定，SDK提供實作；包裝層另有自己的責任。",
-    "線路和通話的壽命不同，共用不代表共同擁有。",
-    "變數指派、事件訂閱與媒體附著都會保存身分；從這些箭頭追故障。"
+    "按資料方向閱讀：來源、處理器、接收端及 OS 端點各有責任。",
+    "每條分支有自己的完成條件；一個輸出成功不代表另一個輸出也成功。",
+    "裝置狀態、資料活動、路由與人耳驗收是不同證據。"
   ],
-  "resources": [
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab.zip",
-      "label": "下載本主題完整 C# 教學專案",
-      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
-    },
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
-      "label": "下載自製 C# 事件與媒體模型原始碼",
-      "description": "完整專案由主題練習包提供；本章追讀 graph，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
-    }
-  ],
+  "resources": [],
   "sources": [
     {
-      "label": "Ozeki：註冊教學中的自製 Softphone 與 SDK 物件",
-      "url": "https://voip-sip-sdk.com/p_7535-how-to-register-to-a-pbx-using-sip-account.html"
+      "label": "Ozeki 官方 MediaHandlers 教學：handler 可代表來源或目的端，MediaConnector 把來源輸出連到一個或多個目的端；例子涵蓋 microphone、speaker、playback 與 recorder",
+      "url": "https://www.voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
     },
     {
-      "label": "Ozeki：通話物件、事件與媒體",
-      "url": "https://voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
+      "label": "Ozeki Microphone API 參考（頁面標 OzekiSDK 1.8.12.0）：裝置、MediaFormat、Initialized、Level、Muted、State、Start/Stop 與相關事件",
+      "url": "https://voip-sip-sdk.com/doc/html/1acde4be-300f-ff36-9df0-54b1d2a849b8.htm"
     },
     {
-      "label": "Microsoft：C# 事件訂閱／解除",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/how-to-subscribe-to-and-unsubscribe-from-events"
+      "label": "Ozeki Speaker API 參考（頁面標 OzekiSDK 1.8.12.0）：播放端型別及裝置取得方式",
+      "url": "https://voip-sip-sdk.com/doc/html/13fd25fe-5822-b770-de51-afd58fd7c14f.htm"
     },
     {
-      "label": "Ozeki：每通獨立 CallHandler 的多通教學",
-      "url": "https://voip-sip-sdk.com/p_7542-how-to-handle-more-than-one-call-in-the-same-time.html"
+      "label": "Ozeki 官方發行說明：10.3.193 提到多個使用者共享同一實體裝置時的互動，並新增 managed 存取方法；使用前須核對當前版本",
+      "url": "https://www.voip-sip-sdk.com/p_7021-download-ozeki-voip-sip-sdk.html"
     }
   ]
 }

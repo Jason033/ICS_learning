@@ -1,273 +1,252 @@
 {
-  "contentVersion": 2,
-  "intro": "這章把Socket端點、串流、框架、編碼、期限、生命週期與業務結果串成一套讀碼流程。先解兩個完整示例，再用不同資料獨立診斷；重點是從證據推導有限結論，不是看到症狀就套修法。",
+  "contentVersion": 3,
+  "intro": "同一個畫面症狀可能來自傳輸、程式狀態或資源生命週期。這篇用一條可重算的重連時間線，從已有證據建立候選原因，找到第一個尚未解釋的事件，再用讀碼與一項受控檢查確認舊連線的清理工作是否影響了新連線。",
   "prerequisites": [
-    "前七章的端點、框架、編碼、期限、世代與證據；每個案例給足規則和輸入。",
-    "會分清事實與推測；正文教如何寫可反駁假說及有限修正。"
+    "可獨立閱讀。案例會提供足夠程式與證據，不需先讀完整 Socket 系列。",
+    "若想回看資源責任，可選讀〈Client 與 Server 的收送流程〉的「把 Dispose 責任交給一個清楚的範圍」；若要整理應用日誌與 PCAP 配對，參考〈用 Socket 紀錄定位問題〉的「把 Wireshark 封包時間線對到同一端的應用事件」。如調查轉入資料框架，連到〈訊息邊界與緩衝〉的「從最早不相符的交接點找 parser 問題」。這些是按需參照，不是先修清單。"
   ],
   "goals": [
-    "依正常路徑區分傳輸、框架、內容、分派與畫面故障。",
-    "用可反駁假說與最小實驗選擇有限修正。",
-    "驗證內容、次數、狀態、資源和結果未知的邊界。"
+    "從一個症狀列出彼此可區分的原因，而不是先改重連或 timeout 設定。",
+    "沿連線世代、封包和應用狀態證據找出第一個未被解釋的交接。",
+    "把程式碼中的競爭條件連到觀測結果，寫出一項可反駁檢查與最小回歸。"
   ],
-  "studyTime": {
-    "reading": [
-      14,
-      23
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      45
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
-  },
   "sections": [
     {
-      "heading": "先讀架構，不急著改錯誤那一行",
-      "kind": "concept",
-      "paragraphs": [
-        "拿到陌生程式，先找程式入口、組態來源和target framework，再找Socket建立、Bind/Connect、Accept、收送迴圈、解析器、訊息分派、UI入口與Dispose。畫出物件擁有者與資料流，不必畫公司不存在的整合。不同主題獨立，但本Socket程式內部的依賴必須逐段明確。",
-        "每個節點寫出輸入、狀態與輸出。例如接收器輸入bytes，輸出完整框架；解析器輸入框架，輸出合法命令；handler輸入命令，輸出業務結果；UI input event，output displayed state。若類名叫Manager仍不清楚，它的欄位、呼叫者和事件才是證據。執行時日誌再對映到這張圖，避免只沿一個異常堆疊忽略另一條回呼。",
-        "正常不變數也先寫：每連線一個接收所有者、每byte只被消費一次、每完整框只輸出一次、每請求最多一個最終結果、舊世代不能改新狀態、退出只釋放自身資源。除錯就是發現哪個不變數最早被破壞及其原因。只求例外消失可能隱藏資料丟失或錯誤成功。"
-      ]
-    },
-    {
-      "heading": "從症狀分層，但每層還需證據",
-      "kind": "mechanism",
-      "paragraphs": [
-        "Connect失敗在建立階段，尚未討論框架；Connect成功卻Read不足，可能是合法分段、發端未發完、等待業務或接收程式碼錯誤；完整bytes後parseError，查長度、端序、編碼與版本；完整合法回覆後畫面不變，查關聯、狀態規則、排程和UI。相同「無回應」覆蓋所有層，因此先補最遠已確認階段。",
-        "工具與問題匹配。端點/程式檢查適合查監聽是誰與在哪個位址；封包適合看指定擷取點的傳輸；應用日誌適合看框架和處理；離線Feed適合驗證解析；執行緒堆疊適合查等待依賴。不要每次都Ping或換Port，因為它們無從驗證所有上述層級。觀測工具本身的範圍與遺漏也需要記錄。",
-        "錯誤碼提供分類，不自動給根因。被拒絕需查目的服務是否在該端點；逾時需查操作與整筆期限、是否底層仍在等；EOF需查框架位置；ObjectDisposedException需查誰釋放與哪代任務。將這些問題變成具體證據，而非列一堆可能原因後讓讀者自己猜。"
-      ]
-    },
-    {
-      "heading": "把最早破壞點與後續症狀分開",
-      "kind": "concept",
-      "paragraphs": [
-        "某個錯誤可能依次造成錯誤length、等待逾時、重連、舊事件覆蓋與UI失聯。若只修最後一個症狀，例如增加重連間隔，仍保留第一處解析破壞；若只修parser，也需確認錯誤後清理不會繼續關閉新會話。根因與防護可以是兩個有限改動，但每個都有獨立證據與回歸，不能混在一次巨大重構裡而無法判斷效果。",
-        "在時間線上寫出因果箭頭，並要求每個箭頭有機制或實驗。例題一的「清空半框→本文當標頭」有明確bytes位置可追；「因為網路慢所以長度大」沒有解釋數值如何從43 00產生。解釋越能連到具體變數與中間值，越容易被反駁也越值得信賴。",
-        "反事實測試問：若候選原因不存在，這個結果還會發生嗎？完整離線bytes仍出錯可排除本次鏈路丟失；正確標頭但錯誤decode可排除長度不足；UI事件早已排隊而晚應用可排除仍等Socket。這不是排除世界上所有原因，而是用有限證據確定本次足夠具體的機制。"
-      ]
-    },
-    {
-      "heading": "維護修正還要定義不會產生哪種錯誤成功",
-      "kind": "concept",
-      "paragraphs": [
-        "對壞框架的修正不能是把例外吃掉並繼續返回預設READY，因為這把可見故障變成錯誤成功。對超時也不能預設未執行或預設執行；結果未知需保留並走協定允許的確認。對重連則不能只是強制isConnected=true，必須有新連線接收與同步證據。正確失敗分類是可靠維護的一部分。",
-        "可用五個驗收維度：資料內容、執行次數、狀態版本、時間預算、資源壽命。例如一條控制回應正確但執行兩次，內容透過卻次數失敗；狀態顯示正確但來自舊快照，版本失敗；所有請求最終成功卻超過可用期限，時間失敗；正常一次無異常但連線不斷累積，資源失敗。每次修正選擇與機制有關的維度，不機械跑無關專案。",
-        "教材的本機模型能驗證框架內容、錯誤拒絕與傳輸介面語意；公司業務還要由真實版本/裝置與協定驗證次數、狀態和期限。把兩種驗收記錄區分並保持可復現，後續擴充新章節才有清楚基準。不能由所有教學PASS直接跳到公司系統安全或效能達標。"
-      ]
-    },
-    {
-      "heading": "完整例題一：新請求觸發巨大長度",
       "kind": "worked-example",
+      "heading": "案例：新連線已回 READY，畫面稍後又斷線",
       "paragraphs": [
-        "已知協定兩byte大端本文長、1..1024 UTF-8。傳送端原串流00 03 41 42 43 00 02 58 59，共9bytes。接收兩次返回4與5。第一次讀00 03 41 42，應保留等待第三個本文byte；第二次補43並有第二框00 02 58 59，應輸出ABC和XY。",
-        "實際程式第一讀就GetString並輸出AB，隨後清buffer；第二讀把43 00當length，得0x4300=17152，報超上限。補證不是遠端真的傳17152，而是本端把第一框最後的C與下一標頭00拼成假標頭。第一個被破壞的不變數是未完整框被過早輸出並丟失解析狀態。",
-        "有限修正是儲存完整標頭/本文狀態，累積到2+length才輸出，準確移除已消費bytes並迴圈餘框。回歸原切片4/5、單片9、逐byte、兩框之間EOF、本文中EOF與超上限。驗收是輸出列表內容ABC/XY、次數2、最終retained0，錯誤輸入明確拒絕，不只是日誌不再出現17152。"
-      ]
-    },
-    {
-      "heading": "完整例題二：重連後一切成功卻顯示失聯",
-      "kind": "worked-example",
-      "paragraphs": [
-        "已知g10在t0送r50，t30超時並啟動新g11；t50新Connect成功，t80合法快照version7 READY已應用；t90舊g10 Receive結束並執行finally，t92畫面變Disconnected。g11沒有傳輸錯誤，直到t95新查詢因ObjectDisposedException失敗。",
-        "讀finally發現它呼叫全域currentSocket.Dispose，欄位已在t50指向g11；同時舊回呼不核對generation而改全域狀態。兩個補證分別解釋新資源被關閉與狀態被舊事件覆寫。不能以「網路不穩定」解釋，因為新Socket釋放由本端日誌明確指向舊任務清理。",
-        "有限修正捕獲並釋放g10自己的Socket，在狀態更新入口核對當前世代與所有者，停止時也用明確所有權。回歸讓舊finally分別在新連線之前、之後，以及同步完成之後執行；新會話應維持正常且舊資源仍釋放。再測試真正新連線錯誤應可更新Disconnected，避免過濾舊事件時連新錯誤也被吞掉。"
-      ]
-    },
-    {
-      "heading": "練習資料A：同樣等待，時間線不同",
-      "kind": "diagnostic-case",
-      "paragraphs": [
-        "A1：請求總期限500ms，標頭00 04在t40收滿；正文前兩byte在t120，其餘兩byte在t300；程式每次Read都重新給500ms，完整後t310應用。A2：同樣標頭，本文每200ms一byte到達，t800才收滿；每次Read都沒有單次超時。請判斷兩者是否符合總期限，並提出只改計時責任的修正。",
-        "A3：外層在t500 WaitAsync逾時，底層Receive未取消；t510發新請求並啟動第二Receive，t530兩作業分別拿到舊回覆的標頭與本文。這裡要辨認是哪條競爭造成解析狀態不可恢復，不能只把期限加長。請列觀察欄位、清理順序和回歸邊界，解答在本章練習中。"
-      ]
-    },
-    {
-      "heading": "練習資料B：數值異常，bytes究竟在哪段改變",
-      "kind": "diagnostic-case",
-      "paragraphs": [
-        "假想6byte格式沿用前章版本/型別/ID/溫度。收到01 21 00 11 00 FA，UI顯示6400.0°C；raw記錄完整且與傳送端相同。另一次收到01 21 00 12 FF FF，UI顯示6553.5°C。分析兩筆是否同一個錯誤，指出各自規則、正確結果與應回歸的資料。",
-        "再給B3：框架00 02 E6 BA，本文已滿宣稱長度，卻strict UTF-8失敗。傳送端日誌原字串溫度，寫length=text.Length，實際body為6bytes。必須辨認框架驗證、內容驗證和傳送側序列化責任，不要用把decode錯誤吃掉的修正隱藏剩餘串流錯位。"
-      ]
-    },
-    {
-      "heading": "練習資料C：一個動作重複兩次",
-      "kind": "diagnostic-case",
-      "paragraphs": [
-        "C1：Toggle operation=o9，在server t10 executed寫ON；回應未到，client t20結果未知；client t30改用新operation=o10重試，server t35寫OFF。C2：收到兩次相同notificationId=e9，UI處理函式每次呼叫Toggle，server也記錄兩個不同operation。請區分傳輸重試與事件處理副作用，並說明不能直接認定TCP本身交付重複bytes。",
-        "C3：UDP client收到來自預期端點的r7回應，但當前等待r8；函式只核對端點，把r7內容填給r8。結果不是丟包而是關聯規則不足。比較三個案例，選擇分別依賴去重、事件消費設計或request關聯的修正；只有按具體機制修，才能防止新功能又引入同一問題。"
-      ]
-    },
-    {
-      "heading": "改動時要寫出你保持哪些邊界",
-      "kind": "maintenance",
-      "paragraphs": [
-        "修改parser要保護bytes和框架次數；修改deadline要保護底層作業收尾與半框；修改reconnect要保護所有權與舊事件隔離；修改業務retry要保護副作用次數和未知結果。一個改動的成功標準不應只有「能連上」，因為被改變的邊界通常在異常和恢復路徑。",
-        "建立小矩陣：正常/分段/合併/EOF/壞長度/壞內容/取消/遲到/重連/停止。不是每次都寫大型測試框架，但每個涉及的機制要有能抓錯的輸入。修改前保留失敗重現，修改後同輸入對照，並加入相鄰反例，例如過濾舊世代後仍接受新世代錯誤，拒絕壞長度後仍接受合法最大長度。",
-        "若改動依賴公司協定或裝置，先從檔案/原始碼確認前提，教學習慣用本機模型隔離演算法。不要把模型結果當公司完整驗證；正式驗收還可能需要真實SDK、版本、裝置和負載。明確這個限制能保留謹慎而不犧牲正文解釋：基礎機制仍可以在教材內完整推導。"
-      ]
-    },
-    {
-      "heading": "讀程式時的證據記錄格式",
-      "kind": "code-reading",
-      "paragraphs": [
-        "一條維護筆記可以是：物件connection=c3/g=11；輸入bytes=9；預期框2；實際輸出1；第一缺口在parser清空字尾；離線切片實驗支援；有限修正RemoveRange並迴圈；回歸單片/多片/EOF；真實裝置未測。每個欄位服務於因果，不是為了把資料塞進表格。",
-        "證據不足時寫「尚無法區分」並指定下一條能分叉的證據。例如無回應且無對端許可權，下一步可找接收API、請求對應結果或協定查詢，而不是聲稱遠端沒做。錯誤恢復不能讓未知變確定；修正的範圍應與證據相稱。自己將來維護教材時，也能按這個結構知道示範到底測了什麼。",
-        "以下片段只表示局部所有權，不是完整並行實作。currentSocket 與 generation 必須由單一所有者讀取，或在同一受保護區段一次取得一致快照；若分別讀欄位而另一執行緒在中間更換，會把新 Socket 與舊世代錯配。釋放自己的資源後，任何共享狀態更新也要在相同的協調規則下核對目前世代與物件身分，不能只保護 finally。"
+        "下列是刻意設計的唯讀狀態查詢案例。客戶端舊連線為 `C17/g17/S17`；重連後為 `C18/g18/S18`。`g` 是程式的連線世代，`S` 是這份測試記錄使用的 Socket 物件標記。這些時間和端點都是合成值，讓每個結論可由表格重算，不代表公司系統。",
+        "在 elapsed 30 ms，舊請求 `R50` 等待逾時；舊連線的 Receive 工作仍活著。新連線 `S18` 在 50 ms 完成 Connect，`R51` 在 55 ms 送出。這份合成擷取假設同一時間只有 R51 一筆 request 未完成；客戶端所在主機在約 78 ms 看到伺服器方向的回覆 payload；應用在 79 ms 收到 10 bytes，80 ms 完成回覆框架，81 ms 解析出 `READY`，82 ms 把新狀態寫入 view model。表面上，新的通訊路徑已完成到狀態更新。",
+        "90 ms 舊 `g17` 的 Receive 因取消結束，91 ms 進入舊工作的清理，92 ms 程式把狀態改成 `Disconnected`；95 ms 新 `g18` 請求對 `S18` 收到 `ObjectDisposedException`。排查不是先問「為何重連又失敗」，而是先找 82 到 92 ms 間哪個事件把已更新的狀態改掉，再問同一清理事件是否也能解釋 95 ms 的新 Socket 失效。"
       ],
-      "code": {
-        "title": "保證每個流程自己的資源與世代；架構示意不是公司API",
-        "text": "// 前提：單一所有者，或在同一受保護區段取得這一對。\nSocket owned = currentSocket;\nint ownedGeneration = generation;\ntry { await ReceiveLoop(owned, ownedGeneration, ct); }\nfinally\n{\n    owned.Dispose(); // 释放这次流程自己的资源\n    // 更新状态仍需受保护地核对当前世代与所有者。\n}"
+      "table": {
+        "caption": "客戶端程序 elapsed time 與同一主機 PCAP 的合成事件",
+        "headers": [
+          "時間（ms）",
+          "連線／請求",
+          "事件",
+          "當下支持的結論"
+        ],
+        "rows": [
+          [
+            "0",
+            "C17/g17/S17 · R50",
+            "send.returned bytesReturned=8",
+            "舊請求的 Send 呼叫有返回；當時未得到業務結果。"
+          ],
+          [
+            "30",
+            "C17/g17 · R50",
+            "request.timeout；Receive 工作仍在執行",
+            "本機等待已逾期；該記錄本身不證明伺服器未處理。此案例是唯讀狀態查詢。"
+          ],
+          [
+            "50–55",
+            "C18/g18/S18 · R51",
+            "Connect 完成；send.returned bytesReturned=8",
+            "新 Socket 已連上，新的查詢送出呼叫返回。"
+          ],
+          [
+            "約 78–82",
+            "C18/g18/S18 · R51",
+            "客戶端 PCAP 見回覆；Receive=10；frame 完成；解析 READY；view model 更新 READY",
+            "新路徑的回覆已到客戶端、程式也更新了新狀態。"
+          ],
+          [
+            "90–92",
+            "C17/g17/S17",
+            "舊 Receive 取消；舊工作 finally 執行；狀態變 Disconnected",
+            "舊工作的結束緊接狀態倒退；尚需查它操作了哪個物件、狀態更新有無世代檢查。"
+          ],
+          [
+            "95",
+            "C18/g18/S18",
+            "下一個查詢得到 ObjectDisposedException",
+            "呼叫時此 Socket 已不可使用；例外單獨不指出是誰釋放它。"
+          ]
+        ]
       }
     },
     {
-      "heading": "實作：建立兩份不相同的失敗重現",
-      "kind": "lab",
+      "kind": "mechanism",
+      "heading": "先把事實和候選原因分開",
       "paragraphs": [
-        "先執行完整.NET10模型並儲存基準輸出，只在自己的副本修改。重現一：在parser完成第一框後Clear，單片11輸入應失敗；重現二：用text.Length代替body.Length，中文應失敗而ASCII可能透過。每次只保留一項修改，記錄輸入、實際輸出、第一破壞的不變數，不混合兩項錯誤。",
-        "各自復原後執行切片列表、長度1025、標頭EOF、本文EOF、invalid UTF-8、TCP半關閉、UDP空資料報與取消檢查。驗收是能把兩種表面parseError寫成不同因果結論，並解釋每個PASS的範圍。模型沒有實現真實重連、操作去重、UI框架，因此C組和世代案例用讀碼/紙上追算，不可把全PASS寫成公司系統驗證。"
-      ]
+        "新世代的回覆在客戶端擷取點可見，應用也記錄收到 10 bytes、解析成 `READY`，並更新了 view model。這些證據不支持「這一次完全沒有連線或回覆」；它們仍不證明更晚的每一個操作都成功。`ObjectDisposedException` 與緊接其前的舊工作清理，讓本機物件生命週期成為需要驗證的候選。",
+        "先把互相區分的預測列清楚。若是新路徑或伺服器沒有回覆，預期缺少 `g18` 的接收／解析記錄，或客戶端擷取點看不到那段回覆；本例兩者都存在。若是新回覆解析錯誤，預期 parser 不會產生 `READY` 或 request 關聯不符；本例記錄了 `R51/READY`。若只是畫面延遲，能解釋顯示時序，卻解釋不了 `S18` 的 disposed 例外。舊清理改動共享連線或狀態，則同時預測舊代事件出現在新狀態之後、以及新物件隨後不可用。",
+        "下一個最有辨識力的證據不是再抓一次同一段流量，而是讀舊 Receive 工作的 `finally`：它到底釋放收到的本地 Socket 參數，還是讀取可被新連線替換的共享欄位？它寫 `Disconnected` 前有沒有確認自己仍是目前 generation？這兩個問題直指兩項可觀察症狀，並能由程式碼或一次受控重現推翻。"
+      ],
+      "table": {
+        "caption": "候選原因要附上它預測的證據",
+        "headers": [
+          "候選",
+          "若候選成立，會預期看到",
+          "本例證據的判斷"
+        ],
+        "rows": [
+          [
+            "新連線的路徑沒有回覆",
+            "沒有 g18 的應用接收／解析，或客戶端擷取點沒有回覆 payload。",
+            "不符合目前這次查詢的記錄；不能據此保證未來所有查詢正常。"
+          ],
+          [
+            "回覆已到但 parser／request 對應錯",
+            "沒有 R51/READY，或 parse／request correlation 在兩處記錄不一致。",
+            "本例提供 R51/READY，先把調查往後移到狀態倒退與舊工作結束。"
+          ],
+          [
+            "舊工作清理影響目前連線或狀態",
+            "g17 在 g18 更新後執行 finally，並讀寫共享目前物件／狀態。",
+            "事件順序符合；還需用 source line 或記錄 Dispose 目標確認實際對象。"
+          ]
+        ]
+      }
     },
     {
-      "heading": "最後一步是讓結論可供別人繼續工作",
-      "kind": "maintenance",
+      "kind": "code-reading",
+      "heading": "用物件身分確認 finally 清理的是誰",
       "paragraphs": [
-        "完整結論包含已確認事實與有限修正，例如「未滿框時清空buffer，使下一片的本文被當標頭；同一9bytes離線重現，修正後所有切片輸出相同兩框」。這讓讀者理解為什麼改及如何證明。只有「解決黏包」既沒有因果也沒有驗證，未來增加協定欄位時無法知道還需保持什麼。",
-        "不確定項也要有下一步，例如SDK版本與真實裝置尚未驗證、跨端時鐘誤差未知、日誌取樣不完整。它們不能否定已證實的本機機制，也不能被隱藏在成功宣告後面。閱讀教材的終點是有能力提出並檢驗這些具體問題，而不是熟記專有名詞或獲得一個未經證明的工程師等級。"
+        "讀到的舊程式骨架如下。ReceiveLoop 收到的參數 `socket` 是工作開始時的物件；`currentSocket` 則是共用欄位，Reconnect 時會被新 Socket 替換。舊 generation 在較晚才執行 finally，若此時讀取共用欄位，釋放目標就不是它原先負責的連線。狀態寫入也沒有世代條件，因此舊工作的正常取消可以蓋掉新狀態。這個結論來自程式的欄位讀取位置和已知替換順序，不是從 `Disconnected` 這個字猜網路故障。",
+        "`ObjectDisposedException` 只能確認呼叫的 Socket 已被 Dispose／Close 而不可用；它不單獨標明釋放呼叫者。若實際程式用 wrapper 或 `NetworkStream` 管理底層 Socket，也要讀清楚它的 ownsSocket／Dispose 責任，再判斷哪一行實際關閉。這篇不重講所有權規則，只在本案例用物件身分定位那一個錯誤讀取。",
+        "這是刻意保留錯誤的讀碼片段，使用 `Socket?` nullable reference 語法；舊專案若未啟用相同 C# 語言版本，請按其語法表示可空欄位，但保留「工作捕獲的 socket」與「可變共享 currentSocket」兩種物件身分，才能檢查清理目標。"
+      ],
+      "code": {
+        "title": "問題在 finally 讀了可變的共享欄位",
+        "text": "Socket? currentSocket; // reconnect 時指向最新 Socket\n\nasync Task ReceiveGenerationAsync(Socket socket, int generation, CancellationToken ct)\n{\n    try\n    {\n        await ReceiveLoopAsync(socket, ct); // 此工作讀的是傳入的 socket\n    }\n    finally\n    {\n        currentSocket?.Dispose();            // 錯：finally 時欄位可能已是新 Socket\n        SetStatus(ConnectionState.Disconnected); // 錯：沒有核對目前 generation\n    }\n}\n\n// 新連線成功後：currentSocket = socket18; generation = 18;\n// 遲到的 g17 finally 讀到 currentSocket 時，目標已是 socket18。"
+      }
+    },
+    {
+      "kind": "maintenance",
+      "heading": "只修本例已證實的兩個共享狀態寫入",
+      "paragraphs": [
+        "清理工作釋放自己擁有的參數 `socket`，不要在 finally 重新查詢「目前 Socket」；狀態更新則在協調點核對 connection object 和 generation 仍是 active 後才發布。前者避免舊工作關閉 `S18`，後者避免 `g17` 的取消把新世代畫面改成 `Disconnected`。其他重連策略、間隔或 timeout 不會改變這兩個共享欄位的讀寫責任。",
+        "若無法從讀碼確定實際目標，在 Dispose 前暫時記錄 `ownerGeneration`、`currentGeneration`、傳入 Socket identity 與 Dispose target identity，並確保記錄和讀欄位在同一同步規則下取得。不要只記 `Socket.Connected` 作健康證明；那個屬性表達的是前一次 I/O 所知狀態，不能替代本次呼叫的結果。先用受控測試確認清理者與目標物件，再移除可能暴露內部識別或製造過多資料的診斷欄位。",
+        "最小回歸安排一個可控制的順序：讓 `g17` 的 Receive 延後到 `g18` 已連線、R51 已解析並更新 READY 後才結束；讓舊 finally 接著執行；再用 S18 發一筆查詢。驗收要同時確認 S17 被釋放、S18 仍可使用、view model 保持 g18 狀態。另測目前 g18 自己收到有效斷線錯誤時仍會更新狀態，避免「忽略舊世代」的修正把新錯誤也吞掉。"
+      ],
+      "table": {
+        "caption": "同一個可控事件順序，修正前後應觀察到的差異",
+        "headers": [
+          "檢查點",
+          "修正前",
+          "修正後的通過條件"
+        ],
+        "rows": [
+          [
+            "g17 工作結束",
+            "Dispose 可能針對共享欄位目前的 S18；未檢查世代就寫 Disconnected。",
+            "只釋放 g17 擁有的 S17；舊世代不能更新目前狀態。"
+          ],
+          [
+            "g18 工作與狀態",
+            "下一個呼叫在 S18 遇到 ObjectDisposedException，READY 被覆蓋。",
+            "S18 的新查詢仍可完成，狀態維持 g18 的 READY。"
+          ],
+          [
+            "g18 自身錯誤",
+            "與舊工作問題混在一起，無法判定新錯誤是否被處理。",
+            "當前世代自己的有效斷線仍能發布，錯誤處理沒有被過度過濾。"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "長度突然變大時，先追 parser 保留範圍",
+      "paragraphs": [
+        "另一個常見症狀是 `parseError length=17152`。合成輸入是 `00 03 41 42 43 00 02 58 59`，正確 frame 為 `00 03 41 42 43` 和 `00 02 58 59`。如果第一輪只讀到 `00 03 41 42`，parser 把未完成本文清掉，下一輪開頭 `43 00` 會被錯當新長度，得到 `0x4300=17152`。正確解釋是本地解析狀態已和輸入串流失去對齊，不是網路把長度欄位改成 17152。",
+        "這裡只用該值示範第一缺口的判斷：先在擷取證據確認這 9 bytes 是否到達客戶端，再對照 parser 每次消費和保留的範圍。若完整 bytes 在同一份 PCAP 可見而應用 parser 算出假長度，接下來應查本地 parser 狀態；若應用只讀到一部分，則仍要查後續等待或 EOF，不能把正常短讀直接診斷成丟包。演算法與逐步保留狀態請回看〈訊息邊界與緩衝〉的指定段落。"
+      ],
+      "table": {
+        "caption": "本例中的錯誤值如何由本地偏移錯置產生",
+        "headers": [
+          "讀取輪次",
+          "輸入／錯誤保留狀態",
+          "若從錯位置讀長度"
+        ],
+        "rows": [
+          [
+            "第一輪",
+            "00 03 41 42；長度宣稱 3，本文只到 2 bytes",
+            "應保留整個未完成框，不能輸出 AB 後丟棄尾端。"
+          ],
+          [
+            "第二輪開始",
+            "下一段從本文末 byte 43 接續，後面是新標頭 00 02",
+            "錯誤 parser 把 43 00 當兩-byte大端長度，即 0x4300=17152。"
+          ],
+          [
+            "正確連續解讀",
+            "補 43 完成本文 ABC，再接 00 02 58 59",
+            "輸出 ABC 和 XY；總輸入 9 bytes，沒有理由等待 17152-byte body。"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "maintenance",
+      "heading": "結論要讓下一位工程師知道已知、未知和下一個檢查",
+      "paragraphs": [
+        "本例可形成的結論是：「客戶端擷取和應用事件顯示 g18 的 R51 已收到並解析為 READY；之後 g17 的 finally 執行，程式碼在該處讀取共用 currentSocket 並無條件發布 Disconnected；下一次對 S18 的呼叫遇到 disposed 例外。把 finally 改為清理本地 owner 並守住世代條件後，以延後舊工作完成的測試驗收。」這段敘述把症狀、最早已知偏離、證據、有限修正和驗收連在一起。",
+        "限制也要留下：時間線是合成資料，未測公司執行緒同步、UI dispatcher 或實際 Socket wrapper；客戶端單點擷取看不到伺服器內部 handler；本案例只驗證所示錯誤模式。若真實程式另有鎖、owner task 或較早 Dispose，須依實際 target framework 和程式再追一次，不把教學重現說成公司根因。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "收到合法完整bytes卻顯示舊值，為什麼先查關聯/UI而非路由？",
-      "level": "foundation",
+      "level": "reasoning",
+      "question": "新世代 R51 在 81 ms 解析為 READY、82 ms 更新 view model；92 ms 舊 g17 更新 Disconnected，95 ms 對 S18 發生 ObjectDisposedException。第一個要讀哪一段程式？這三項證據各自能支持什麼？",
       "answer": [
-        "完整bytes已支援傳輸與框架階段，路由無法解釋後續應用未更新的全部證據。",
-        "核對request/世代、狀態規則、事件分派與應用時間。",
-        "仍保持實際證據範圍，不排除不同請求另有網路問題。"
+        "先讀 g17 Receive 工作的 finally 和狀態更新入口，確認它釋放哪個 Socket、是否檢查目前 generation。",
+        "81–82 ms 支持新世代的回覆已到 parser 和 view model；92 ms 是舊 generation 的較晚狀態更新；95 ms 表示呼叫時 S18 不可用，但例外本身不指出釋放者。",
+        "查 shared currentSocket 的替換時間及 Dispose 目標，才能把順序證據連成具體因果。"
       ]
     },
     {
-      "question": "沒有異常就透過，為什麼不是parser足夠的驗收？",
-      "level": "foundation",
+      "level": "diagnosis",
+      "question": "現有 log 只記 `cleanup generation=17`，沒有記 Dispose target。讀碼可見 finally 呼叫 `currentSocket.Dispose()`；Reconnect 已先把 currentSocket 指到 S18。下一個最小確認是什麼？",
       "answer": [
-        "parser可能靜默丟框、重複框或改變內容而不拋異常。",
-        "需比較完整訊息列表、次數、順序與剩餘bytes。",
-        "錯誤輸入也需有明確拒絕而非偽成功。"
+        "若兩行確在同一同步規則下執行，這段程式已顯示 finally 會讀取目前共享欄位，而不是工作開始時傳入的 S17；需核對所有寫 currentSocket 的路徑及時序。",
+        "用受控延後讓 g17 finally 在 g18 指派之後執行，並在 Dispose 緊前記錄 owner/current generation 和物件 identity，確認實際 target 是否 S18。",
+        "同時確認舊 status callback 有無 generation guard；僅修 Dispose 不會自動阻止 stale Disconnected 覆蓋 READY。"
       ]
     },
     {
-      "question": "A1與A2是否滿足500ms總期限？修計時規則。",
       "level": "application",
+      "question": "另一事故同樣顯示 `length=17152`。客戶端 PCAP 含完整 `00 03 41 42 43 00 02 58 59`，應用的兩次 Read 是前 4 bytes 與後 5 bytes。最早該比對哪個本地狀態？",
       "answer": [
-        "A1在310ms完成，滿足；A2到800ms，超總期限，單次未超不能證明整體合格。",
-        "儲存同一起點，每步取remaining=500-elapsed，過零停止新等待。",
-        "回歸零星bytes持續到達、期限內完整與期限中半框。"
-      ]
-    },
-    {
-      "question": "B1顯示6400.0°C，正確值是什麼，錯誤讀法是哪種？",
-      "level": "application",
-      "answer": [
-        "末兩byte00 FA，大端原值250，正確25.0°C。",
-        "小端原值0xFA00=64000，乘0.1為6400.0，精確支援端序誤讀。",
-        "修成明確大端讀取，回歸非對稱樣本和0值，保留raw比較。"
-      ]
-    },
-    {
-      "question": "B2顯示6553.5°C，與B1要同一個修法嗎？",
-      "level": "application",
-      "answer": [
-        "FF FF兩種端序都等於65535，交換端序不會改變結果。",
-        "錯誤是漏掉未知特殊值，應在單位換算前識別。",
-        "分別驗證端序與特殊值，不能用一個顯示上限掩蓋兩者。"
-      ]
-    },
-    {
-      "question": "A3從哪裡開始不再有單一接收責任？列修正與驗證。",
-      "level": "diagnosis",
-      "answer": [
-        "t500外層停止等待而底層未收尾，t510再啟動第二Receive，兩者競爭同串流。",
-        "取消真正底層作業並等待其結束，按協定保留或結束半框會話，再啟新操作。",
-        "回歸遲到回應、取消時已有一byte、正常完成和停止；確認無重疊讀者。"
-      ]
-    },
-    {
-      "question": "C1如何證明重複副作用，為何新ID重試不是安全查詢？",
-      "level": "diagnosis",
-      "answer": [
-        "server o9=ON、o10=OFF證明兩個不同意圖各執行Toggle。",
-        "Toggle非冪等，新ID可能繞過去重；回應未到不證明未執行。",
-        "依協定對賬/相同操作ID去重，測試執行後回覆丟失不重複動作。"
-      ]
-    },
-    {
-      "question": "C2為什麼不應直接說TCP把命令重複送給應用？",
-      "level": "diagnosis",
-      "answer": [
-        "證據顯示相同通知被UI處理兩次，隨後生成兩個不同operation。",
-        "這支援事件消費者副作用或訂閱重複，不等於TCP串流自動重複交付。",
-        "查notificationId、訂閱生命週期與處理函式，回歸重複通知只產生允許次數。"
-      ]
-    },
-    {
-      "question": "C3正確端點的r7填給r8應怎樣修與回歸？",
-      "level": "diagnosis",
-      "answer": [
-        "端點不區分請求，缺少requestId關聯。",
-        "核對r8、型別與世代後才能滿足當前等待，r7按舊請求規則處理。",
-        "用兩筆不同內容逆序返回、遲到與重複資料驗證，避免誤配而非簡單丟所有舊訊息。"
+        "第一個 4-byte Read 含完整標頭 `00 03` 和本文前兩 bytes `41 42`，此時未完成框必須保留，不能清空或當完整資料輸出。",
+        "第二次從 `43 00` 開始；若把它錯當標頭，`0x4300` 正好等於 17152，支持 parser 將本文尾端與下一個標頭錯位。",
+        "PCAP 完整只能說明擷取點有這些 bytes；接著以 parser offset/retained 狀態確認本地消費問題，無需再教一遍 framing 演算法。"
       ]
     }
   ],
   "recap": [
-    "依正常路徑區分傳輸、框架、內容、分派與畫面故障。",
-    "用可反駁假說與最小實驗選擇有限修正。",
-    "驗證內容、次數、狀態、資源和結果未知的邊界。"
+    "先用已完成的交接排除不符合證據的候選，再追第一個能解釋後續症狀的本地狀態變更。",
+    "generation、Socket owner 和共享 UI 狀態要分開核對；舊工作完成不代表它仍有權改新會話。",
+    "結論連接症狀、程式證據、有限修正與可重現驗收，並保留教學證據無法覆蓋的部分。"
   ],
   "sources": [
     {
-      "label": "Microsoft：ReceiveAsync返回與取消",
+      "label": "Microsoft .NET 10：Socket.Dispose 會釋放資源並使物件不可再使用",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.dispose?view=net-10.0"
+    },
+    {
+      "label": "Microsoft .NET 10：Socket.ReceiveAsync 的返回數、取消與已關閉 Socket 例外",
       "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0"
     },
     {
-      "label": "Microsoft：Socket錯誤分類",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socketexception.socketerrorcode?view=net-10.0"
+      "label": "Wireshark User’s Guide：封包擷取時間戳的來源、解析度與準確度限制",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvTimestamps.html"
     },
     {
-      "label": "Microsoft：連線狀態的觀測限制",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.connected?view=net-10.0"
-    },
-    {
-      "label": "Microsoft：Pipelines的消費/保留邊界",
-      "url": "https://learn.microsoft.com/en-us/dotnet/standard/io/pipelines"
-    },
-    {
-      "label": "IETF RFC 9293：TCP 串流、連線與關閉機制",
-      "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
+      "label": "IETF RFC 9293 §3.7：TCP stream 與應用讀寫邊界不保證對應",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.7"
     }
   ],
   "resources": [
     {
-      "label": "下載 TCP 本機練習",
-      "path": "./assets/labs/socket-tcp-lab.py",
-      "description": "標準函式庫；只用 127.0.0.1、系統分配的暫時 Port，示範長度字首與分段讀取。"
-    },
-    {
-      "label": "下載 UDP 本機練習",
-      "path": "./assets/labs/socket-udp-lab.py",
-      "description": "標準函式庫；只用 127.0.0.1 的虛構 STATUS?／OK,READY 資料報。"
-    },
-    {
-      "label": "下載 C# Socket 維護教材模型",
+      "label": "C# Socket 維護教材模型（.NET 10）",
       "path": "./assets/labs/sockets-maintenance-lab.zip",
-      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
+      "description": "本機回環模型與 expected-output 可用來練習辨認 Socket 端點、收送與應用階段；沒有實作此案例的背景重連、共享 Socket 欄位或 UI 狀態競爭。"
     }
   ]
 }

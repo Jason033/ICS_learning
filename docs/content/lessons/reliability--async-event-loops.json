@@ -1,5 +1,5 @@
 {
-  "intro": "非同步不等於多執行緒，await也不是「讓程式自己在背景跑」。本章先建立工作、等待、繼續執行與畫面派送的模型，再逐步追 C# Task、async／await、回呼、UI脈絡、取消與例外。這些關係能解釋為何通訊正常而畫面卡住。",
+  "intro": "在 .NET 事件驅動程式裡，一次 callback 可能啟動 I/O、在 `await` 暫停，再於稍後恢復並更新 UI 或共享狀態。這段時間裡別的事件仍可能前進。本篇追蹤呼叫者、Task、執行緒與派送器的各自責任，解釋通訊已收到資料但應用仍卡住的情況。",
   "goals": [
     "追出async方法從呼叫到await前後的執行順序。",
     "區分Task、執行緒池、I/O等待與UI派送器。",
@@ -11,25 +11,25 @@
       "heading": "同步與非同步，差別在等候時的責任",
       "kind": "concept",
       "paragraphs": [
-        "同步與非同步要先說明談的是哪個操作。同步完成的操作，在指定結果準備好之前不讓呼叫者繼續；非同步完成的操作，讓呼叫者先取得等待或接收後續結果的方式，結果稍後才到。在常見Task模型中，這個方式是代表未來完成的Task；在事件式SDK中，也可能是立即返回，再透過callback或事件通知，不一定直接提供Task。重點是完成與等待關係，不是是否用了更多CPU核心。",
-        "方法的同步返回與業務同步完成要分開。例如Start()本身是一個普通方法，幾行程式執行完就返回；但它可能只啟動通話，之後由狀態事件回報接通。不能看到方法沒有async關鍵字，就推定遠端工作已完成。反過來也不能看到方法名有Async，就假定每次都必然切換執行緒；需要沿返回值、事件與實際契約追查。",
-        "例如網路I/O可能由系統通知完成，不需一條專用執行緒一直睡等；CPU密集計算卻需要實際執行資源。把同步CPU計算方法加上async關鍵字，不能自動變快或移到背景。",
-        "維護時分別問：誰啟動工作、誰擁有完成物件、誰等待、誰處理結果與錯誤。如果一個Task被建立後丟掉，工作可能仍跑，但失敗與結束無人管理。"
+        "從一個具體呼叫追起：事件 handler 開始讀取資料，呼叫非同步 I/O，`await` 等待結果，結果完成後程式再處理狀態。`await` 可能讓目前方法暫停，但不表示必定換到另一條執行緒；方法在第一個尚未完成的 await 前會先照一般順序執行。",
+        "`Task` 描述工作完成與結果，不是執行緒的代稱。I/O 可以在沒有專用執行緒持續等待的情況下完成；續體在哪裡執行，取決於啟動時的同步脈絡、框架與 awaitable 契約。讀碼時要追「誰等誰」和「續體由誰執行」，不能只搜尋 `Task.Run`。",
+        "本篇先重建同步與非同步兩種路徑，再區分 WPF Dispatcher 和一般服務的事件派送，最後分析同步等待、未觀察的 Task、取消與關閉。每個例子都以等待鏈和入口／出口時間定位，不用 ThreadId 代替操作關聯。"
+      ],
+      "flow": [
+        "事件進入 handler",
+        "開始同步前段",
+        "await 未完成工作時暫停",
+        "Task 完成後安排 continuation",
+        "續體更新狀態或派送至 UI"
       ]
     },
     {
-      "heading": "Task代表完成，Thread代表執行",
+      "heading": "Task不等於執行緒：async從呼叫到尚未完成的await",
       "kind": "mechanism",
       "paragraphs": [
         "Task有尚未完成、成功完成、失敗、取消等概念狀態；Task<T>中的T是結果型別，例如Task<int>完成後可以取得整數。Task可能對應執行緒池工作，也可能對應I/O完成或某個事件，而不是一條固定Thread。Task.Status有更細的列舉值，維護時可以觀察，卻不能把某個狀態名稱直接當作裝置是否完成的證明。",
         "一個執行緒在某時執行A，A等待後執行緒可以執行B，之後A在另一個合適執行緒繼續。因此不要用ThreadId當操作ID；同一個操作可能跨執行緒，同一執行緒也會處理很多操作。",
-        "ThreadPool複用工作執行緒，避免每件事都新建Thread。大量同步阻塞會佔住這些執行緒，讓已就緒的callback等不到執行；這叫資源不足的現象之一，CPU可能仍很低，因為執行緒是在等。"
-      ]
-    },
-    {
-      "heading": "async方法通常先在呼叫者那裡執行",
-      "kind": "mechanism",
-      "paragraphs": [
+        "ThreadPool複用工作執行緒，避免每件事都新建Thread。大量同步阻塞會佔住這些執行緒，讓已就緒的callback等不到執行；這叫資源不足的現象之一，CPU可能仍很低，因為執行緒是在等。",
         "呼叫async方法時，方法體通常立即執行，直到遇到尚未完成的await或結束。await已完成的Task可能直接繼續，因此「寫了await就一定換執行緒／讓出」是不正確的直覺。",
         "遇到未完成工作，方法儲存繼續位置並返回Task。等待的結果準備好後，續體（continuation）再從await後推進。編譯器儲存暫停處的區域變數與狀態幫助這個過程，但不能替你儲存正確的裝置世代與物件生命週期。",
         "所以在第一個await之前做大型解析，會直接卡住呼叫者；在UI事件裡呼叫這樣的async方法，畫面仍可能凍結。讀程式時應先標出每個await之前、之後實際執行多少同步工作。"
@@ -49,18 +49,12 @@
       }
     },
     {
-      "heading": "UI派送器與Console執行環境不同",
+      "heading": "UI派送器中的同步工作如何推遲後續事件",
       "kind": "mechanism",
       "paragraphs": [
-        "WPF的Dispatcher在指定UI執行緒選擇排入的工作，每個工作開始後必須主動完成或在支援的非同步等待處釋放執行機會；長同步handler會使輸入和其他工作排隊。WinForms有自己的UI機制，SDK回呼又可能在不同執行緒。",
+        "合成派送器在0ms開始執行long-handler，這段同步工作成本50ms；status-callback在20ms就緒、處理成本2ms；heartbeat在100ms就緒、成本1ms。派送器不能在同步handler中間切換，所以status在50ms開始，排隊30ms、於52ms完成；heartbeat就緒時派送器已空，因此100ms開始、101ms完成。",
         "Console應用通常沒有WPF的同步脈絡，async續體不應被假定回到原ThreadId。UI框架常透過SynchronizationContext或相應排程讓續體回到畫面執行緒，因此同一段await在不同宿主下可能行為不同。",
-        "這也是為何本章的async模式明示為邏輯單執行緒派送模型，而不拿Console輸出當真實WPF測試。讀取公司程式時，要查實際UI框架、事件來源與派送函式，而非套Python事件迴圈或Console規則。"
-      ]
-    },
-    {
-      "heading": "例題二：一段長handler怎樣推遲心跳",
-      "kind": "worked-example",
-      "paragraphs": [
+        "這也是為何本章的async模式明示為邏輯單執行緒派送模型，而不拿Console輸出當真實WPF測試。讀取公司程式時，要查實際UI框架、事件來源與派送函式，而非套Python事件迴圈或Console規則。",
         "邏輯派送器在0ms執行long-handler，成本500ms；status-callback在20ms就緒，成本2ms；heartbeat在100ms就緒，成本1ms。因為不能打斷long-handler，status從500ms執行，排隊480ms；heartbeat從502ms執行，排隊402ms。",
         "網路回報在20ms已經收到，並不表示狀態在20ms可顯示。若本地監測要求heartbeat在200ms處理，可能誤報遠端故障，根因其實是本地UI工作堵塞。",
         "將long-handler拆分為可讓出控制的短工作或把合適CPU處理移至後臺，再透過UI派送更新，才能改善此路徑。必須確認背景工作不直接改UI、結果仍屬於當前物件；不是在所有地方加Task.Run就正確。"
@@ -80,18 +74,12 @@
       }
     },
     {
-      "heading": "回呼、事件與Task要能互相關聯",
+      "heading": "事件、Task群組與一次操作的完成責任",
       "kind": "mechanism",
       "paragraphs": [
         "事件是釋出者通知訂閱者，不自帶請求完成Task。若把事件轉成等待結果，可以使用TaskCompletionSource，並用請求ID／generation找對應等待者。一個通用事件來的時候不能把所有等待者都完成。",
         "同一TaskCompletionSource只能進入一個終態，TrySetResult／TrySetException／TrySetCanceled可讓競爭終態有明確返回；仍需定義哪個結果在業務上合法。RunContinuationsAsynchronously可避免在釋出者回呼棧中直接跑大量續體，但不是順序保證。",
-        "維護時要看建立等待者、訂閱、傳送、完成、超時移除和解除訂閱的先後。若先Send再訂閱，快速事件可能漏掉；若等待者超時後忘記移除，字典和訂閱會長期保留物件。"
-      ]
-    },
-    {
-      "heading": "WhenAll、WhenAny與工作群組的責任",
-      "kind": "mechanism",
-      "paragraphs": [
+        "維護時要看建立等待者、訂閱、傳送、完成、超時移除和解除訂閱的先後。若先Send再訂閱，快速事件可能漏掉；若等待者超時後忘記移除，字典和訂閱會長期保留物件。",
         "Task.WhenAll代表一組工作的全部完成；其中有錯誤時，群組結果會反映失敗，但不自動停止其他工作。Task.WhenAny返回最先完成的Task，完成可以是成功、失敗或取消，不等於最先成功。",
         "用WhenAny做timeout時，計時Task先完成並不意味著業務Task已停止。呼叫者還須決定是否傳送合作取消、怎樣觀察剩餘Task與未知遠端結果，避免未觀察例外或資源繼續佔用。",
         "多筆互相獨立的讀取可並行等待，但不能拿WhenAll並行傳送必須依序的裝置動作。並行度、結果順序與取消關係是業務模型，不由組合函式自動決定。",
@@ -139,7 +127,7 @@
       "heading": "用模型定位等待，再回到實際程式碼",
       "kind": "lab",
       "paragraphs": [
-        "執行dotnet run -- async，先算20→500和100→502的等待，核對輸出。將long-handler成本從500改50，status等30，而heartbeat可在100開始，因為派送器已空；這使關係可檢查。",
+        "執行 `dotnet run -- async`。預設long-handler成本50ms：status-callback從20ms等到50ms、排隊30ms，heartbeat在100ms就緒時派送器已空，最晚在101ms完成。再將成本改成500ms，推算兩個callback的新開始時間與排隊時間，然後比對輸出。",
         "程式是固定邏輯模型，不含WPF控制項，不宣稱實測UI響應。另選公司可分享的一個async方法，標出首個await、每個同步長操作、返回Task的擁有者、取消與例外處理。",
         "交付一個等待圖：UI是否等Task、Task是否需要UI；Callback是否持鎖、另一路是否需同鎖。能畫出關係，才能解釋為什麼卡住，而非只把程式碼關鍵詞改成async。"
       ]
@@ -147,7 +135,7 @@
   ],
   "exercises": [
     {
-      "question": "【基礎】一個Task一定對應一條獨立Thread嗎？",
+      "question": "一個Task一定對應一條獨立Thread嗎？",
       "level": "foundation",
       "answer": [
         "不一定，Task表示完成，可由I/O事件、執行緒池工作或其他Task組合代表。",
@@ -155,7 +143,7 @@
       ]
     },
     {
-      "question": "【新順序】WorkAsync的await物件一開始已完成，呼叫前Log A、方法內W1/W2、返回後B、await後C，可能順序？",
+      "question": "WorkAsync的await物件一開始已完成，呼叫前Log A、方法內W1/W2、返回後B、await後C，可能順序？",
       "level": "application",
       "answer": [
         "可為A、W1、W2、B、C，因為已完成await不一定暫停方法。",
@@ -163,7 +151,7 @@
       ]
     },
     {
-      "question": "【算式】長handler從0到300，事件A在40就緒成本10，B在100就緒成本5，單派送器何時開始？",
+      "question": "長handler從0到300，事件A在40就緒成本10，B在100就緒成本5，單派送器何時開始？",
       "level": "application",
       "answer": [
         "A300開始，排隊260，結束310；B310開始，排隊210，結束315。",
@@ -171,7 +159,7 @@
       ]
     },
     {
-      "question": "【UI死結】UI呼叫LoadAsync().Result，續體排UI，等待圖是什麼？",
+      "question": "UI呼叫LoadAsync().Result，續體排UI，等待圖是什麼？",
       "level": "diagnosis",
       "answer": [
         "UI等Task結果；Task續體等UI執行，形成迴圈。",
@@ -179,7 +167,7 @@
       ]
     },
     {
-      "question": "【回呼】Send後才訂閱Completed，快速本地模擬事件為什麼可能漏？",
+      "question": "Send後才訂閱Completed，快速本地模擬事件為什麼可能漏？",
       "level": "application",
       "answer": [
         "事件可能在訂閱前已釋出，釋出者沒有必須重播的契約。",
@@ -187,7 +175,7 @@
       ]
     },
     {
-      "question": "【生命週期】await後直接寫_current.Status，期間_current從C1變C2，風險？",
+      "question": "await後直接寫_current.Status，期間_current從C1變C2，風險？",
       "level": "diagnosis",
       "answer": [
         "C1工作的完成會修改C2，造成跨生命週期汙染。",
@@ -195,7 +183,7 @@
       ]
     },
     {
-      "question": "【非同步錯誤】內部方法全寫async void，呼叫端try/catch為何難掌握？",
+      "question": "內部方法全寫async void，呼叫端try/catch為何難掌握？",
       "level": "application",
       "answer": [
         "沒有Task代表內部完成和失敗，呼叫者可能早已返回，異常交由宿主處理。",
@@ -203,7 +191,7 @@
       ]
     },
     {
-      "question": "【診斷】網路接收20ms、callback入口1500ms、UI入口1510ms。優先查什麼？",
+      "question": "網路接收20ms、callback入口1500ms、UI入口1510ms。優先查什麼？",
       "level": "diagnosis",
       "answer": [
         "最大落差是接收到callback，先查回呼queue、執行執行緒或執行緒池阻塞，而不是UI最後10ms。",
@@ -247,26 +235,12 @@
       "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.tasks.task.whenall?view=net-10.0"
     }
   ],
-  "contentVersion": 2,
+  "contentVersion": 3,
   "prerequisites": [
-    "知道函式從呼叫開始逐行執行；本章補充Task、await和接續執行。",
-    "本章說明WPF派送器與Console的差別；不預設你已經寫過UI程式。"
+    "可直接用已熟悉的函式呼叫和條件判斷開始；本篇會依執行順序說明 `Task`、`await` 與 continuation，不把它們當成新的執行緒同義詞。",
+    "WPF 只作為說明單執行緒 UI 派送器的例子；一般 .NET service 或 Console 沒有相同 UI 派送器，需按實際宿主理解回呼。",
+    "可獨立閱讀；若需要把多條路徑操作同一物件的保護方法放在一起，可選讀〈共享狀態與並行處理〉。"
   ],
-  "studyTime": {
-    "reading": [
-      13,
-      23
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      20,
-      35
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作時間包含預測並執行本章模式、修改一個條件與核對結果；作答時間包含陌生案例推理與解答核對。皆為預估。"
-  },
   "resources": [
     {
       "label": "下載 C# 可靠性觀念與維護追讀專案",

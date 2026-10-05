@@ -1,262 +1,177 @@
 {
-  "contentVersion": 2,
-  "intro": "麥克風和喇叭不是網絡Port，它們通過格式、緩衝與裝置路由參與同一條聲音鏈。本章從連續信號到取樣值、聲道、量化和PCM bytes建立基礎，再逐行讀獨立C# WAV模型，學習定位靜音、格式錯誤、削波、迴音與緩衝斷續。",
+  "contentVersion": 3,
+  "intro": "對通話程式而言，音訊資料在進入 RTP 之前已經被本機媒體處理層提供，從網路收到的 RTP payload 則必須在離開通話路徑前還原成可交給本機媒體層的資料。本文只追這兩個軟體交接邊界和最少必要的 PCM 數量關係；實體麥克風／喇叭選擇、Ozeki MediaHandler/Connector 與資源生命週期屬於 Ozeki 系列。",
   "prerequisites": [
-    "理解樣本率、聲道、sample 與 frame，以及 PCM 和壓縮格式的差別。",
-    "能分辨通話控制與媒體資料；本章沿著輸入、編碼、網路、解碼與輸出逐段閱讀。"
+    "先讀總覽及 RTP/RTCP，或先掌握 RTP payload 是帶時間資訊的封包內容。",
+    "不需音訊硬體設計知識；本文的 PCM 例子只為了定位 RTP 前後的資料表示。"
   ],
   "goals": [
-    "能從採樣率、bit depth、聲道數推PCM框架和bytes。",
-    "能解釋格式標籤、重採樣、增益、緩衝及裝置路由對聲音的後果。",
-    "能以已知合成輸入逐段隔離錄音、處理與輸出故障。"
+    "能畫出送出與接收媒體從本機媒體邊界到 RTP 的資料方向。",
+    "能以 sample rate、channel count、位元深度和時間推算一小段 PCM 的 bytes。",
+    "能區分傳輸中有 RTP、payload 可解碼、資料已交給本機播放介面的不同證據。"
   ],
   "sections": [
     {
-      "kind": "concept",
-      "heading": "從連續聲壓到離散數字：取樣與量化做不同事情",
-      "paragraphs": [
-        "聲音在時間上連續變化，錄音裝置在固定時刻測量並輸出數值。採樣率定義每秒每聲道的取樣時刻；量化把每個測量值映射到有限精度。8000Hz與16bit分別回答「每秒量幾次」和「每次用多少位表示」，不能把Hz當位率，也不能靠增加bit depth恢復原本沒取到的高頻細節。",
-        "理想帶限條件下，採樣率fs的可表示頻率需低於fs/2；實際錄音還需適當濾波，避免高頻混疊成假低頻。因此8k採樣適合某些語音帶寬，不代表電話整個鏈品質只由8k決定。設備、噪聲、編碼、丟失與處理都影響結果。本章只用容易手算的1000Hz正弦，不假裝它是所有真實語音。",
-        "16bit有符號PCM通常範圍-32768至32767，0附近是波形零點；它的數值代表離散幅度而非直接的聲壓單位。滿量程是數字格式的範圍，實際音量還受後續增益與裝置。8bit或浮點PCM有不同表示，讀bytes前必須知道signed、bit depth、字節序與聲道佈局。"
-      ]
-    },
-    {
       "kind": "mechanism",
-      "heading": "取樣時刻、sample值、audio frame與byte對齊",
+      "heading": "把本機媒體實作和 VoIP 的責任邊界標出來",
+      "flow": [
+        "本機媒體層交出已處理的媒體資料",
+        "通話媒體層依 codec 編碼",
+        "RTP header + payload 封包化",
+        "網路傳輸",
+        "接收端按時間整理與解碼",
+        "PCM/媒體 frame 交回本機輸出層"
+      ],
       "paragraphs": [
-        "音訊裏的frame通常是一時刻所有聲道的樣本集合，不是Ethernet frame，也不是codec frame。單聲道一frame一個值，雙聲道一frame兩個值。48000Hz立體聲每秒48000frames、96000sample values。blockAlign是每frame的bytes，PCM可算channels×bits/8；byteRate=sampleRate×blockAlign。",
-        "16bit雙聲道blockAlign4，緩衝長度必須保持完整frame；600bytes代表150frames，而不是600個樣本時刻。若把程序API返回的frame count誤當byte count，就會少複製或越界。若把聲道數再乘進RTP timestamp，則會把媒體時間錯倍，時鐘表達時刻而非每時刻值數。",
-        "常見interleaved佈局把左右聲道同一時刻挨着放：L0,R0,L1,R1；planar則把聲道分開。把兩種佈局混讀會錯路由。立體聲轉單聲道可用(L+R)/2等策略，但左右反相會抵消；取左聲道和平均並不相同。具體SDK格式與轉換規則需查正式接口。"
+        "送出方向：本機音訊子系統提供一段段 frame，通話媒體管線視協商格式轉換並編碼，再依 packetization 組成 RTP payload，加上 RTP header，交給傳輸端送出。接收方向反過來：RTP 到達後按 sequence/timestamp 和 buffer 策略整理，依 PT/SDP 對應格式解碼，再交給本機媒體輸出介面。",
+        "「本機媒體層」是一條責任界線，不代表特定聲卡 API 或特定 SDK 物件。它可能是 Ozeki SDK、作業系統音訊介面、設備抽象層或公司 wrapper。此篇不提供麥克風擷取、喇叭選取、裝置熱插拔或 MediaConnector 的做法，避免與 Ozeki 主線重疊。",
+        "沿程式找資料交接時，追每一段 input/output 的 format、frame 長度、時間戳或媒體狀態，不只追呼叫狀態。某個 buffer 被成功寫入 RTP sender 仍不證明網路已送出；封包抵達也不證明 decoder 有產生 PCM；decoder 輸出也不證明本機媒體層實際呈現。"
       ]
     },
     {
       "kind": "worked-example",
-      "heading": "例題一：20ms緩衝的每一層數值",
+      "heading": "從一段 PCM 推到 codec 輸入大小",
       "paragraphs": [
-        "輸入16000Hz、雙聲道、16bit PCM、20ms。每聲道時刻16000×.020＝320frames；總樣本值320×2＝640；每值2bytes，所以緩衝1280bytes。blockAlign2聲道×2bytes＝4；byteRate16000×4＝64000bytes/s，兩種算式都得.020×64000＝1280。",
-        "若輸出要求8000Hz單聲道16bit，不是把原bytes一半砍掉就好；需聲道混合與恰當重採樣，輸出20ms應160frames×2＝320bytes。改變格式標籤卻不改變樣本會導致時長或聲道錯誤。改變取樣率的處理與更改WAV標頭兩種動作必須區分。",
-        "如果SDK回numFramesAvailable=320，程序應依實際輸入blockAlign4複製1280bytes，而不是320bytes。如果只複製320，時間窗僅保留5ms輸入，可能製造斷續。遇到buffer bug先寫單位，再看循環與實際容量，能避免「數字都是320所以看起來對」的誤判。"
-      ],
+        "合成假設：一條單聲道 PCM frame，sample rate 8000 samples/s，16 bits/sample，涵蓋 20 ms。先算每聲道 sample 數：8000×0.020=160 samples。每一個 sample 用 16/8=2 bytes，所以未壓縮資料量是 160×2=320 bytes。這是 PCM buffer 的資料大小，不是 RTP header 或整個網路封包大小。",
+        "若使用 PCMU（G.711 μ-law）編碼，簡化例中每個取樣值編為 8 bits，因此 160 samples 形成 160-byte 編碼 payload。該 payload 另有 12-byte RTP 固定標頭，再加 UDP/IP 等標頭；實際封包可能因 RTP extension、SRTP、IPv6、隧道或 link-layer 增加。後續 Codec 章會完整算 ptime 與帶寬。",
+        "此計算以 frame 完整、單聲道、無對齊 padding 和一個音訊 frame 生成一個 payload 為假設。實際 API buffer 可能切成較小塊、多個 frame 合併或採不同取樣格式；必須查格式描述和回呼契約，不能假設每次 Read/Callback 都剛好是 20 ms。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "sample、frame、payload 和封包是不同層的資料單位",
       "table": {
-        "caption": "同一20ms輸入的不同單位",
+        "caption": "從取樣資料到網路傳送的單位",
         "headers": [
-          "量",
-          "計算",
-          "結果"
+          "單位",
+          "含義",
+          "最常混淆的地方"
         ],
         "rows": [
           [
-            "時刻數",
-            "16000×0.020",
-            "320frames"
+            "sample",
+            "某一時刻、某一聲道的取樣數值",
+            "不是一個 byte；sample 的表示位元數依格式而定"
           ],
           [
-            "樣本值",
-            "320×2聲道",
-            "640values"
+            "audio frame/block",
+            "某段音訊時間的一組取樣或編碼資料",
+            "API callback/block 邊界不一定等於 RTP packet 邊界"
           ],
           [
-            "blockAlign",
-            "2×16/8",
-            "4bytes/frame"
+            "codec payload",
+            "一個或多個編碼 frame 的位元組",
+            "不含 RTP 固定標頭；同一 codec 可有不同封包化"
           ],
           [
-            "buffer",
-            "320×4",
-            "1280bytes"
+            "RTP packet",
+            "RTP header 加 payload/可能擴充",
+            "一包不等於一個 sample；包到不等於播放"
           ]
         ]
-      }
-    },
-    {
-      "kind": "mechanism",
-      "heading": "增益、削波、靜音與迴音：數值如何變聲音",
+      },
       "paragraphs": [
-        "增益把幅度乘係數。輸入8000乘5是40000，超過int16最大32767，需要削波或其他處理；直接unchecked轉換可能繞回成負數，波形突變更嚴重。Clipping把超範圍壓到邊界，會改變波形併產生失真；提高數字增益不等於提升錄音品質，可能同時放大噪聲。",
-        "靜音可以在裝置、應用、會話或某聲道發生；零PCM是合法樣本，不是沒有callback。網絡持續傳靜音與完全沒有媒體是兩種現象。AGC是自動增益控制，噪聲抑制降低某些背景，AEC估計並減去輸出回到麥克風的迴音；這些機制輸入與依賴不同，不能都叫音量開關。",
-        "聲學迴音來自喇叭聲音被本機麥克風重新錄入，數字迴路則可能由虛擬音訊路由或混音配置產生。AEC需要合適輸出參考與時序，不能自動糾正所有錯誤接線或格式。查迴音時先標聲音的路徑，用單向控制輸入區分回錄與網絡重複，別只因聽見兩次就說RTP重複。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "重採樣與格式轉換：改變數據，不是重貼標籤",
-      "paragraphs": [
-        "重採樣把一種時刻網格的信號轉換到另一種採樣率，需要插值與適當帶限濾波。16k轉8k不是對任何輸入隨意丟一半點就保證品質；高頻需先過濾避免混疊。教材的獨立WAV模型未實現專業重採樣器，所以不把簡單跳點代碼當生產音頻轉換。",
-        "字節序也取決格式：常見PCM WAV以little-endian保存整數，而某些網絡格式如L16採用不同規定。16bit值0x1234在LE爲34 12，在BE爲12 34。把PCMU壓縮碼當short或把LE當BE，會產生很大錯誤，網絡長度仍可能正確。每個接口邊界都列格式與bytes解釋規則。",
-        "量化bit depth、聲道數和採樣率改動分別影響精度、佈局與時間，處理器應保證轉換前後時長合理。日誌只寫format=PCM不足夠，需要rate、channels、bits、佈局與有效byte數。讀代碼時找轉換入口、輸出條件與buffer複用，防止下游讀取上一幀格式。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題二：錯誤採樣率標頭使聲音快一倍",
-      "paragraphs": [
-        "項目生成8000個單聲道16bit樣本，data16000bytes，採樣率8000。時長=8000frames/8000＝1秒，1000Hz正弦在這1秒有1000週期。WAV包含44-byte最小標頭，總長16044。這個長度可獨立驗證，不需真人錄音或聲卡。",
-        "若只把標頭rate改16000且byteRate改32000，而data原樣，播放器會每秒讀16000frames，8000frames用.5秒。原1000週期在.5秒完成，聽覺頻率約2000Hz；不是網絡把聲音壓縮變快，而是格式時間解釋改變。正確重採樣到16000保持1秒應產生16000frames與32000bytes，不是改兩個整數。",
-        "另變因把原樣本乘5並Clamp：正弦部分超範圍形成平頂；silence所有0則RMS0但檔仍完整。比較這三份輸入可以確認處理數值與文件格式，不用於測裝置頻響。聽選做低音量，數值與長度驗證先做，避免用「好像有聲」代替機制檢查。"
+        "例如 160 samples 是時間長度的數量描述，若 8 kHz mono，才對應 20 ms；320 PCM bytes 又取決於 16-bit sample 表示。編碼後資料量可能不同。RTP packet 再承載 encoded payload 及序號、時間戳、SSRC、PT；網路封包還有 UDP/IP 等封裝。每一層的 length 必須用相應格式解讀。",
+        "取樣時鐘、RTP clock 與應用處理 callback 時間不必相同。Codec 規格決定 RTP timestamp 單位；CPU callback 何時執行則受排程和 buffer 影響。因此不要以「兩個 callback 相隔 20ms」直接推成 timestamp 應該差多少，先確認 codec 的 clock rate。",
+        "音訊可能立體聲或多聲道；估算未壓縮 PCM 時每一時刻要乘 channel count。某些格式按 sample block 對齊，亦可能包含 padding；可用位元深度與 block alignment 交叉檢查 bytes/s。軟體工程維護通常只需看清格式與容量，不必推導硬體取樣電路。"
       ]
     },
     {
       "kind": "code-reading",
-      "heading": "逐行讀C#模型：PCM值怎麼進入WAV",
-      "paragraphs": [
-        "Program.cs用Enumerable.Range生成0～7999，Math.Sin的參數2π×1000×i/8000按採樣時刻求波形，幅度8000，Round後轉short。它是自行建立的Lab，不調用麥克風。Scale先用double計算，Clamp到short範圍再cast，避免強轉溢位。Check明確驗證削波存在，而不是保證真人聽感。",
-        "WriteWave用BinaryWriter寫RIFF長度36+dataLen、WAVE與fmt塊、PCM編號1、聲道、rate、byteRate、blockAlign與bits，隨後data長度與每個short。BinaryWriter在該類型寫法以little-endian保存數值；字串顯式ASCII，避免加入編碼長度前綴。最小44-byte格式只涵蓋本例PCM，實際WAV可有額外塊，不應把所有WAV解析硬定44。",
-        "程序Check16044與單位算式，輸出目錄由參數或臨時資料夾決定。文件成功創建證明模型輸出，不證明音訊裝置或SDK運行。維護閱讀習慣是找輸入格式、算式、中間類型、邊界處理與輸出合同，每一行有明確責任；這比複製整段無法解釋的音頻代碼更可持續。"
-      ],
+      "heading": "從程式邊界與計數器判斷資料在哪裡中斷",
       "code": {
-        "title": "取自獨立項目的樣本與削波核心",
-        "text": "var samples = Enumerable.Range(0, rate)\n    .Select(i => (short)Math.Round(8000 * Math.Sin(2 * Math.PI * 1000 * i / rate)))\n    .ToArray();\nshort[] Scale(short[] input, double gain) => input\n    .Select(x => (short)Math.Clamp(Math.Round(x * gain), short.MinValue, short.MaxValue))\n    .ToArray();"
-      }
-    },
-    {
-      "kind": "mechanism",
-      "heading": "裝置和緩衝：輸入正常、網絡正常仍可能無聲",
+        "title": "教學用處理階段記錄，不代表任何廠商 SDK",
+        "text": "// 每一筆都帶同一 call generation、方向與時間戳\nMediaMetric sourceFrames;       // 取到的 frame 數與格式\nMediaMetric encodedFrames;      // codec 接受/輸出的 frame 數\nMediaMetric rtpPacketsSent;     // sender 確認交出的封包數\nMediaMetric rtpPacketsReceived; // 接收端觀察到的封包數\nMediaMetric decodedFrames;      // decoder 輸出的 frame 數\nMediaMetric framesPresented;    // 本機媒體層回報交付的 frame 數"
+      },
       "paragraphs": [
-        "Windows音訊裝置可有默認設備、每應用會話音量、虛擬線路與熱插拔；應用實際選擇的端點ID比顯示名稱更可覈對。USB裝置拔掉或默認更換時，舊對象可能失效，需要按API處理重新建立。操作系統可混音及轉換，應用不能假設設備一直使用原格式。",
-        "Capture端需及時讀輸入buffer，Render端需及時寫輸出buffer。漏讀可能丟輸入，未寫滿時可能underrun，消費慢則queue積壓。底層callback的frame大小可能變化，不必每次等20ms整數。若把callback裏做長文件寫入或網絡等待，可能破壞音訊期限，應按實際線程規則設計隔離。",
-        "本章查了WASAPI原理以解釋裝置buffer，但C#標準庫項目並沒有呼叫WASAPI或實現錄放；公司可能用SDK封裝另一套接口。讀實際程序先找選擇裝置、獲格式、buffer事件、處理與清理，查對應官方API線程與生命週期，不能把WAV生成PASS當設備API測試。"
-      ]
-    },
-    {
-      "kind": "lab",
-      "heading": "實作：驗證格式、剪裁與每條算式",
-      "paragraphs": [
-        "運行項目輸出到獨立目錄，先看PCM:8000/1/16、blockAlign2、byteRate16000，以及20ms160frames/320PCMbytes。用文件屬性確認三個WAV各16044bytes，按Program.cs或獨立Python wave讀取頭驗證rate/channels/bits/dataframes。tone RMS非零、silence RMS0、clipped有邊界值，證明不同數據機制。",
-        "變因在源常量改channels前先理解程序目前生成mono samples、寫頭與data佈局一起需要變化；不能只改單個header然後稱真實立體聲。安全的本章實驗是改Scale gain1與5，保持格式和時長不變，比對削波數量；或複製檔手工標註錯誤rate模型，勿覆蓋正常基準。",
-        "驗收是能解釋16044、320、160的層級差別、算出錯誤rate時長與頻率、分辨靜音數據與沒有資料。恢復原代碼再運行Check，保留結果與限制。當前已在.NET10編譯運行，獨立頭與sample驗證可重複；沒有錄音、設備播放或專業重採樣驗證。"
+        "這些欄位不是要把每個 RTP 包都寫一條 log，而是指出故障時應尋找哪一類計數器或事件。sourceFrames 持續增加而 encodedFrames 不變，問題靠近格式接受／編碼；encodedFrames 持續但 rtpPacketsSent 不動，問題靠近 packetizer/sender；接收包正常而 decodedFrames 停止，查 payload mapping、解碼器狀態與資料完整性。",
+        "若 decodedFrames 正常但 framesPresented 停止，故障已進入本機媒體交接，需轉到 Ozeki/裝置方向的文件和程式。這仍不完全等於使用者聽見：呈現 API 成功可證明資料交給輸出路徑，不能證明實體設備或使用者感知。欄位名稱應反映該層證據，避免命名 `audioPlayed=true` 卻只是在送出 buffer。",
+        "計數應按方向、呼叫世代與有效協商格式切分；重新協商、重連或設備切換會建立新的基準。只有總 packet count 看不出是哪個 SSRC、哪個方向或哪個時間窗口，亦無法讓另外一位工程師重現問題。"
       ]
     },
     {
       "kind": "diagnostic-case",
-      "heading": "斷續、音量小與迴音不能都歸網絡",
+      "heading": "封包正常但無聲：如何確認故障已跨過哪個邊界",
       "paragraphs": [
-        "同樣斷續，候選可以是網絡晚到、decode消費不足、輸出underrun或格式不符。先用已知本機tone直接走輸出路徑與網絡輸入作對照；若本機也斷續，優先裝置／調度；若本機正常而網絡資料late，查媒體期限。每個對照只替換一段鏈。",
-        "音量小可能輸入樣本幅度已低、數字增益低或輸出裝置音量低。各階段量peak/RMS並查靜音與裝置，不一開始把gain無限提高。若輸入已削波，後面降低音量無法恢復原波形；需修前段增益。迴音則追返回路徑與參考，不只是比較兩包內容。",
-        "修正後迴歸相同已知輸入、時長和格式，記錄queue、underrun、削波與輸出選擇；真實品質另需聽測及授權設備。基礎觀唸完整讓你能把症狀變成不同可測候選，不會只說「音效有問題」而無下一步。"
+        "合成現象：B 收到一串有序 RTP，PT 與該呼叫 SDP mapping 一致，接收抖動在測試窗口低；但 B 報告無聲。這些證據降低了「完全沒有媒體抵達」的可能，仍不能證明 codec 成功、PCM 有非零值或輸出路徑正在呈現。",
+        "補證一：decoder output frame count 是 0。轉查 payload 格式、實際 PT、codec frame 長度、加密/解密條件或 decoder error。補證二：decoder 有 frame 且輸出振幅非零，但交給本機媒體層的計數不動。故障位於解碼器與本機媒體接口交接附近；Ozeki/裝置章節再查選擇的 handler、connector 與生命周期。補證三：本機交付計數正常但聽不到，已超出本篇可觀察邊界，需要有權限的設備端測試，不能由 RTP 抓包定案。",
+        "測試時可使用合成 tone/silence payload 或受控 loopback 只驗證各階段資料變化，但 tone 預期是否能解碼取決實際 codec，不能把任意 bytes 當音訊。若公司系統不允許注入音訊或抓取內容，改用計數器、狀態碼與文件契約，不要擅自錄下使用者聲音。"
+      ]
+    },
+    {
+      "kind": "maintenance",
+      "heading": "修改音訊串接程式前，鎖定格式和所有權",
+      "paragraphs": [
+        "在公司程式中，先查 media callback 的資料所有權：buffer 是呼叫期間有效、由呼叫端釋放，還是 SDK 接管？處理器能否跨執行緒排隊？格式改變時是否會再協商？這些是具體 API 契約，須以版本匹配文件或原始碼確認，本篇範例沒有替公司 SDK 作答。",
+        "測試可記錄 format（sample rate、channels、sample representation/codec）、frame/sample count、方向、RTP timestamp 與處理結果，不須存錄音內容。對資料做最小的可重現變更，例如送入靜音或已知測試 tone，前後比較編碼 frame 與網路封包；在真實公司設備上做前要確認授權與資料政策。",
+        "跨到接收後停止時，先確保 RTP/decoder 不再向本機媒體層提交舊資料，再由適用元件按其資源所有權釋放。具體 Ozeki lifecycle 由 Ozeki 系列說明；此處只要求每個資料交接點有明確開始、停止和錯誤觀察。"
       ]
     }
   ],
   "exercises": [
     {
       "level": "foundation",
-      "question": "PCM裏的audio frame爲何不等於network frame或codec frame？",
+      "question": "8 kHz、mono、16-bit PCM，持續 10 ms。先算 sample 數，再算未壓縮 bytes；指出尚未包含哪些網路資料。",
       "answer": [
-        "audio frame是一時刻各聲道的值集合，network frame是鏈路傳輸外殼，codec frame是編碼算法處理單位。",
-        "它們長度與時間規則不同，API返回值需確認單位。",
-        "讀buffer代碼標frame/byte/sample，避免同數字誤用。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "只改WAV rate是否是真正重採樣？",
-      "answer": [
-        "不是，它改變對同樣samples的時間解釋而不創建新採樣網格。",
-        "時長與頻率會變化，真正重採樣需合適濾波／插值。",
-        "驗證轉換前後時長及格式，別以檔可播放當處理正確。"
+        "samples = 8000 samples/s × 0.010 s = 80 samples。",
+        "bytes = 80 × 16/8 = 160 bytes，假設無額外 padding。",
+        "這是 PCM 資料，不含 codec 後的不同大小、RTP header、UDP/IP、SRTP 或 link-layer overhead。"
       ]
     },
     {
       "level": "application",
-      "question": "新資料：48000Hz、雙聲道24bit PCM、10ms。blockAlign、frames、bytes爲何？",
+      "question": "新的格式是 16 kHz、stereo、16-bit PCM、每個 callback 20 ms。資料大小是多少？用什麼檢查防止少乘一個聲道？",
       "answer": [
-        "24/8＝3bytes每值，雙聲道blockAlign6。",
-        "48000×.01＝480frames，buffer480×6＝2880bytes。",
-        "假設packed24bit，若容器32bit另算；格式條件寫清纔可複製。"
+        "每聲道 16000×0.020=320 samples；stereo 共 640 個 sample values。",
+        "640×2 bytes = 1280 bytes。等價以 byte rate 計算：16000×2 channels×2 bytes/sample×0.020=1280。",
+        "檢查 API 的 channels 與 block alignment；buffer length 應符合 2 channels×2 bytes/sample×sample count。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：16bit樣本20000乘2，直接cast與Clamp有何風險差別？",
+      "level": "reasoning",
+      "question": "RTP 在接收點連續到達、decoder frame 計數正常，但 framesPresented 不增加。這支持哪個邊界成為調查重點？哪些責任不屬於本系列？",
       "answer": [
-        "數學結果40000超short最大32767，unchecked強轉可能繞回負數。",
-        "Clamp產生32767邊界，避免繞回但仍削波失真。",
-        "合理修正檢查增益與前段峯值，迴歸不溢位和可接受動態範圍。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：左聲道+1000，右-1000，同一時刻平均成mono多少？能說源靜音嗎？",
-      "answer": [
-        "平均(1000－1000)/2＝0，是反相抵消。",
-        "兩聲道各非零，不代表來源沒有聲音，混合策略造成結果。",
-        "覈對佈局與相位，選擇符合產品路由；測試同相／反相與單聲道。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：16000個mono樣本按8000Hz播放，原1000Hz/16000Hz生成。時長與頻率？",
-      "answer": [
-        "樣本16000/8000＝2秒，原數據用16000Hz時爲1秒。",
-        "同1000週期拉到2秒約500Hz，格式解釋使速度減半。",
-        "修復正確rate或真實重採樣，不能把它說網絡延遲。"
+        "封包與解碼至少已走到 decoder 輸出；不增的交接點位於 decoder 後的本機媒體輸出附近。",
+        "下一步查該元件的提交／回呼錯誤和 format 契約；本系列不教實體裝置選擇或 Ozeki MediaConnector lifecycle。",
+        "保留相同呼叫世代和格式證據，轉到 Ozeki 系列，避免僅憑網路 capture 推測裝置狀態。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "PCAP媒體正常、decode輸出非零但用戶無聲，給最先兩段驗證。",
+      "question": "同一 RTP 目的地持續有封包，但 payload type 和目前有效 SDP answer 不匹配。優先查哪裡？",
       "answer": [
-        "先查播放任務是否消費樣本及輸出buffer，之後覈對實際端點ID、音量／靜音。",
-        "以低音量已知tone驗證輸出，不先重啓SIP或改codec。",
-        "有限修正後迴歸裝置切換與雙向通話，記錄真實輸出證據。"
+        "先確認封包屬於正確呼叫腿與 SDP 代次；若確為該流，PT mapping/packetizer 與有效協商不一致是優先候選。",
+        "檢查重新協商後 PT→codec table 是否更新、sender 是否仍套舊 codec/映射，以及中繼是否重新映射 PT。",
+        "修正後驗證兩端看到的 PT、payload 可解碼及 decoder frame 產生；只確認 UDP 封包數不夠。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "輸入RMS很高且多樣本卡±邊界，遠端失真。減少接收音量能恢復嗎？",
+      "level": "application",
+      "question": "某 log 寫 `audioPlayed=true`，但來源碼只在 `WriteRtpPacket()` 成功後設定。如何讓 log 語意可用？",
       "answer": [
-        "不能，前段削波已丟原波形信息，接收降音量只縮小已失真信號。",
-        "查錄音增益或處理gain並減少超範圍，保持網絡格式。",
-        "迴歸峯值、削波比例與已知輸入，真實聽感另驗證。"
+        "目前程式只證明封包交給 sender API 成功，不證明接收、解碼或播放，因此欄位名稱過度宣稱。",
+        "改成例如 rtpPacketSubmitted，並另由接收、decoder、local media presentation 的真實事件更新各自欄位。",
+        "測試送出失敗、遠端收不到與接收後無本機輸出三種情況，確認每一層指標不互相冒充。"
       ]
     }
   ],
   "recap": [
-    "能從採樣率、bit depth、聲道數推PCM框架和bytes。",
-    "能解釋格式標籤、重採樣、增益、緩衝及裝置路由對聲音的後果。",
-    "能以已知合成輸入逐段隔離錄音、處理與輸出故障。"
+    "VoIP 媒體路徑在本機媒體層和網路 RTP 之間有明確的軟體資料交接，送出與接收方向相反但責任可逐段追蹤。",
+    "sample、PCM frame、encoded payload 和 RTP packet 是不同單位；格式與 buffer 邊界必須按程式契約核對。",
+    "接收 RTP、解碼成功、本機媒體層提交及實際聽見是不同證據；本機裝置與 Ozeki API 細節另由 Ozeki 系列負責。"
   ],
   "sources": [
     {
-      "label": "Microsoft：WAVEFORMATEX的取樣率、聲道、對齊與位率",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex"
+      "label": "IETF RFC 3550：RTP 封包的時序及同步來源欄位",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550.html"
     },
     {
-      "label": "Microsoft .NET10：BinaryWriter",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.binarywriter?view=net-10.0"
+      "label": "IETF RFC 3551：RTP Audio/Video profile 的格式和 clock 對照",
+      "url": "https://www.rfc-editor.org/rfc/rfc3551.html"
     },
     {
-      "label": "Microsoft：WASAPI與音訊端點緩衝",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi"
-    },
-    {
-      "label": "Microsoft：讀取錄音stream與frame單位",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/capturing-a-stream"
-    },
-    {
-      "label": "Microsoft：輸出stream與緩衝管理",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/rendering-a-stream"
+      "label": "IETF RFC 7587：Opus RTP timestamp、payload 與 frame 期間",
+      "url": "https://www.rfc-editor.org/rfc/rfc7587.html"
     }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/voip-maintenance-lab.zip",
-      "label": "VoIP獨立計算與WAV示範（.NET10）",
-      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
-    }
-  ],
-  "studyTime": {
-    "reading": [
-      11,
-      19
-    ],
-    "practice": [
-      40,
-      60
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

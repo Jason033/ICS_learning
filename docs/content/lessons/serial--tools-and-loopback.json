@@ -1,25 +1,10 @@
 {
-  "contentVersion": 2,
+  "contentVersion": 3,
   "intro": "工具的輸出必須放回測試範圍。這裡先分清軟體迴環、真實埠迴環、裝置請求回覆及線路觀測，再讀驅動緩衝、Read與DataReceived為何不等於訊息邊界。",
   "prerequisites": [
     "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
     "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
-  "studyTime": {
-    "reading": [
-      10,
-      18
-    ],
-    "practice": [
-      20,
-      40
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
-  },
   "goals": [
     "解釋不同迴環測試覆蓋的路徑與不能推出的結論。",
     "追實際read count、buffer與parser狀態，不按事件數認訊息。",
@@ -115,7 +100,7 @@
       "heading": "讀C#回呼：以n而不是buffer.Length交給parser",
       "paragraphs": [
         "下方為已有SerialPort引用專案的閱讀片段；新.NET10需要相應package，本站獨立lab不使用它。把buffer固定256只代表接收臨時容量，若實際n3卻把256全部送parser，後253箇舊值/0會汙染。應使用返回n；若有其他讀取者，BytesToRead與Read之間可能變化，需處理API錯誤與協調。",
-        "事件handler宜快速讀取與釋出資料，不做長業務、sleep或同步UI等待，否則增加下一批接收壓力。把packet處理移工作佇列也不自動安全，佇列需有上界、保序與取消。串列協議同一流不能隨意並行重排chunks。下列程式碼僅展示核心n範圍，完整owner與deadline在實際專案按契約落實。"
+        "事件handler宜快速讀取與釋出資料，不做長業務、sleep或同步UI等待，否則增加下一批接收壓力。把packet處理移工作佇列也不自動安全，佇列需有上界、保序與取消。串列協議同一流不能隨意並行重排chunks。下列程式碼僅展示核心n範圍，完整owner與deadline在實際專案按契約落實。`sender!`是在教學片段中假定事件來源非null的C#標記，並不會驗證實際型別；正式程式仍須依物件生命週期檢查。`AsSpan(0, n).ToArray()`只複製本次實際取得的n個byte，不包含buffer中未讀部分。"
       ],
       "code": {
         "title": "原創教學資料／C#閱讀片段",
@@ -239,12 +224,12 @@
       "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
     },
     {
-      "label": "Microsoft：SerialPort.Read實際回傳數",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.read?view=netframework-4.6"
+      "label": "Microsoft Learn：DataReceived事件的觸發與執行緒行為",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived"
     },
     {
-      "label": "Microsoft：DataReceived時序與執行緒",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived?view=dotnet-plat-ext-8.0"
+      "label": "Microsoft .NET 10 原始碼：SerialPort.Read回傳實際位元組數",
+      "url": "https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.IO.Ports/src/System/IO/Ports/SerialPort.cs"
     }
   ],
   "resources": [

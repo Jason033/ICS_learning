@@ -1,263 +1,169 @@
 {
-  "contentVersion": 2,
-  "intro": "SIP註冊不是打電話，而是把一個邏輯身分綁定到當前可聯絡位置。理解這層後，才能區分連接、認證、授權、登記期限和呼叫路由。本章把角色、消息結構、挑戰與租約式更新逐項教清楚，並用兩份完整時間線判斷「已註冊但打不通」與「開始401就停止」的差異。",
+  "contentVersion": 3,
+  "intro": "使用者輸入分機或 SIP URI 後，系統要先把邏輯身分解析成目前可以聯絡的註冊位置。REGISTER 解決的是這項位置更新，不是呼叫本身：成功登記不代表該終端在線可達、允許接聽或已建立媒體。本章沿一份合成的 REGISTER 挑戰與更新時間線，說明常見角色、身分和可用證據。",
   "prerequisites": [
-    "能分辨主機位址與應用程式端點；本章會重新說明 SIP 身分、Contact 與登記租約。",
-    "先理解請求與回應是一次往返的兩端，不必先記 SIP 狀態碼。"
+    "可獨立閱讀。若先看過總覽，回想「邏輯身分 → 登記位置 → INVITE 呼叫 → SDP/RTP 媒體」的路徑即可。",
+    "呼叫流程篇會承接本章的 registrar/proxy 與登記綁定；本文不要求你先熟記 SIP 標頭。"
   ],
   "goals": [
-    "能解釋UA、Proxy、Registrar與Location service的責任。",
-    "能讀REGISTER、Contact、Expires與認證挑戰，辨認正確響應關聯。",
-    "能從租約、路由與權限機制診斷註冊症狀。"
+    "能區分 UA、Registrar、Proxy 與 Location Service 的責任，不把它們混成一台必要的伺服器。",
+    "能解釋 REGISTER 的 Contact 綁定、到期更新和 Digest challenge 往返代表什麼。",
+    "能判斷 401/200 註冊證據可以和不可以支持哪些除錯結論。"
   ],
   "sections": [
     {
-      "kind": "concept",
-      "heading": "身分與位置：爲何IP不是電話號碼",
-      "paragraphs": [
-        "用戶邏輯身分可寫成sip:alice@example.invalid，稱Address of Record。它標識要找的人或角色，不等於當前網卡IP。設備可能換網段、重新啓動、用多個終端或在NAT後，若每個呼叫者都必須事先記住其臨時IP，系統難以維護。註冊提供把邏輯身分映射到當前Contact的機制，路由服務再用這個映射找到目的。",
-        "Contact可以是sip:alice@192.0.2.10:5060這樣的可聯絡URI，在真實產品還可能包含傳輸、路由或其他參數。From/To顯示身分與註冊目標，Request-URI通常指向要處理登記的域。不要看到報文來源IP就假設那一定是Contact：經過NAT或Proxy會有不同傳輸位置，而邏輯字段仍可能保留原值。",
-        "一份地址映射不證明音訊裝置可用，也不保證任意人獲準呼叫。身分、位置、認證、權限與媒體條件各有狀態。先把這些概念分開，註冊問題纔不會被一句「服務器連不上」掩蓋；代碼維護也應看到哪個模塊保存每種狀態。"
-      ]
-    },
-    {
-      "kind": "concept",
-      "heading": "UA、Proxy、Registrar與位置服務各做什麼",
-      "paragraphs": [
-        "User Agent是端點應用的協議角色；發請求時扮演UAC，回應請求時扮演UAS，同一軟件可同時具備兩種責任。Proxy轉發請求並參與路由；Registrar接收REGISTER更新綁定；Location service保存或提供位置資料。角色可以同服務器實現，也可以拆開，不應僅從程序名字推定部署位置。",
-        "從Alice向Bob呼叫的角度，Proxy可查詢Bob的綁定並選擇目標；Registrar處理的卻是Bob先前的登記。REGISTER200不能當Bob已經接受Alice的INVITE，因爲登記和呼叫是兩個操作。背靠背代理可能結束一邊交互並在另一邊生成新消息，這與透明轉發也不同，關聯Call-ID時要用實際機制。",
-        "協議角色與客戶端／服務器主機並不永遠固定。Bob收到邀請是UAS，稍後發BYE則成爲該請求的UAC；一臺中心服務既可處理登記又發控制請求。辨認「誰在處理這一請求」比把整臺機永遠貼Client或Server更能解釋方向和回應。"
-      ]
-    },
-    {
       "kind": "mechanism",
-      "heading": "REGISTER消息裏哪些字段讓綁定可更新",
+      "heading": "先分清身分、註冊位置與網路傳輸端點",
       "paragraphs": [
-        "REGISTER請求列邏輯目標、Contact和希望的有效期限。Call-ID及CSeq幫助服務器識別同一登記系列與更新順序；Via描述此請求響應路徑及交易，Contact描述未來怎麼聯絡，功能不同。Content-Length可爲0，因爲登記不必攜帶SDP；沒有媒體本文不表示消息不完整。",
-        "有效期限可由Expires標頭或每個Contact的expires參數提供，後者針對該綁定。服務器可以依政策調整期限，成功響應才說明最終登記條件；不應只按客戶端請求的3600秒設置本地Registered計時。查詢、更新與刪除綁定也都有協議規則。Expires0可用於移除指定綁定，通配Contact等操作要按規範，不把它當隨意清全服務器。",
-        "順序與過期有工程後果：遲到的舊更新不能覆蓋較新的同系列狀態；同一個邏輯身分可以有多個Contact，因此「registered」不是唯一IP字符串。維護時保存服務器確認的綁定與期限，區分當前這一終端與別終端；重連後舊Socket可用不表示新登記已經有效。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "認證挑戰爲何是正常中間步驟，而非直接密碼錯誤",
-      "paragraphs": [
-        "端點第一次REGISTER可能未帶有效Authorization，服務器返回401及WWW-Authenticate挑戰；Proxy挑戰常是407和Proxy-Authenticate。挑戰提供realm、nonce、algorithm、qop等信息，客戶端用適合憑據與規則計算響應，再發新的登記請求。它不是把明文密碼簡單塞回網絡，也不是服務器200之前的一律故障。",
-        "realm描述憑據作用範圍，nonce幫助本次挑戰有新鮮性，algorithm指使用何種摘要規則。較新SIP Digest標準支持SHA-256等，舊產品可能只有MD5；是否兼容必須查具體版本與策略。選擇較弱算法或關閉認證不是默認排查手段。維護重點先覈對雙方理解的挑戰與實際響應，而不是自己編一個簡化hash當SDK實現。",
-        "認證與授權也不同：證明身分後，服務器仍可拒絕某操作或域。憑據正確不保證Contact、賬號政策與權限合法。日誌與PCAP可能含認證響應等敏感信息，教學只用虛構標記，不教用戶公開真實Authorization。這裏的目標是閱讀機制與關聯，未實現真實認證客戶。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題一：完整挑戰時間線如何支持已登記",
-      "paragraphs": [
-        "給定邏輯身分alice@example.invalid：t0發REGISTER，Call-ID reg-a，CSeq1 REGISTER，Contact A:5060，Expires300。t.020收到401，CSeq1 REGISTER及realm lab、nonce n1、SHA-256。t.030發CSeq2 REGISTER，新的Via branch並帶匹配挑戰的Authorization；t.050收200，CSeq2 REGISTER，Contact expires120。",
-        "關聯方式先按Call-ID，再用CSeq數字和方法，把401配到第一個請求、200配到第二個。401是第一筆的最終挑戰回應，不會因後來成功消失；整個登記嘗試最後得到成功。服務器確認120秒比請求300短，當前這終端應按120秒維護刷新和過期，不按原請求300。",
-        "若抓包只有前兩筆，結論只是收到認證挑戰，尚無成功登記證據；缺後兩筆可能客戶端無法計算、未收到挑戰、窗口太短或抓包漏掉。不能直接說密碼錯。要查客戶端是否支持algorithm、憑據realm、後續請求與服務器最終原因，才能區分這些候選。"
+        "合成範例的邏輯身分是 sip:desk-23@example.invalid。桌機當下可聯絡的 Contact 是 sip:desk-23@192.0.2.44:5060。前者標示希望聯絡的對象；後者是這個使用者目前登記的聯絡 URI。兩者不一定相同，因為設備可換位址、同一身分可有多個終端，也可能經由 NAT、Proxy 或服務商邊界。",
+        "SIP User Agent（UA）是代表使用者發出或接收 SIP 請求的端點角色；Registrar 接受 REGISTER 並維護一段期間的綁定；Location Service 是查詢這些位置的邏輯資料來源；Proxy 收到呼叫請求後可查位置並轉送。部署可把多個邏輯角色放在同一產品，也可分散到多台服務，不能從名稱推定公司實際部署。",
+        "REGISTER 的網路來源 IP、Contact 欄位與伺服器最後保存的可達位置也可能不同。SIP Outbound、Path、NAT 穿越或服務商策略會改變實際路徑；一般範例只說明 AoR 與 Contact 的關係，不代表 REGISTER 所寫的字串一定就是可直接送 RTP 的端點。"
       ],
       "table": {
-        "caption": "登記嘗試中的請求與響應對應",
+        "caption": "註冊相關角色：邏輯責任與證據",
         "headers": [
-          "時間",
-          "CSeq",
-          "事件",
-          "支持的狀態"
+          "角色／資料",
+          "做什麼",
+          "看到它仍不能推斷"
         ],
         "rows": [
           [
-            "0.000",
-            "1 REGISTER",
-            "未帶有效認證",
-            "嘗試開始"
+            "UA",
+            "以使用者端點發出 REGISTER、INVITE 等請求",
+            "本機帳密正確或音訊設備正常"
           ],
           [
-            "0.020",
-            "1 REGISTER",
-            "401 challenge",
-            "需認證"
+            "Registrar",
+            "處理 REGISTER 並更新綁定",
+            "後續 INVITE 一定能送達"
           ],
           [
-            "0.030",
-            "2 REGISTER",
-            "帶挑戰響應",
-            "第二次嘗試"
+            "Location Service",
+            "提供身分目前綁定位置的查詢",
+            "位置仍新鮮且網路路徑可達"
           ],
           [
-            "0.050",
-            "2 REGISTER",
-            "200 expires120",
-            "此綁定已接受"
+            "Proxy",
+            "按路由政策轉送 SIP 請求",
+            "媒體封包一定穿過此 Proxy"
+          ],
+          [
+            "AoR / Contact",
+            "分別表達身分與註冊聯絡 URI",
+            "二者必須相同"
           ]
         ]
       }
     },
     {
       "kind": "worked-example",
-      "heading": "例題二：有效期限如何使舊畫面誤報",
+      "heading": "完整讀一輪 REGISTER：challenge 是認證往返的一步",
+      "code": {
+        "title": "合成 SIP 摘錄；帳密與雜湊故意省略",
+        "text": "UA -> registrar  REGISTER sip:example.invalid\n                  To: <sip:desk-23@example.invalid>\n                  Contact: <sip:desk-23@192.0.2.44:5060>\n                  Expires: 600\nRegistrar -> UA  401 Unauthorized\n                  WWW-Authenticate: Digest realm=\"example.invalid\", nonce=\"n1\"\nUA -> registrar  REGISTER sip:example.invalid\n                  Authorization: Digest username=\"desk-23\", response=\"[redacted]...\"\n                  Contact: <sip:desk-23@192.0.2.44:5060>\n                  Expires: 600\nRegistrar -> UA  200 OK\n                  Contact: <sip:desk-23@192.0.2.44:5060>;expires=600"
+      },
       "paragraphs": [
-        "服務器在t10確認Contact有效120秒，簡化模型以t130爲到期；客戶端計劃t100刷新，預留30秒處理餘量。t100發新REGISTER卻在網絡斷線期間沒有最終成功，t130之後舊租約不應繼續當作有效。若UI一直Registered，代碼可能只在第一次200設True，卻沒跟蹤刷新失敗與期限。",
-        "時間計算要來自服務器確認的期限與本地計時語義；本例忽略傳輸與同步誤差，實際應按實現保守管理。使用單調持續計時比牆鍾改動可靠，但跨主機服務器狀態仍應查權威記錄。不能用「Socket reconnect成功」直接把登記期限延長，新連接並不自動更新Registrar綁定。",
-        "有限修正是處理刷新成功、失敗與過期狀態，以及斷線後重新查詢或登記流程。迴歸測試包括成功刷新、短斷線恢復、長斷線到期、服務器縮短期限及刪除綁定。只測初次200會漏掉系統運行幾小時後纔出現的故障，這也是註冊機制必須講期限的原因。"
+        "第一個 REGISTER 先提供目標身分、Contact 和希望的有效期限。伺服器回 401 並附 WWW-Authenticate challenge，讓 UA 以該 realm/nonce 等參數產生 Authorization，再送一個新的 REGISTER 交易。Digest 不是把明文密碼直接放入這個欄位；本文不深入特定算法與伺服器策略。",
+        "第二個 200 OK 支持 registrar 接受這次更新，回應中的 expires 值才是本例實際回報的綁定期限。401 是挑戰的一部分，不可單憑第一次 401 就報成密碼錯誤；若同樣的認證資料被拒、challenge 反覆或回應碼不同，才沿 nonce、帳號、時鐘、realm、算法相容性與伺服器日誌調查。",
+        "REGISTER 有自己的 Call-ID 與 CSeq；第二個 REGISTER 是新請求，通常 CSeq 增加。把整段時間線按 method、Call-ID、CSeq、Contact 和結果關聯，才能區分挑戰流程、重送與另一台 UA 的更新。服務端政策或擴充可能讓欄位細節不同，需依實際規格與設備文件核對。"
       ]
     },
     {
       "kind": "mechanism",
-      "heading": "註冊成功與後續呼叫爲什麼仍可失敗",
+      "heading": "綁定有期限：成功不是永久在線狀態",
       "paragraphs": [
-        "登記讓路由知道Contact，但Contact可能對某個網絡位置不可達、映射過期或傳輸已關閉。Proxy可能選擇另一綁定，呼叫可能被權限或忙碌拒絕。逐層驗證：登記200的目標綁定與期限，INVITE實際路由到哪，目標收到後回什麼。每條證據解決的條件不同。",
-        "客戶端看到服務器回應僅證明本次請求可往返該服務；服務器以後向Contact新發請求是另一個方向或連接，可能經過不同策略。尤其NAT後的來源臨時Port不等於可供未來聯絡的地址。系統可能依標準擴展保持flow或藉助中繼，這需產品文件；本章不把手工修改Contact當通用穿越方案。",
-        "賬號多終端時，還需要把當前綁定與接聽對象區分。收到200可能包含多條Contact；看第一個不是永遠自己。用本終端的Contact參數與相關標識覈對，保存所有有意義綁定但不臆造唯一規則。系統拓撲不明時，以實際服務器位置記錄與路由行爲爲準。"
+        "註冊綁定有有效期限。UA 應在到期前刷新；若程式長時間停止、休眠、網路切換或刷新定時器失效，服務端可在租期結束後不再把新的 INVITE 路由到舊 Contact。註冊成功紀錄因此是一個帶時間的狀態，不是永久事實。",
+        "Request 中可用 Expires 或 Contact 層級 expires 提示期限；Registrar 可能回覆實際接受的 expiry。移除 Contact、刷新多個 Contact、到期值等細節應按 RFC 3261 與適用擴充閱讀。最安全的維護證據是比較 UA 的刷新請求、服務端接受值、刷新失敗與到期時刻，而不是只看 UI 上一次顯示 Registered。",
+        "更重要的是註冊與通話路徑分離：REGISTER 200 不證明之後的 INVITE 使用同一服務端、同一路由或相同權限，也不檢查 SDP、RTP 和喇叭。故障報告應把「註冊狀態」稱為某一時間點成功更新了某個綁定，避免寫成『線路完全正常』。"
       ]
     },
     {
-      "kind": "lab",
-      "heading": "離線實作：重建登記狀態，而不是連真實賬號",
-      "paragraphs": [
-        "本章給的兩份時間線可直接整理成state表，無需真實SIP服務。從初始Unregistered開始，每步列消息關聯、challenge狀態、當前有效期限、下次刷新計劃、UI可顯示什麼。用例題一得到200後有效120；用例題二計算t130過期。手工表或自己的C#數據結構都可，不模擬真實認證hash。",
-        "變因一將最終Contact expires改60，重新計算expiry與refresh，驗證不再沿用120；變因二只保留401，檢查不能進入Registered；變因三在刷新後200缺失且越過expiry，檢查舊狀態不能繼續可信。恢復原資料，說明每個變化影響哪個機制，而不是只改一個布林常量。",
-        "驗收交付含CSeq對應、最終服務器期限、狀態過期與下次驗證的表，並能解釋200註冊和200邀請不同。搭配VoIP計算項目只是後續音訊練習，與註冊認證無關；不把它的PASS當SIP已編譯或註冊成功。本章真實SDK與服務未執行，紙上規則依官方覈對。"
-      ],
+      "kind": "code-reading",
+      "heading": "從程式狀態找到真實資料來源",
       "code": {
-        "title": "僅爲教學租約計算，不是實際SIP類型",
-        "text": "record LabBinding(string Contact, double AcceptedAt, int ExpiresSeconds);\nvar b = new LabBinding(\"sip:alice@192.0.2.10:5060\", 10, 120);\ndouble expiresAt = b.AcceptedAt + b.ExpiresSeconds; // 130\nbool validAt(double now) => now < expiresAt;\n// 真正應用需處理刷新、誤差、多Contact與服務器結果。"
-      }
+        "title": "教學狀態模型，不是 SDK API",
+        "text": "record RegistrationSnapshot(\n    string AoR, string Contact, DateTimeOffset ExpiresAt,\n    string? LastSipMethod, int? LastResponseCode);\n\nbool IsRecentlyAccepted(RegistrationSnapshot s, DateTimeOffset now) =>\n    s.LastSipMethod == \"REGISTER\" &&\n    s.LastResponseCode == 200 && now < s.ExpiresAt;"
+      },
+      "paragraphs": [
+        "這段程式只表達一項限制：狀態必須同請求結果和租約時間綁定。ExpiresAt 應從實際接受期限計算；若只把「曾收到 200」存在 bool，休眠一晚之後同樣可能顯示已註冊。時間計算還要考慮系統時鐘改變、定時器重設和伺服器回覆期限；真實產品如何做由其 SDK 和服務端契約決定。",
+        "讀公司程式時，搜尋 REGISTER 請求建立點、認證挑戰事件、成功／失敗 callback、重試與刷新 timer、登入 UI 更新點，以及設備網路切換時是否重新註冊。確認 UI 狀態使用的是本機送出時間、最後服務端回應還是更高層 SDK 狀態；欄位名「Registered」未必足以說明它的有效語義。",
+        "避免將帳密或 Authorization 值寫入一般日誌。除錯應記錄呼叫關聯資訊、realm、結果類型、請求代次和時間，敏感值則遮罩；需留存時遵守公司授權與資料保護政策。"
+      ]
     },
     {
       "kind": "diagnostic-case",
-      "heading": "反覆401或已登記卻不可達：先取能區分的證據",
+      "heading": "「已登記但打不通」先判斷 INVITE 到了哪一段",
       "paragraphs": [
-        "反覆401候選包括憑據錯誤、realm不符、nonce過期、algorithm不支持、請求響應不匹配或中間設備改變消息。先查挑戰與下一REGISTER，而不是僅數401次數。新增證據如果客戶端日誌寫unsupported algorithm且沒有第二請求，優先查版本能力；若第二請求存在卻被明確拒絕，再查相符憑據與政策。",
-        "已登記卻INVITE無人回應是另一組：Binding過期、Contact路徑錯誤、目標程序未監聽、Proxy路由另一個終端。先查當前服務器綁定與期限、此次INVITE目的端點及目標端觀測。若Registrar已無該綁定而UI仍True，修租約狀態；若綁定有效但目標地址不可達，修路由／flow需正式配置而不是清空賬號。",
-        "每次有限修正都回歸初次登記、刷新、過期和實際呼叫路由，必要時再看媒體。把認證、登記和呼叫三個階段完整記錄，讀者才知道修正解決哪一項。不能靠「換密碼之後好了」就宣佈所有機制都已驗證，時段與其他改動也可能影響結果。"
-      ]
-    },
-    {
-      "kind": "maintenance",
-      "heading": "維護代碼時找什麼狀態與清理規則",
-      "paragraphs": [
-        "找憑據配置來源、登記方法、challenge callback、成功／失敗事件、expiry timer、刷新任務與銷燬時取消邏輯。若重複創建UA而舊刷新任務未停止，可能產生多份更新與混亂日誌；若只按當前Socket看狀態，可能漏服務器租約過期。事件與任務生命週期是運行維護的責任。",
-        "工具日誌應含邏輯身份、可公開的綁定鍵、CSeq方法與時間、狀態來源和期限；避免只寫registration failed。安全字段遮蔽後仍能留下algorithm與階段等有用觀測。對公司版本查官方類型與線程規則，教材LabBinding並非OzekiAPI，也不能直接替換生產SDK。",
-        "本章能力目標是讀懂登記爲何存在、它怎樣改變路由、何時失效以及如何查證。無須記所有SIP標頭，但必須能從消息關聯與時間規則推導狀態，知道下一步要Registrar記錄還是媒體抓包。基礎模型完整後，廠商擴展才有能掛進去的位置。"
+        "合成症狀：UA 早上收到 REGISTER 200；中午呼叫者撥打 desk-23 沒有響鈴。這份舊紀錄只證明早上某次 REGISTER 被接受，不保證呼叫時間的綁定仍有效。先確認到期／刷新紀錄、呼叫時 registrar 或 proxy 對 AoR 的查詢結果，再看 INVITE 是否送出、收到哪個 SIP 回應。",
+        "若 INVITE 根本沒從呼叫者送出，先看呼叫入口、撥號規則或本機狀態；若代理發出 INVITE 但目的 Contact 是過期舊位址，查綁定刷新和多 Contact 選取；若對端收到 INVITE 並回 486、403 等最終回應，查其具體政策與終端狀態；若 SIP 邀請成功但無聲，轉入 SDP/RTP 路徑，不再把原因歸到 REGISTER。狀態碼只能提供下一步線索，需依消息及產品原因碼解釋。",
+        "一次有區分力的補證是呼叫當下的路由決策紀錄：它列出 AoR 查詢結果及選用 Contact，並可與兩側 INVITE/回應的 Call-ID 和時間關聯。沒有這項證據時，不要因帳號頁面亮綠燈就假設代理看見同一個狀態。"
       ]
     }
   ],
   "exercises": [
     {
       "level": "foundation",
-      "question": "Registrar的200爲何不能證明被呼叫者接受INVITE？",
+      "question": "合成訊息：REGISTER 收到 401，內容含 WWW-Authenticate；UA 隨後以 Authorization 重送並收到 200。第一次 401 是不是足以判定密碼錯？",
       "answer": [
-        "REGISTER更新綁定，INVITE邀請會話，兩種業務請求不同。",
-        "以CSeq方法與Call-ID關聯回應，查看後續邀請最終狀態。",
-        "註冊只提供位置條件，呼叫還需可達、權限與接受，媒體另驗。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "UAC/UAS是否是一臺主機固定身分？",
-      "answer": [
-        "它們是這一請求的發起與處理角色，同UA可隨請求切換。",
-        "發INVITE是UAC，收到對方BYE可能是UAS。",
-        "維護按消息方向讀調用與callback，不能永久把服務器主機等同UAS所有操作。"
+        "不足。401 challenge 提供認證挑戰，正常 Digest 流程可先收到它，再提交認證回應。",
+        "要判定失敗，需看後續認證請求是否被接受、是否反覆 challenge，以及服務端認證結果；遮罩所有秘密值。",
+        "本例最終 200 支持此次 REGISTER 被接受，仍需將 Contact 與 expires 一起核對。"
       ]
     },
     {
       "level": "application",
-      "question": "新資料：請求Expires600，200確認Contact expires90，在t20成功。t110時有效嗎？刷新計劃t80有什麼餘量？",
+      "question": "新數據：UA 08:00 收到 REGISTER 200、expires=3600；11:30 呼叫無回應。這些紀錄能否證明呼叫時 Contact 仍有效？要補什麼資料？",
       "answer": [
-        "簡化expiry20＋90＝110；在t110達到期限，不繼續當有效。",
-        "計劃80比expiry早30秒，給予刷新處理餘量。",
-        "實際按實現誤差與權威結果管理；不能採用請求600作爲租約。"
+        "不能。3600 秒是 1 小時；從 08:00 到 11:30 已過 3.5 小時。",
+        "查看期間刷新是否成功、服務端最後接受的 expires、實際綁定／到期時間以及呼叫時的 AoR 查詢結果。",
+        "再將呼叫當下 INVITE 路由目的和端點收到的消息關聯；若沒有刷新成功，修正計時／重連流程並測試休眠恢復。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：REGISTER CSeq7收到401，第二請求CSeq8，抓到200 CSeq6 OPTIONS。能登記成功嗎？",
+      "level": "reasoning",
+      "question": "同一個 AoR 有兩筆 Contact：桌機與軟體電話。服務端查詢時兩筆都有期限。你能從這項資料判斷哪一台會響嗎？還缺什麼？",
       "answer": [
-        "不能，200屬於另一方法與序號，不回應CSeq8 REGISTER。",
-        "繼續找8的最終響應或服務器綁定，保留401只是挑戰證據。",
-        "不要用任意200改Registered，也不因缺響應直接斷言密碼錯。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：賬號有Contact A expires0、Contact B expires180的成功回應。A終端可否把B的180當自己有效？",
-      "answer": [
-        "不能，期限屬於對應綁定，A爲0表示這項不應繼續當有效。",
-        "按自己的Contact鍵覈對，多終端不共享同一布林有效期。",
-        "查實際操作是否刪除A或註冊B；迴歸各終端路由，不能選列表第一條。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：t0確認有效100，t70刷新沒最終回應，t105網絡重新連接。可以用舊登記打勾嗎？",
-      "answer": [
-        "簡化舊租約t100過期；連接恢復不刷新Registrar綁定。",
-        "執行正式重登記／查詢，得到有效綁定後再更新狀態。",
-        "驗證長斷線、短斷線及失敗，避免用重連事件直接延長過期狀態。"
+        "不能只從 AoR 和期限判斷。Proxy 策略可能同時分叉、按優先順序呼叫、選擇單一位置或依產品規則處理。",
+        "查看實際 INVITE 分支與目標 Contact、To-tag／回應，以及服務端路由策略文件。",
+        "回報應指出觀察到的路由行為，不把 Contact 的存在誤寫成終端已經可達或已響鈴。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "首次401後客戶端報unsupported algorithm無第二請求，優先改密碼合理嗎？",
+      "question": "合成兩端證據：呼叫者 Proxy 查到有效 Contact 並將 INVITE 送出；端點收到 INVITE，回 403。註冊還是首要候選嗎？",
       "answer": [
-        "不優先，證據是客戶端無法處理挑戰而非計算後被拒。",
-        "覈對版本與algorithm政策及支持的兼容路徑，不默認降級認證。",
-        "修正能力／配置後驗證第二請求與最終REGISTER結果，敏感內容不要公開。"
+        "目前證據支持查詢得到位置且 INVITE 抵達端點，優先查端點拒絕條件、授權、呼叫政策或服務設定。",
+        "REGISTER 成功不代表被允許接聽；403 的具體原因要靠端點日誌／產品文件或更完整回應資料確認。",
+        "先以同一帳號、同類呼叫條件重現並查拒絕原因，避免重複刷新註冊掩蓋真正的授權問題。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "200登記有效、服務器INVITE送Contact，目標沒有看到；列候選與補證據。",
+      "level": "application",
+      "question": "你接手一個 `IsRegistered` 欄位，發現它在 `REGISTER 200` 時設為 true，從未看到重設。列出兩項要查的程式路徑及一項可回歸驗證。",
       "answer": [
-        "可能Contact不可達／NAT映射錯誤、目標捕捉選錯、路徑阻斷或未監聽。",
-        "確認目標路由與綁定、雙點抓包及監聽，區分沒到與到達不處理。",
-        "有限改配置後驗證邀請回應與媒體，不只重跑REGISTER看200。"
+        "追查租約期限與刷新失敗／超時回呼；確認到期或刷新失敗會使狀態過期，而非永久保留 true。",
+        "追查網路變更、登入登出、服務重新連線與 Contact 替換時的狀態清理。",
+        "測試成功刷新、刷新失敗、到期後呼叫、重新連線更新，確認畫面狀態與服務端綁定一致且時間可追溯。"
       ]
     }
   ],
   "recap": [
-    "能解釋UA、Proxy、Registrar與Location service的責任。",
-    "能讀REGISTER、Contact、Expires與認證挑戰，辨認正確響應關聯。",
-    "能從租約、路由與權限機制診斷註冊症狀。"
+    "AoR 是要聯絡的邏輯身分，Contact 是註冊綁定提供的位置；Registrar、Proxy 與 Location Service 是可分離的邏輯責任。",
+    "401 challenge 可是認證往返的正常一步；最終接受結果、有效期限與當前路由都要各自核對。",
+    "註冊成功不等於呼叫可達，更不等於媒體或音訊正常。"
   ],
   "sources": [
     {
-      "label": "IETF RFC3261：SIP的角色與消息",
+      "label": "IETF RFC 3261：SIP roles、REGISTER、Digest 認證與 Contact 綁定",
       "url": "https://www.rfc-editor.org/rfc/rfc3261.html"
     },
     {
-      "label": "IETF RFC8760：SIP Digest挑戰與較新算法",
+      "label": "IETF RFC 8760：SIP Digest 認證算法更新",
       "url": "https://www.rfc-editor.org/rfc/rfc8760.html"
     },
     {
-      "label": "Wireshark 官方：SIP 欄位名稱及適用版本",
-      "url": "https://www.wireshark.org/docs/dfref/s/sip.html"
-    },
-    {
-      "label": "Wireshark 官方：VoIP Calls 與 SIP Flow Sequence",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+      "label": "IETF RFC 5626：SIP Outbound，適用於特定 UA/Proxy NAT 情境",
+      "url": "https://www.rfc-editor.org/rfc/rfc5626.html"
     }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/voip-maintenance-lab.zip",
-      "label": "VoIP獨立計算與WAV示範（.NET10）",
-      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
-    }
-  ],
-  "studyTime": {
-    "reading": [
-      12,
-      20
-    ],
-    "practice": [
-      25,
-      45
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

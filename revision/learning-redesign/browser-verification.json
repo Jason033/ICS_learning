@@ -1,31 +1,116 @@
 {
   "browser": "Chromium",
-  "mobile_lessons": 126,
+  "checked_at_utc": "2026-10-03T17:53:50+00:00",
+  "base_url": "local loopback server (ephemeral port)",
   "widths": [
     1440,
     390
   ],
+  "mobile_lessons": 126,
   "javascript_errors": [],
   "checks": [
     "search",
     "progress persistence",
     "answer disclosure",
     "mobile navigation",
+    "mobile section anchor clears sticky header",
     "overflow",
     "diagram decoding and original-image links",
     "unavailable content",
     "teaching preview entry and edition navigation",
     "inline understanding checks"
   ],
-  "checked_at_utc": "2026-10-03T16:04:21.989101+00:00",
-  "base_url": "http://127.0.0.1:8767/",
-  "scope": "Functional regression of all readable lessons; manual visual reading limited to the three new lessons, diagrams and tables.",
+  "scope": "Historical browser baseline only: the Chromium run predates all 21 current v3 lesson rewrites. follow_up_check records current non-browser validation; no current browser rendering has been verified.",
+  "manual_visual_review": {
+    "viewports": [
+      1440,
+      390
+    ],
+    "checked": [
+      "homepage preview cards",
+      "opening section of the three revised lessons",
+      "selected mobile sections including C# code and receive examples",
+      "end-to-end SVG request and response directions"
+    ],
+    "svg_text_outside_viewbox": 0
+  },
+  "screenshots": "Temporary review images under /tmp/ics-redesign-review and /tmp/ics-redesign-browser-final; not part of the site.",
   "source_sha256": {
-    "docs/app.js": "f7d516bd58839156a1a38f6e607190e55615165f63e51801aa58371ad40da4bb",
-    "docs/styles.css": "383777abff0ffa253c40afbbbdb70fcdadee2f572dca9a06abb68d73461c3ebe",
-    "docs/content/catalog.json": "3adc68489a63e280a553e9969d8387ccbbb8aec920f66aa386fd817f7459f25e",
-    "docs/content/lessons/networking--a-local-journey.json": "588c5c5b7d40dfdfc5c71294a0d645df57635d1bfc61577dc5b1a0982d41020e",
-    "docs/content/lessons/networking--messages-and-bytes.json": "de63fcba25fda61ab8776b01e15ee46f33c65b1cfee252985d53b3476bd4b58a",
-    "docs/content/lessons/networking--why-programs-communicate.json": "bb2f0bcc4d0b811946035fd7459bb350919ebfe61b91ca163c2336d80d431d05"
+    "docs/app.js": "e3d46a1d0181663e1666ff1fbd47e80a75292821b86e7be525502f4df1a3d155",
+    "docs/styles.css": "6420e85f01ae4f50854ec43bf4571383d5d54096b6ffe1949f3f6ce4d9dd332e",
+    "docs/content/catalog.json": "4bdced7a2ebdea26e9e14fd89d2cc0e1fcd65b8c524f62e905dc0ef6d77bb83d",
+    "docs/content/lessons/networking--why-programs-communicate.json": "febc2b4a97e12acd3adaa03e699efb240245ff3c0fc4893d4d1e6a515c5006db",
+    "docs/content/lessons/networking--messages-and-bytes.json": "c666eeb462f8265ff7f1e0f06ff212d03cbac1eb9339a4669e5255aa60435915",
+    "docs/content/lessons/networking--a-local-journey.json": "b818bfdf71e2450294c43cf828fd691f6dfbbee071105889f3a82d353a3dcaa9",
+    "docs/assets/diagrams/networking-end-to-end.svg": "b0143cd423b9bba7113bce1fd6b14ca8bf2f37b3dbbb6c002c4b2fb46a7db96c",
+    "tests/browser.py": "58d4c31fc2614c96ad737b870f247c10e07e9a57c0534ff5f50eab104cf6b3b6",
+    "tests/smoke.cjs": "aa01d2e7507fd828ed580f90a2651b788a5972a964b64c8c892fdac85956f4d1"
+  },
+  "follow_up_check": {
+    "checked_at_utc": "2026-10-03T21:02:48+00:00",
+    "current_lessons": [
+      "networking/why-programs-communicate",
+      "networking/messages-and-bytes",
+      "networking/a-local-journey",
+      "networking/addresses-and-ports",
+      "networking/tcp-udp",
+      "wireshark/first-capture",
+      "wireshark/packet-panes",
+      "wireshark/filters",
+      "wireshark/streams-statistics",
+      "wireshark/tcp-troubleshooting",
+      "wireshark/sip-rtp",
+      "wireshark/rtp-analysis",
+      "wireshark/evidence-and-logs",
+      "sockets/socket-flow",
+      "sockets/tcp-udp-apis",
+      "sockets/message-boundaries",
+      "sockets/binary-protocols",
+      "sockets/timeouts-and-readiness",
+      "sockets/disconnect-and-reconnect",
+      "sockets/logs-and-debugging",
+      "sockets/socket-troubleshooting"
+    ],
+    "browser_run": false,
+    "reason": "No Python Playwright package or Chromium executable is available. The historic browser run predates the current 21 content rewrites.",
+    "non_browser_checks": [
+      "node --check docs/app.js",
+      "node tests/smoke.cjs",
+      "python3 tools/audit_content.py",
+      "python3 tests/verify_labs.py",
+      "python3 docs/assets/labs/wireshark-maintenance-verify.py",
+      "dotnet build of Socket teaching lab on .NET SDK 10.0.401",
+      "deterministic parser execution passed; loopback Socket constructor blocked by sandbox permission",
+      "current Socket listener and UDP excerpts compiled in a temporary .NET 10 harness",
+      "git diff --check"
+    ],
+    "results": "Current non-browser checks pass: 16 topics/126 lessons, 21 v3/105 legacy, zero structural warnings, six teaching PCAP validators, Socket project build, deterministic parser cases, and selected Socket excerpt compilation. The same run could not execute loopback networking because Socket construction returned Permission denied. Current browser rendering remains unverified.",
+    "source_sha256": {
+      "docs/app.js": "e3d46a1d0181663e1666ff1fbd47e80a75292821b86e7be525502f4df1a3d155",
+      "docs/content/catalog.json": "a456ee024aaf096d853efe86a76df2b91b14289bb1563ba0aa457ba6f8e1b677",
+      "docs/content/lessons/networking--a-local-journey.json": "b818bfdf71e2450294c43cf828fd691f6dfbbee071105889f3a82d353a3dcaa9",
+      "docs/content/lessons/networking--addresses-and-ports.json": "f0536d0869f6846983869755531bb16c2cd7aec11502dad39df41c2d84e4dd52",
+      "docs/content/lessons/networking--messages-and-bytes.json": "c07a88eb370c6c17a8fd79e0b0937ab1474e6fb8c1af727cd364d23fa00cc1da",
+      "docs/content/lessons/networking--tcp-udp.json": "a431fbca4a7b3a76e63add2edb2acefd86f357c1f6e55ab16cc7c55463e03bb2",
+      "docs/content/lessons/networking--why-programs-communicate.json": "febc2b4a97e12acd3adaa03e699efb240245ff3c0fc4893d4d1e6a515c5006db",
+      "docs/content/lessons/sockets--binary-protocols.json": "ef3a5eeeb904ed63402b0d4c272b042743ba14a9c6541067c4e129681ada8fe7",
+      "docs/content/lessons/sockets--disconnect-and-reconnect.json": "5227e2ffe97321a32b41e9eb0017dc609ef09d48c097b8eae45ada705df0da1c",
+      "docs/content/lessons/sockets--logs-and-debugging.json": "ad273f3e44875ca7a2cf483ee63ea86158596cd5aba3094fe10d2aa3307899e6",
+      "docs/content/lessons/sockets--message-boundaries.json": "04e491eff9efe0765cdf188f0dacce3695acb31d856be7b0dda06483f7171d0d",
+      "docs/content/lessons/sockets--socket-flow.json": "40d0f14d0db184a80d138bb4af9a7bda82d37b5f126e5108a2ce9dc2588229ac",
+      "docs/content/lessons/sockets--socket-troubleshooting.json": "f475a8e94c7cc92ec27f1ebd9e4a206467a100c29cc7f95e1f6d078e3d5844f8",
+      "docs/content/lessons/sockets--tcp-udp-apis.json": "3cf0738dd3c96d5aee787df5dcfe44ac644690fa69ac06ee50209584eb35a9f6",
+      "docs/content/lessons/sockets--timeouts-and-readiness.json": "b646445c10548cdb13637d16c29d11b2c3e200f18cd21ed7fd433f956590bbf8",
+      "docs/content/lessons/wireshark--evidence-and-logs.json": "989bfec93f73f8ac5eb9099d48a9a33a18aea5023b5183ad5888cb423365c6f8",
+      "docs/content/lessons/wireshark--filters.json": "edff95f6999703ab3a6a87bae87713166bfb8776885eb711ff6d8bd046c1a822",
+      "docs/content/lessons/wireshark--first-capture.json": "49b4418a60e975f0748d56df077c59dffae5d49e965aed2a1f3f187b5b483495",
+      "docs/content/lessons/wireshark--packet-panes.json": "8d92318c8a152b1c06f86383d7c55faabfeeb8995933b720eb51e633d344ecfc",
+      "docs/content/lessons/wireshark--rtp-analysis.json": "3fba0e09e5cf19fdefb03f08dc2244eb16ed20624782a063471cee67571c83ff",
+      "docs/content/lessons/wireshark--sip-rtp.json": "cc90e79a0adefb4aa4a3905de58c5fd6fdef0634ef0de9d9d639e2a2c4687bc0",
+      "docs/content/lessons/wireshark--streams-statistics.json": "7f703121e118d71c93c26e168af6500bdee879e7db369c320107ef442f640ec6",
+      "docs/content/lessons/wireshark--tcp-troubleshooting.json": "df8bb37164b12d42cadcf5e678591289044c4677a33731258aae6b30bc155651",
+      "docs/styles.css": "6420e85f01ae4f50854ec43bf4571383d5d54096b6ffe1949f3f6ce4d9dd332e",
+      "tests/smoke.cjs": "aa01d2e7507fd828ed580f90a2651b788a5972a964b64c8c892fdac85956f4d1"
+    }
   }
 }

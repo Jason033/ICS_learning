@@ -1,244 +1,159 @@
 {
-  "contentVersion": 2,
-  "intro": "SDP不是一份聲音，而是一份讓雙方選定媒體條件的結構化描述。理解它必須區分能力、提出條件、接受條件和實際發送。本章從每行的作用到offer/answer配對、方向、編碼映射與再次協商，建立能逐字段維護的模型，並說明爲何宣佈正確仍要驗證實際端點。",
+  "contentVersion": 3,
+  "intro": "在本例中，A 的 SDP offer 說明它想收送音訊、願意使用哪些 RTP 格式，以及 A 希望對方把媒體送到哪個位址；B 的 answer 再說明接受的流與 B 自己的接收位置。SDP 不是媒體封包，也不保證網路真的能到達。讀懂 offer/answer，才能把信令中的描述變成可驗證的媒體預期。",
   "prerequisites": [
-    "理解 SIP 負責交換通話訊息，RTP 承載媒體；兩者可能使用不同端點。",
-    "知道 codec 表示聲音的編碼規則；本章會解釋能力、選擇結果與媒體方向。"
+    "先知道 SIP INVITE/回應攜帶控制訊息；若不熟，先讀本系列「SIP 呼叫流程」。",
+    "本篇單獨可讀；RTP 的 payload type 及 packetization 在後續章補足。"
   ],
   "goals": [
-    "能按會話級與媒體級範圍讀c、m、rtpmap、fmtp與方向。",
-    "能根據offer/answer推導接收端點及相容格式，而非只找一個Port。",
-    "能識別協商失敗、舊SDP覆蓋及媒體宣告與實際綁定不一致。"
+    "能從 SDP 的 session/media 層、c=、m=、rtpmap 與方向屬性推導有效媒體契約。",
+    "能為每個媒體流分別說出兩方的接收端點和允許方向。",
+    "能區分 SDP 的宣告、offer/answer 協商結果與封包實際行為。"
   ],
   "sections": [
     {
-      "kind": "concept",
-      "heading": "能力與協商結果不同：兩邊都支持不等於已經選定",
-      "paragraphs": [
-        "編碼器能力表列軟件可能支持的格式，offer提出這次願意使用的條件，answer選擇接受哪些並提供自己的接收條件。實際媒體還需用相應配置運行。若SDK裝有Opus與PCMU，不能看能力表就宣稱此通用Opus；本次有效SDP可能只允許PCMU，甚至拒絕音頻。",
-        "SDP是行式描述，每行類型字母后等號和值；一份會話描述含共同資料和一個或多個媒體區塊。它可由SIP攜帶，也可由其他機制交換，不自帶網絡傳輸或驗證執行。Offer/Answer是使用描述協商的規則，不是SDP每行單獨寫完就自動有聲音。",
-        "維護把三處配置接起來：有效協商文件、實際發送payload格式、接收解碼器的映射。三者不相符時，即使網絡全正常也可無聲。版本、會話、變更時間要一起記錄，避免拿安裝說明中的默認codec覆蓋此次協商的事實。",
-        "Answer不是另起一份無關能力廣告；它針對當前offer的媒體項和格式條件回答。如果當前offer沒有PT109對應格式，不能憑軟件支持就在answer任意宣佈另一種不相容規則。維護時逐媒體檢驗響應與提出條件的關係，再建立生效配置；若無法滿足，應按正式流程拒絕或重新提出，而非強制默認codec繼續。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "會話級字段建立背景，媒體級字段定義各條流",
-      "paragraphs": [
-        "v=是SDP版本，o=含會話來源與版本資訊，s=是名稱，t=描述時間；c=提供連接地址，m=開啓一個媒體區塊。m=audio 40000 RTP/AVP 0 8列音頻、接收Port、profile及格式編號。之後直到下一m=的a/c字段作用於這一媒體，前面的會話級可提供默認。",
-        "媒體級c=覆蓋該流的會話級c=；不是整份檔只找第一行IP。多個m=可能音頻、視頻或其他媒體，answer按規則對應原offer各媒體項，拒絕可用Port0等明確表達。讀文檔時先標每條字段作用範圍，再建立端點表，不能把一個audio Port套給全部媒體。",
-        "o=的會話版本可隨描述更改而更新，輔助區分條件變化；它不等同TCP序號或Call-ID，也不能單靠它證明遠端已應用。時間0 0等可能表示會話時間無特定限制，不能解釋成網絡timeout0。每個字段的單位和職責不同，應該按照規範讀，不從數字字面猜業務。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "接收端點是宣告，不是發送成功報告",
-      "paragraphs": [
-        "A發出的c=A,m=audio40000通常表示A希望接收這條媒體的位置；B在answer寫B40002表示B的接收位置。所以A發往B40002，B發往A40000。SIP網絡來源地址與SDP媒體地址可不同，中繼或獨立媒體服務會改變路徑。反方向要分別看雙方描述，而不是看到某Port就雙向都用它。",
-        "宣告之後程序還要實際bind相應地址／Port、配置encoder/decoder並啓動處理。若SDP寫40002而程序只監聽41002，工具看到正確對話和正確宣告，卻媒體送到未接收位置。查生成SDP的配置與實際媒體Socket是不同證據；需要把它們按同會話和時間關聯。",
-        "經過NAT時私有地址對遠端可能不可達，實際系統可能使用ICE、媒體relay或產品配置解決；SDP本身不會保證路由通。教學先按普通直接UDP建立端點概念，擴展穿越機制需另外查規格。不要把一段IP替換腳本當可通用於全部公司電話系統的方案。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "PT、rtpmap與fmtp：數字映射和參數的兩個層級",
-      "paragraphs": [
-        "Payload Type是RTP標頭中的格式選擇編號。RTP/AVP中有既定靜態映射，如常見PT0 PCMU；動態編號常需a=rtpmap:96 opus/48000/2這類本次映射說明。96不是Opus永久編號，另一通可用不同編號或完全不同格式；解碼器按當前會話映射而不是全球字典。",
-        "rtpmap提供編碼名稱、RTP時鐘及適用聲道信息，fmtp提供該格式的附加參數。時鐘未必等於聲音實際採樣率；Opus RTP時鐘48000，G722有特殊時鐘映射。ptime表達期望封包媒體時間，不一定是對方最終每包絕對相同大小保證。格式名稱相同還要比較profile、參數和實現能力。",
-        "維護程序若只存PT整數而忽略map與fmtp，可能在重撥或再協商後用舊解碼器。不同格式的參數有不同規則，不能把字符串簡單求交集就當完整協商實現。教材教你讀匹配與條件，真正SDK如何選擇與驗證要查對應官方版本。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "方向屬性：sendonly/recvonly與靜音不是同義",
-      "paragraphs": [
-        "sendrecv表示該描述方願意發送與接收，sendonly只發送，recvonly只接收，inactive兩邊都不送。方向有會話級與媒體級作用範圍。Offer與answer應形成相容的方向，例如offer sendonly對方可接受recvonly；不能兩邊都sendonly而聲稱雙向通話已協商。",
-        "某些保持通話操作會改變媒體方向或端點，以表達暫時停止或只送某方向；用戶按靜音也可能只是本機把輸入樣本置零，控制協商仍sendrecv。兩種機制不同，觀察少包或靜音payload時要查實際功能定義與最新SDP，不把所有無聲都歸網絡。",
-        "PTT是另一個方向控制層：會話可能一直存在且SDP允許雙向，但當前誰獲準發音由產品權限／floor控制決定。SIP與SDP普通屬性不自動說明無線電發射權或PTT狀態。教材可解釋不同層之間關係，卻不臆造公司的floor協議。"
-      ]
-    },
-    {
       "kind": "worked-example",
-      "heading": "例題一：取共同格式並推雙向目的",
-      "paragraphs": [
-        "給A offer：c=A，m=audio42000 RTP/AVP 0 8，a=rtpmap:0 PCMU/8000，a=rtpmap:8 PCMA/8000，sendrecv。B僅支持PCMA，answer寫c=B,m=audio43000 RTP/AVP 8,rtpmap8 PCMA/8000,sendrecv。共同接受的是PT8 PCMA，不是offer第一個PT0。",
-        "A應發送PT8的PCMA往B43000，B發送相同協商格式往A42000，兩個方向分別檢查。若A仍用默認PCMU PT0，接收端不能因爲同樣160-byte長就正確解釋；兩種8bit壓擴編碼規則不同。完整示例覈對能力、選項、最終map與實際PT四處。",
-        "假設每包連續20ms、8000Hz、每樣本1byte，payload160bytes、timestamp增加160。這個算式來自已選PCMA條件，並不由42000數字推導。若實際格式變爲另一個編碼，應重新看時鐘與payload規則；端點決定往哪裏，格式決定怎麼讀bytes。",
-        "這裡只摘錄本例要判讀的媒體欄位，供比較端點、格式和方向；不是完整可傳送的 SDP 訊息。正式輸出應依 SDP 規格與實際 SDK 產生完整描述，不能把這份摘錄直接當成送給對端的訊息。"
-      ],
+      "heading": "先讀一對合成 offer/answer，再談每個欄位",
       "code": {
-        "title": "Offer／answer 的媒體欄位摘錄（非完整可傳送的 SDP）",
-        "text": "Offer A:\nc=IN IP4 192.0.2.10\nm=audio 42000 RTP/AVP 0 8\na=rtpmap:0 PCMU/8000\na=rtpmap:8 PCMA/8000\na=sendrecv\nAnswer B:\nc=IN IP4 198.51.100.20\nm=audio 43000 RTP/AVP 8\na=rtpmap:8 PCMA/8000\na=sendrecv"
-      }
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題二：媒體級覆蓋和拒絕如何改變期待",
+        "title": "合成 SDP；本例是一條 RTP/AVP 音訊流",
+        "text": "A 的 offer：\nv=0\no=A 100 1 IN IP4 192.0.2.10\ns=call\nc=IN IP4 192.0.2.10\nt=0 0\nm=audio 40000 RTP/AVP 0 111\na=rtpmap:111 opus/48000/2\na=sendrecv\n\nB 的 answer：\nv=0\no=B 200 1 IN IP4 198.51.100.20\ns=call\nc=IN IP4 198.51.100.20\nt=0 0\nm=audio 41000 RTP/AVP 0 111\na=rtpmap:111 opus/48000/2\na=sendrecv"
+      },
       "paragraphs": [
-        "給offer會話c=192.0.2.10，audio的m40000後媒體c=192.0.2.11，video m40004沒有媒體c。這表示音頻接收A11:40000，視頻接收A10:40004。Answer對應audio m40002正常，video m0拒絕視頻。音頻可以繼續，視頻不應按原40004等包然後報網絡無回應。",
-        "若audio offer sendonly，answer recvonly，則預期offer方A發送到B的audio接收端，而B不向A發送此媒體。這是協商單向，不是故障性單向無聲。判斷必須從各描述來源讀方向；把recvonly當「我只能收」在旁觀主機上讀會顛倒角色。",
-        "進一步有新offer將audio改sendrecv、Port42000，只有相應answer接受且生效後才更新期待。舊Port仍有遲到包不能無條件套新狀態。維護記錄每版媒體條件與生效邊界，便能解釋爲何同樣IP卻新的filter看不到資料，或爲什麼舊回覆覆蓋新映射。"
+        "SDP 是 session description 的文字格式。`c=` 提供連線位址；`m=` 列出媒體類型、媒體接收 port、傳輸 profile 和格式編號；媒體層 `a=` 屬性為特定流補充方向或格式對應。本例的 A 希望在 192.0.2.10:40000 接收媒體，B 希望在 198.51.100.20:41000 接收。port 是各自宣告的接收位置，不是代表固定由 offerer 發送。",
+        "RTP payload type 0 在此選用的 RTP/AVP profile 中代表 PCMU；111 是動態編號，本例透過 `a=rtpmap:111 opus/48000/2` 才知道它映射到 Opus、時鐘率 48000 及雙聲道參數。answer 保留 0 和 111，表示此媒體流的格式清單。真正送哪個格式還取決於方向、協商規則及雙方後續行為。",
+        "範例刻意簡化：真實 SDP 可能有多個 m= 媒體區塊、session 層繼承、RTCP 位址／mux、安全媒體、ICE 候選、屬性順序差異或 B2BUA 改寫。本例兩端為文件位址而非可路由實機，所有內容都是合成教學資料。"
       ]
     },
     {
       "kind": "mechanism",
-      "heading": "變更與失配：再協商不是重新開始全部系統",
+      "heading": "同一 SDP 有 session 層與每一條 media 層",
       "paragraphs": [
-        "會話中修改可更新Port、方向、codec或其他條件。更新應針對對應dialog與協商版本，同時管理媒體Socket、解碼器和舊緩衝；不能把新SDP只存文本而不更新運行配置。資源切換期間可能同時見舊和新資料，需要產品明確選擇與清理策略。",
-        "Answer選擇不相容格式、遺漏必須參數、媒體順序配錯或使用錯誤範圍的c，都可能使協商失效。某些平臺會返回488等失敗；若軟件只按200前綴當成功而不驗證本文，會把有問題條件推進媒體階段。讀取機制能幫助你發現這一類錯誤，但正式容錯與擴展需要SDK合同。",
-        "能力同樣也會隨版本、授權或裝置不同而改變。不要看另臺主機支持某codec就替當前部署宣佈可用；需實際版本能力與成功協商。生產中可選擇保守共同格式或拒絕，但不能在不確認雙方支持時強制格式來「提升音質」。"
+        "SDP 先是 session-level 區段，接著可有多個 media-level 區段；`v=` 開始描述、`o=` 表示本次描述來源與版本、`s=` 是 session 名稱、`t=` 表示時間範圍，`c=` 可提供 session 預設連線資料。遇到 `m=` 後進入一條媒體流的上下文，該 m= 之後到下一個 m= 之前的屬性屬於這條流。media-level `c=` 或方向屬性可覆蓋/細化 session 預設。",
+        "因此不能把整份 SDP 當成「一個 IP/port」。若有 audio 與 video 兩條流，每條 m= 有自己的 port、format 和方向；answer 需要按 m= 對應位置處理。answer 對不接受的 offered stream 可用 port 0 拒絕該流；這不等於整個 SIP 呼叫被拒絕。",
+        "RFC 8866 定義 SDP 描述格式，RFC 3264 定義 SIP 等情境使用的 offer/answer 規則。SDP 本身不負責交換內容或建立網路路徑；本篇聚焦單播 RTP 音訊常見模式，不把 multicast、ICE、SRTP、視訊或廠商擴充的細節視為已涵蓋。"
       ]
     },
     {
-      "kind": "lab",
-      "heading": "實作：建立有效媒體契約表並覈對運行",
+      "kind": "mechanism",
+      "heading": "Offer/answer 是協商：各方向都以接收端來看端點",
+      "table": {
+        "caption": "在 sendrecv 合成案例中，兩條媒體方向各自有目的端",
+        "headers": [
+          "誰送 RTP",
+          "誰接收",
+          "依哪一份接收宣告推導"
+        ],
+        "rows": [
+          [
+            "A → B",
+            "B",
+            "B 的 answer：198.51.100.20:41000"
+          ],
+          [
+            "B → A",
+            "A",
+            "A 的 offer：192.0.2.10:40000"
+          ]
+        ]
+      },
       "paragraphs": [
-        "先用本章兩份給定的媒體欄位摘錄分別整理表：每個m、描述來源、有效c、接收Port、方向、格式、clock、參數。再打開mixed lab-a實際INVITE/200，確認A40000/B40002與PT0。不用先學全部Wireshark，你可按給定本文手算；工具只是驗證這些字段在合成檔真實存在。",
-        "變因一刪除audio媒體級c，讓它回到會話默認；變因二將video Port0恢復非零，重新說明哪些媒體應出現；變因三將answer方向從recvonly改sendrecv，分析是否與offer相容。每次變化只改一個條件，讓結果可歸因，不把全部SDP一起重寫。",
-        "驗收要求能從兩端描述推正確雙向或單向目的、找共同format、指出Port0與媒體覆蓋，並把宣告／實際bind／實際PT分成不同驗證。真實SDK未編譯協商，計算項目只驗證音訊單位；它不宣稱實現SDP parser。資源與協議依據分開，避免模型的PASS被誤讀成產品互通。"
+        "方向屬性是相對於寫出該屬性的端點：sendonly 表示該端要送；recvonly 表示該端要收；sendrecv 表示雙向；inactive 表示暫不送收該流。若方向屬性省略，依 SDP / offer-answer 的一般規則預設 sendrecv。若 A 的 offer 是 sendonly，B 的相對 answer 必須為 recvonly 或 inactive；不能直接逐字照抄方向。",
+        "媒體位址要先按協商後有效的 direction 判斷，再核對允許方向的 RTP。下方表格限定為 sendrecv，所以 A 發往 B 時目的地取 B answer 的 198.51.100.20:41000；B 發往 A 時取 A offer 的 192.0.2.10:40000。若 RTP offer 標成 sendonly，RFC 3264 規定該 offer 的位址與 port 間接表示 offerer 要接收 RTCP 報告的位置，不能當成反向 RTP 接收埠；本例也不因此允許反向 RTP。RTP/RTCP 的一般埠關係還可能被明示 RTCP port 或協商的 rtcp-mux 改變；本文只列出判讀原則，不從 m= port 推測沒有宣告的附屬流。",
+        "協商結果只是兩端形成的預期。NAT 可能改寫可達位置，ICE 可選擇候選路徑，中繼可能重新宣告媒體位置，SBC/B2BUA 可能替每條腿產生新的 offer/answer。除錯時要選對 SIP 腿並使用該腿最新有效的描述，之後再和實際 RTP 的目的地比對。即使 codec 相同，answer 也可能為該方向使用不同的 dynamic payload type；送出端須依 answer 所定的編號發送。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "格式編號需要映射；同一個 PT 數字不是所有通話都代表同 codec",
+      "paragraphs": [
+        "RTP header 的 payload type（PT）欄位只有 7 位。協商中的 m= 列出允許格式編號；靜態 payload type 可依選定 RTP profile 的既定對照表理解，動態編號要透過 rtpmap 等 SDP 資料映射到 codec 與 RTP clock rate。以本例而言 PT=111 只在這個 SDP 協商上下文中代表所映射的 Opus；另一通話的 PT=111 可能映射到另一個格式。",
+        "rtpmap 的時鐘率不是一定等於 PCM 的取樣率，也不是每秒送幾個封包。它提供 RTP timestamp 的計時基準；音訊 frame、每包持續時間和實際取樣配置要看 codec payload 格式與其他參數。fmtp 可表達格式參數，但參數定義依 codec 規格，不能把不認識的參數當通用旗標解釋。",
+        "程序讀碼時，確認它使用目前呼叫的有效 SDP mapping，而非全域 PT→codec 字典；重新協商後，對應表可能改變。把 PT 直接當作 codec enum 常造成一種難察覺的錯誤：RTP 封包都有到達，解碼器卻依錯誤格式處理。"
       ]
     },
     {
       "kind": "diagnostic-case",
-      "heading": "協商看來成功卻codec錯：從候選到有限修正",
+      "heading": "SDP 看似成功但一邊無聲：先定位第一個不一致",
       "paragraphs": [
-        "症狀A收到媒體但解碼錯誤。候選包括實際PT與SDP不符、動態map舊緩存、fmtp參數不相容、加密payload誤作明文或數據損壞。先覈對本dialog最新有效answer、媒體方向及payload第一字段，不只查全系統默認codec。",
-        "追加證據：前一通PT96=Opus，當前通PT96=另一教學格式，解碼器仍按舊Opus。端點與包數正常，這支持映射生命週期問題。有限修正按會話／世代重建PT映射和解碼配置，正確釋放舊對象。不能把PT96全球改成某格式解決一通後破壞另一通。",
-        "迴歸包括同時不同會話、快重撥、再協商、拒絕格式與斷線。驗證每通SDP、實際PT、解碼輸入輸出及播放一致，協議失敗應可正確報告。若沒有證據說明映射錯誤，保留加密、參數與損壞候選，用數據區分；不要一看到decode error就認定網絡慢。"
+        "合成案例：A 和 B 的 INVITE/200/ACK 正常，兩份 SDP 都列 PT 0、111 且方向 sendrecv。B 的 answer 宣告接收位置 198.51.100.20:41000。A 的送出 capture 顯示 RTP PT 111、目的 198.51.100.20:42000；B 的接收端看不到該流。最早的可見不一致是 A 送出的目的埠和目前有效 answer 不符，尚不需要先猜 codec 或喇叭。",
+        "先排除抓到另一條 fork/B2BUA 腿或過期 offer/answer：比對 Call-ID/dialog、時間、SDP 版本與轉送／中繼改寫。若確定是同一媒體流且沒有有效中繼改寫，檢查呼叫端 mapping 是否使用舊 answer、目的 port 是否取錯 SDP m=。修正後核對新封包目的及 B 的抵達結果。",
+        "若目的端點吻合但 B 仍收不到，SDP 不一致假說已弱化，下一步調查媒體路徑、防火牆、NAT、候選連線與觀察點。若 B 收到了而 PT mapping 和 answer 不一致，轉查 decoder mapping。任何一條都應由新增證據來改變優先級，不以『SDP 有文字』當協商成功的充分條件。"
       ]
     },
     {
       "kind": "maintenance",
-      "heading": "讀ICD與源代碼時把字段變成工程約束",
+      "heading": "建立可維護的媒體契約摘要",
       "paragraphs": [
-        "真實維護查文檔哪些字段由SDK生成、哪些由應用填、更新事件在哪線程、Port何時分配與釋放。找實際綁定結果而非只讀配置文件，找當前dialog映射而非全局常量。若使用廠商類型，不用教材虛構類替代；這裏只提供可遷移的檢查關係。",
-        "報告應寫本次媒體契約與運行差異，例如「有效answer宣告B43000 PT8，但發端仍發送PT0，優先追協商到encoder映射」。這比「SDP錯了」讓外行也知道前因後果。附原始關鍵行、版本與時間，完整消息可在授權資料保存，公開教材用虛構地址。",
-        "當新規範如ICE/SRTP出現時，先知道它影響可達路徑、安全profile或payload解釋哪一層，再查具體字段。基礎完整就不用把每個擴展當另一個無法串起來的名詞；你已經有能力從描述、協商、執行三種狀態逐項取證。"
+        "讀既有專案或抓包時，可將每條 media line 摘成：來源 SIP 腿與 offer/answer 代次、media 序號和類型、該端允許方向、接收位址／port、profile、PT→encoding/clock/parameters、RTCP 條件。把兩端各自的接收目的分行，再對照實際 RTP 的來源／目的、PT、SSRC 和時間窗。",
+        "重新 INVITE 或 UPDATE 可能導致新 offer/answer；新協商完成前後的有效描述需按協定時序判斷。舊埠可能在短時間仍有封包，觀察到新舊流並存不一定是 parser 錯，也可能是切換重疊。程式應將解析結果綁到呼叫世代與生效時刻，避免一個全域設定被新舊呼叫共用。",
+        "這篇不教如何用 Wireshark 點選欄位或 dissector；那些操作屬於 Wireshark 主題。它只交代需從工具匯出哪些協定證據，以及欄位能支持哪一個媒體預期。"
       ]
     }
   ],
   "exercises": [
     {
       "level": "foundation",
-      "question": "能力表支持Opus是否足以證明本次用Opus？",
+      "question": "合成片段：A 的 offer 有 `m=audio 40000 RTP/AVP 0 111`；answer 有 `m=audio 41000 RTP/AVP 0`。被呼叫端只接受了 PT 0。哪個方向使用 port 40000，哪個使用 41000？",
       "answer": [
-        "能力是可能選項，本次需以有效offer/answer及運行payload確認。",
-        "查最終PT映射與encoder/decoder，不拿全局默認填空。",
-        "確認媒體方向與生效版，測試同時不同協商不會互相覆蓋。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "SDP Port是宣告接收還是證明已監聽？",
-      "answer": [
-        "通常宣告希望接收位置，不證明實際Socket已bind。",
-        "需覈對運行端點、實際發送目標及接收觀測。",
-        "如果宣告與bind不一致，追配置生成與生命週期而非只加filter。"
+        "這兩個 port 都是該端宣告的 RTP 接收位置。",
+        "A→B 的目的為 B answer 所給的 port 41000；B→A 的目的為 A offer 所給的 port 40000。",
+        "answer 只保留 PT 0，表示本例只協商該格式；實際封包仍要核對是否遵循此結果。"
       ]
     },
     {
       "level": "application",
-      "question": "新資料：會話c=10.4.0.1，audio c=10.4.0.2/Port44000，video無覆蓋/Port45000。列各接收點。",
+      "question": "新 SDP：offer `m=audio 30000 RTP/AVP 0 101`、`a=rtpmap:101 opus/48000/2`、`a=sendonly`；answer `m=audio 31000 RTP/AVP 0 101`、`a=rtpmap:101 opus/48000/2`、`a=recvonly`。這條流預期誰送、誰收？PT 101 代表什麼？",
       "answer": [
-        "audio媒體覆蓋，所以10.4.0.2:44000；video繼承10.4.0.1:45000。",
-        "這些是該描述方的接收，不是發送目標自動等自己。",
-        "結合另一方answer推兩方向，再覈對實際媒體。"
+        "Offerer A 是 sendonly，Answerer B 是 recvonly，因此預期媒體方向為 A→B。",
+        "兩端的 rtpmap 都將 PT 101 映射為 Opus/48000/2；動態 PT 不是全域固定 codec 編號，answer 也需明列動態 payload 的映射。",
+        "B 的 answer port 是 B 的 RTP 接收位置 31000；用新捕獲的 PT 101 和目的地核對此預期。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：offer formats0,8；answer只有8、Port46000；sender實際PT0。問題怎樣定位？",
+      "level": "reasoning",
+      "question": "兩份不同呼叫都使用 PT 111；一份 SDP 映射到 opus/48000/2，另一份映射到 telephone-event/8000。用單一固定 PT→codec 字典解碼會有什麼問題？",
       "answer": [
-        "共同選擇PT8，actual PT0不符合給定有效條件。",
-        "查offer/answer到encoder映射，不能以payload長度相同判正確。",
-        "修正後驗證PT8/PCMA、clock與解碼，迴歸不相同format的另一通。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：A offer sendonly，B answer recvonly。哪個方向應有媒體？",
-      "answer": [
-        "A發送、B接收；A送到B宣告的接收端點。",
-        "B→A沒有媒體符合給定協商，不直接稱單向故障。",
-        "若產品想雙向，應重新相容協商並驗證，不僅開放端口。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：動態PT110在通話一映射Opus48000，通話二映射不同格式。全局字典PT110=Opus可用嗎？",
-      "answer": [
-        "不合適，動態映射限定會話，數字不是全系統永久編碼。",
-        "按dialog／媒體世代存各自映射，依據有效SDP建立解碼器。",
-        "測試併發與重撥，確認舊狀態不泄入新通；代碼API查具體SDK。"
+        "同一 PT 值在不同協商上下文可有不同映射；全域字典可能把一通的 payload 誤解成另一種格式。",
+        "應按對應呼叫、媒體流及生效 offer/answer 建立 mapping，再用其判斷 RTP payload。",
+        "回歸測試要同時載入兩通 SDP 並驗證各自封包解讀，避免共享設定互相覆蓋。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "新資料：answer video m=0，audio正常，video無包但audio可聽。先修防火牆嗎？",
+      "question": "合成觀察：有效 answer 宣告接收埠 41000，但本機 RTP 持續送到 42000；對端無封包。最小下一步檢查是什麼？",
       "answer": [
-        "不優先，Port0表明視頻被拒絕，不應期待原video流。",
-        "查能力與協商原因是否符合產品意圖，保留audio成功。",
-        "若需視頻，處理能力或協商後再驗證實際媒體，不把預期缺包當網絡故障。"
+        "先確認 answer 與本機封包屬同一 dialog/媒體腿且沒有中繼改寫或後續重新協商。",
+        "若相同且沒有有效改寫，追呼叫程式如何解析並選擇目的 port，修正後再對照新的目的欄位。",
+        "若腿或時間不一致，先修正關聯取證；若目的正確仍收不到，再查路由與觀察點，不先改 codec。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "重連後新SDP Port48000，程序仍監聽舊47000。給修正與迴歸。",
+      "level": "application",
+      "question": "合成 answer 將第二條 `m=audio` 的 port 設為 0，第一條 audio 保持 40000。可推論整通 SIP 呼叫被拒絕嗎？",
       "answer": [
-        "證據支持協商條件與運行資源不同步，追端點分配和更新事件。",
-        "按有效新條件重建或更新媒體Socket並清理舊資源，依SDK契約。",
-        "迴歸初次、重連、快切與遲到舊媒體，確認正確bind、目的PT及播放。"
+        "不能只由一條 m= line 的 port 0 推論整通 SIP 呼叫失敗；offer/answer 用 port 0 表示該媒體流被拒絕。",
+        "核對其他 m= 區塊、SIP 回應以及產品是否要求第二條媒體流。",
+        "若應用預期雙流，修正或調查該流協商；若第二條是可選功能，第一條媒體可能仍可運作。"
       ]
     }
   ],
   "recap": [
-    "能按會話級與媒體級範圍讀c、m、rtpmap、fmtp與方向。",
-    "能根據offer/answer推導接收端點及相容格式，而非只找一個Port。",
-    "能識別協商失敗、舊SDP覆蓋及媒體宣告與實際綁定不一致。"
+    "SDP 描述 session 與多個媒體流；offer/answer 規則決定每個流接受的格式與相對方向。",
+    "m= port 和 c= 位址表達該端接收的位置；每個發送方向使用接收方的有效描述推導目的地。",
+    "動態 PT 必須以當前呼叫的 SDP mapping 解讀；宣告可用不等於封包可達或解碼成功。"
   ],
   "sources": [
     {
-      "label": "IETF RFC3264：媒體Offer/Answer",
-      "url": "https://www.rfc-editor.org/rfc/rfc3264.html"
-    },
-    {
-      "label": "IETF RFC8866：SDP格式與字段",
+      "label": "IETF RFC 8866：SDP 描述格式，取代 RFC 4566",
       "url": "https://www.rfc-editor.org/rfc/rfc8866.html"
     },
     {
-      "label": "IETF RFC3551：音頻RTP profile與格式",
-      "url": "https://www.rfc-editor.org/rfc/rfc3551.html"
+      "label": "IETF RFC 3264：Offer/Answer 接受、拒絕、方向與 RTP 格式對應",
+      "url": "https://www.rfc-editor.org/rfc/rfc3264.html"
     },
     {
-      "label": "IETF RFC7587：Opus RTP映射",
-      "url": "https://www.rfc-editor.org/rfc/rfc7587.html"
+      "label": "IETF RFC 5761：RTP/RTCP mux，僅在雙方協商相應行為時適用",
+      "url": "https://www.rfc-editor.org/rfc/rfc5761.html"
     }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/voip-maintenance-lab.zip",
-      "label": "VoIP獨立計算與WAV示範（.NET10）",
-      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
-    }
-  ],
-  "studyTime": {
-    "reading": [
-      13,
-      22
-    ],
-    "practice": [
-      35,
-      55
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

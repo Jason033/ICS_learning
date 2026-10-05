@@ -1,251 +1,147 @@
 {
-  "contentVersion": 2,
-  "intro": "接通只完成控制的一部分，聲音還必須走過取樣、路由、通話附著、傳輸、接收與播放。本章從數位聲音最基本的資料形態建立兩條完整路徑，再解釋Ozeki的Connect、AttachToCall與Start各負責什麼，讓單向無聲能被定位到具體機制。",
+  "contentVersion": 3,
+  "intro": "資料圖確定後，還要決定一個來源要送去哪裡、多個來源如何進同一輸出，以及錄音要聽哪一段。這些是不同拓樸，不能都用多呼叫 `Connect` 代替。Ozeki 的公開版本曾使用 AudioMixer，後續發行紀錄又列出多來源直連能力；本章先教你選對資料圖，再教你用實際版本驗證轉送。",
   "prerequisites": [
-    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
-    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
+    "已能用箭頭標來源到接收端的資料方向。",
+    "已查閱本地 API 版本；本章 1.8.12 方法及 11.0.0 發行紀錄都只是各自版本證據。"
   ],
-  "studyTime": {
-    "reading": [
-      15,
-      25
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 media 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
-  },
   "goals": [
-    "把麥克風資料、sender、通話、receiver和喇叭畫成有方向的圖。",
-    "說明取樣率、樣本格式、音訊區塊、codec與RTP的不同。",
-    "區分沒有資料、路由錯誤、附著錯通話、協商／網路與播放問題。"
+    "區分一對一、一對多分流、多對一合流/混音及錄音支路。",
+    "從 Connect 呼叫及物件型別還原媒體圖。",
+    "設計能分別驗證每條支路內容與生命週期的測試。"
   ],
   "sections": [
     {
-      "heading": "聲音進程式後，先成為一串有格式的數字",
-      "kind": "concept",
-      "paragraphs": [
-        "空氣振動由麥克風與音效裝置轉換為數值。取樣率表示每秒取多少個時間點，位深描述每個樣本數值的精度／表示，聲道數描述每個時間點有幾個通道。例如16kHz、16-bit、mono的PCM，每秒16000個樣本、每個2byte，約32000byte；這只是未壓縮樣本，不是所有通話都採用的格式，也不是實際網路流量。",
-        "程式通常不會一個樣本一個樣本跨模塊通知，而是把一段時間的資料組成區塊。20ms區塊在上述格式有320個樣本、640byte；每秒約50個區塊。資料有格式，接收端才知道這些byte怎麼解釋；拿16k數據用8k播放，時間和音高就可能錯。codec可將樣本編碼成較少資料，解碼恢復可播放樣本，所以PCM數量不能直接套到G.711、Opus或其他編碼的RTP負載。",
-        "“有資料”還不等於“有可用聲音”。靜音樣本也有byte數，錯誤裝置可持續輸出零值，削波失真或取錯聲道也可能有流量。維護觀察至少分存在性、格式、音量與內容；不能只看bytes_sent增加就保證遠端聽得清。聲音路徑要一路保留這些不同性質，才能把音訊故障解釋清楚。"
-      ]
-    },
-    {
-      "heading": "媒體圖是資料流，Connect的參數有方向",
-      "kind": "concept",
-      "paragraphs": [
-        "Ozeki MediaConnector將來源輸出連到目標輸入。官方通話教學用Connect(microphone, mediaSender)和Connect(mediaReceiver, speaker)。第一個參數是資料從哪來，第二個是去哪；將參數倒過來不是建立雙向連接。sender對本端是發往通話的入口，receiver是從通話接收資料的出口，名字要從本端視角解讀。",
-        "一條發音路是麥克風→sender→這通call→編碼／RTP→對端；一條聽音路是對端→RTP／解碼→這通call→receiver→喇叭。兩條可以分別故障。例如sender附著正確但mic沒Start，我方聽到對方而對方聽不到我；receiver有網路資料但未Connect到speaker，本機不出聲而我方發音可能正常。只說“音訊壞了”會把方向丟掉。",
-        "資料圖也可能加入錄音、播放器、音量處理或混音元件。維護時每新增一個節點就追它的輸入輸出格式、啓動條件與owner。多個來源接到一個目標不一定是業務想要的混音；重復Connect是否去重取決於真實SDK契約，不能假設重復指令無害。圖中的一條邊，是一條程式實際執行過且仍有效的關係，不是畫面上有圖標就存在。"
-      ],
-      "image": {
-        "src": "./assets/diagrams/ozeki-media-directions.svg",
-        "alt": "發送與接收兩條音訊路徑，分別標示Connect、Attach及Start。",
-        "caption": "原創教學圖；依實際版本及物件所有權核對。"
-      }
-    },
-    {
-      "heading": "Connect、AttachToCall、Start是三個不同開關",
       "kind": "mechanism",
+      "heading": "連線表示路由，不等於混音或複製的保證",
       "paragraphs": [
-        "Connect建立本機元件之間的資料路徑；AttachToCall把PhoneCallAudioSender/Receiver和一個特定IPhoneCall關聯；Start啟用設備／來源。一個完整路徑必須同時滿足路由存在、附著歸屬正確、來源工作、通話處於可用媒體階段。把所有條件壓成mediaReady=true，會使故障時不知道哪個條件沒成立。",
-        "官方通話教學在核心初始化時連接設備與sender/receiver，通話Answered後將媒體處理器AttachToCall，結束後Stop與Detach。這是一個單通、可重用裝置模型；另一些範例在通話時才連接，結束時Disconnect。兩種生命週期都可以有自己的用途，但不能把前一種“只Connect一次”與後一種“每次Disconnect”混搭，否則第二通沒有再連接。",
-        "AttachToCall也不會替你選對物件。全域call被覆蓋後，舊Answered回呼若用全域call，就可能附到新通；相反地，重撥時忘記Detach會把sender留在舊通。應由session保存call和媒體關係，並把本次事件與它對齊。真實資源可全局或每通建立，但你的設計必須說明“哪一層重用、哪一層每次更新”，才能安全清理。"
-      ],
-      "code": {
-        "title": "官方已核對的雙向接線與附著，閱讀用",
-        "text": "connector.Connect(microphone, mediaSender);\nconnector.Connect(mediaReceiver, speaker);\nmediaSender.AttachToCall(call);\nmediaReceiver.AttachToCall(call);\nmicrophone.Start();\nspeaker.Start();"
-      }
-    },
-    {
-      "heading": "SDP與RTP把本機圖連到遠端圖",
-      "kind": "concept",
-      "paragraphs": [
-        "SDP是會話描述：可包含媒體類型、目的IP、port、傳輸方式、編碼及方向屬性。它是雙方協商的輸入，不是實時聲音資料。RTP包含負載類型、序號、timestamp和來源識別等字段，搬運編碼後的媒體。RTP序號幫助觀察漏包/亂序，timestamp表示媒體時間關係，不是封包到達的牆鐘時間；讀取時要按對應編碼的clock rate解釋。",
-        "看到雙向UDP流量不能立即確認都是本通可用RTP：可能抓到別的通話、RTCP、其他服務或不支持負載。要用SDP和端點、SSRC、負載格式與時間序列配對。動態payload編號需看SDP映射，不是所有96都同一種codec。端點收到包也不保證成功解碼、沒有延遲丟棄或播放到正確裝置，傳輸證據只能覆蓋它的觀測範圍。",
-        "這層解釋了兩種不同“單向”。本機圖缺一條邊時，即使網路可達也發不出有效聲音；SDP對端地址不適合實際路徑時，本機圖全對仍可能送錯地方。修圖與修網路是不同操作。先建立每方向至少一項來源證據、通話附著、發送/接收證據與播放證據，就能判斷該把問題交給應用、裝置還是網路配置。"
+        "MediaConnector 的角色是建立 sender 到 receiver 的有向連線。Ozeki 1.8.12 參考把 `Connect(IAudioSender, IAudioReceiver)` 定義為單向資料流；API 頁亦列 `Disconnect` 和 `Dispose`。讀到一行 Connect，只能先推論程式嘗試建立這條邊；實際連線狀態與資料是否抵達，仍需分開觀察。",
+        "一對多是「一個來源送往數個接收端」，例如麥克風同時預監聽與錄音；多對一是「多來源送到同一接收端」，例如語音與提示音進同一喇叭。前者要確認每支路都收到；後者要確認接收端或中間節點支援多來源，以及 SDK 如何合併它們。兩種拓樸的故障點不同。",
+        "分流將同一來源送往多個目的地；混音產生同時含有多個來源的新資料流。錄音器若接在混音前，能保存分離的來源；接在混音後，保存的是合流結果。先定義「要錄什麼」，再選接線位置。"
       ]
     },
     {
-      "heading": "例題一：算出每個音訊區塊，避免把資料單位看錯",
       "kind": "worked-example",
+      "heading": "一個來源的監聽與錄音是兩條支路",
       "paragraphs": [
-        "輸入是16kHz、16-bit、單聲道、每區塊20ms。計算樣本數16000×20/1000=320，每樣本16/8=2byte，區塊320×2×1=640byte，每秒1000/20=50塊，所以原始PCM速率32000byte/s。假設本地採集10秒且不斷流，約500塊、320000byte；這些結果可以作為自制採集模型的檢查。",
-        "如果紀錄寫frames=500，先查frame定義是“音訊區塊”還是“每個時間點的多聲道樣本”。兩種意義差幾百倍。再假設改成雙聲道，樣本時間點仍320、區塊byte數變1280；取樣率改48k會變960個時間點。下列完整C#算例把單位放進變量名，避免將ms當秒或bit當byte。",
-        "這不是Ozeki官方固定格式，也不是帶寬預測。codec、封包頭、加密、靜音抑制、重採樣和緩衝會改變傳輸觀察。因此維護用數字時須先記錄“測在哪個節點、單位是甚麼”，才知道640byte應出現在採集端還是根本不該出現在RTP端。數字使模型可驗證，但必須和角色一起解釋。"
+        "需求：本機測試麥克風，同時由喇叭監聽、寫一份診斷錄音。拓樸是 `mic → speaker` 和 `mic → recorder`。speaker 接上並不代表 recorder 自動有資料；兩條邊及各自的啟動、停止和完成條件都要確認。喇叭也可能把聲音重新送回麥克風形成回授；connector 成功不等於環境安全或音質正常。",
+        "Ozeki 教學說來源可以接到一個或多個目的端；但發行記錄在 10.4.58 特別列出多接收端情境曾出現轉送缺陷。這說明概念拓樸不能取代版本核對。用目前 DLL 做已知來源測試，分別驗證 speaker 是否可聽和錄音檔是否有正確內容。",
+        "若錄音檔持續增長、喇叭沒聲音，來源至少到達錄音支路；優先查分叉後的 speaker 邊、啟動狀態和選定裝置。若兩邊都沒資料，回到共用來源查。錄音檔存在只證明檔案被建立，還需確認內容與關閉後的可解析性。"
       ],
       "code": {
-        "title": "可獨立在 .NET10 Console 執行的完整算例",
-        "text": "int sampleRateHz = 16000;\nint bitsPerSample = 16;\nint channels = 1;\nint blockMs = 20;\nint samplesPerChannel = sampleRateHz * blockMs / 1000;\nint bytesPerBlock = samplesPerChannel * (bitsPerSample / 8) * channels;\nint blocksPerSecond = 1000 / blockMs;\nConsole.WriteLine($\"samples={samplesPerChannel} bytes={bytesPerBlock} blocks/s={blocksPerSecond}\");\nConsole.WriteLine($\"rawBytes/s={bytesPerBlock * blocksPerSecond}\");\n// samples=320 bytes=640 blocks/s=50; rawBytes/s=32000"
+        "title": "一來源、兩接收端",
+        "text": "                         ┌→ Speaker（本機監聽）\nMicrophone（source） ────┤\n                         └→ Recorder（檔案）\n\n概念圖。兩條 Connect 不保證兩個支路皆收到；需按本地版本驗證。"
       }
     },
     {
-      "heading": "例題二：控制正常，但發送方向的邊接反了",
-      "kind": "worked-example",
+      "kind": "mechanism",
+      "heading": "多來源進同一輸出：區分舊版 mixer 和新版合流",
       "paragraphs": [
-        "輸入LabMedia先Connect(sender,mic)、Connect(receiver,speaker)，Attach C1並Start。本機圖中mic→sender不存在，而receiver→speaker存在，因此Tx(C1)=false、Rx(C1)=true。這個邏輯只檢查模型路徑，不是用真實麥克風發聲。控制call是否Active與邊方向不同，畫面可能接通卻只有聽音路徑。",
-        "修正不是再Start十次，而是把發音邊改為mic→sender；完整正常模型應Tx與Rx都true。另一種失敗是方向全對但AttachSenderOnly，此時Tx=true、Rx=false，原因在附著。兩者都可以“其中一方沒聲音”，但缺失條件與修正完全不同。下列程式用斷言明確比較這些狀態。",
-        "真實SDK若Connect參數類型能防止反向，它可能編譯或運行時拒絕而不是靜默無聲；Lab故意允許字串邊，是為了展示圖的規則，不模擬具體例外。未來維護代碼應核對類型與錯誤結果，把它們加到圖上。你要學會的是從完整路徑推導方向，再用實際API契約判斷錯誤表現。"
+        "要讓麥克風與提示音同時出現在喇叭，1.8.12 公開資料示例為 `mic → mixer`、`tone → mixer`、`mixer → speaker`。AudioMixerMediaHandler 是獨立音訊 handler，公開建構資訊帶有混合格式與 packetization time。實際格式相容、緩衝、增益與延遲仍需查對應版本。",
+        "Ozeki 發行紀錄中的 11.0.0 又提到多來源可直接接目的端而不需 mixer。這不是說舊程式錯，而是表明拓樸和 API 會演進；閱讀程式要知道它跑哪個版本。更新版不應照抄舊 mixer，也不應在舊版任意刪掉它，必須對照變更說明和測試。",
+        "兩個來源各自 Connect 到 speaker，不必然等於混音：實作可能拒絕第二條連線、覆蓋、競爭或按版本合流。可先單獨播放每個來源，再依文件接線，使用可辨識內容驗收兩者同時存在。不要為了聽感問題盲目加 mixer，因為它也會增加狀態與生命週期。"
       ],
       "code": {
-        "title": "完整方向／附著對照；對應media情境",
-        "text": "using var wrong = new LabMedia();\nwrong.Connect(\"sender\", \"mic\");\nwrong.Connect(\"receiver\", \"speaker\");\nwrong.Attach(\"C1\"); wrong.Start();\nConsole.WriteLine($\"tx={wrong.Tx(\"C1\")} rx={wrong.Rx(\"C1\")}\"); // False True\nusing var right = new LabMedia();\nright.Connect(\"mic\", \"sender\");\nright.Connect(\"receiver\", \"speaker\");\nright.Attach(\"C1\"); right.Start();\nConsole.WriteLine($\"tx={right.Tx(\"C1\")} rx={right.Rx(\"C1\")}\"); // True True\nConsole.WriteLine(right.Tx(\"C2\")); // False，附著仍是C1"
+        "title": "多對一概念圖與版本差異",
+        "text": "Microphone ──→┐\n               ├→ Mixer／合流節點 → Speaker\n提示音來源 ───→┘\n\nOzeki 1.8.12 參考有 AudioMixerMediaHandler；\n發行紀錄 11.0.0 記載多來源可直連。先核對本地 DLL。"
       }
     },
     {
-      "heading": "沒有聲音、斷音、延遲各有不同資料特徵",
-      "kind": "concept",
+      "kind": "code-reading",
+      "heading": "從 Connect 呼叫重建實際圖與資源責任",
       "paragraphs": [
-        "完全無聲可從資料是否產生開始查；斷音則要比較持續性、格式與播放節奏。以20ms區塊為例，來源每秒50塊，處理端暫時只能每秒40塊，佇列若不丟就每秒多10塊，相當積累200ms媒體。音訊最終仍到達，但越講越延遲。平均吞吐恢復後未必立即清掉積壓，所以“網路沒掉包”也不能排除本地佇列問題。 這裡的200ms是新增積壓的媒體內容時長，不是牆鐘上的排空時間。若停止新輸入、保持每秒40塊的消費速率，10塊要用10/40秒＝250ms排空；繼續輸入50塊/s時則不會排空，而會持續增加。實際播放等待還受既有積壓、其他緩衝與播放策略影響。",
-        "網路到達間隔變化可由jitter buffer平滑，但緩衝增大也增加延遲；遲到資料可能被丟棄，因為實時對話不能無限等待。sender/receiver有資料不保證資料來得及被用。SDK內部緩衝策略需查支持的配置與統計，不能憑一個流量圖就任意提高緩衝。先測源頭節奏、傳輸到達、處理耗時和輸出時序，才知道瓶頸在哪裡。",
-        "削波、音量低與靜音是另一類。若採集非零但遠端幅度一直低，查增益與格式，不先改port；若只在打開某裝置後故障，查裝置選擇與獨佔使用。基準測試用可辨識測試語音／已知錄音，標明正常音量與兩端觀察。不能只用“我聽起來還可以”作為長期驗收，尤其第一秒被截掉或恢復後延遲會漏測。"
-      ]
+        "在 C# 專案先找 handler 建立處，再把每個 `Connect(a,b)` 翻成 `a → b`。`IAudioSender`/`IAudioReceiver` 可幫你檢查方向；若公司 wrapper 把兩端都藏在同一個 `IAudioStream` 型別裡，就追介面與實作，不以欄位名稱猜。記錄 connector owner、每條邊何時建立與拆除。",
+        "接著找來源、處理器、speaker、recorder 誰負責 Start/Stop，錄音器何時完成與關檔。圖已存在但錄音檔仍可能不增長，因 recorder 未啟動；播放成功也不等於錄音寫入完成。應用紀錄最好包含操作 ID、來源 ID、handler ID、目的端 ID、格式及各自狀態。",
+        "下列程式只示範公開 1.8.12 API 的拓樸，不是可直接編譯的完整錄音器程式。真實 recorder 的建立與關檔 API、命名空間和當前版本需由本地 DLL 文件確認。"
+      ],
+      "code": {
+        "title": "Ozeki 1.8.12 API 的接線示意；不含建構與關檔",
+        "text": "connector.Connect(microphone, speaker);\nconnector.Connect(microphone, recorder);\n\n// 舊版採 mixer 的多來源示意：\nconnector.Connect(microphone, mixer);\nconnector.Connect(promptTone, mixer);\nconnector.Connect(mixer, speaker);\n\n// 每條線的方向是第一個參數 → 第二個參數。"
+      }
     },
     {
-      "heading": "第二通無聲：兩種生命週期設計不能混用",
-      "kind": "concept",
-      "paragraphs": [
-        "設計甲是設備、connector、sender/receiver長期存在；每通只Attach、Start，結束Stop、Detach。設計乙是每通新建整組媒體，結束Disconnect/Dispose。若把甲的Connect只在初始化執行，結束卻Dispose connector或Disconnect全部邊，第二通仍重復Attach/Start而不重建路由，就形成第一通正常、第二通無聲。",
-        "另一種第二通故障是舊C1的終態晚到，把已附著C2的共用sender執行Detach。即使第二通重新Connect，它仍可能在下一毫秒被舊清理斷開。解決要先決定媒體所有權與session歸屬，舊C1只能清自己擁有或仍歸它的綁定。共用媒體必須明確切換協議，不可僅比較全局call!=null。",
-        "驗收應覆蓋連續三通、取消未接通、保持恢復、快速結束再重撥、舊事件晚到和程式關閉。每一步記錄邊數、附著目標、裝置啓用與物件是否已Dispose。數字可來自應用維護的路由記錄或SDK提供的統計；不能假設所有真實SDK都有Lab的EdgeCount。模型幫助你設計應該記錄的證據，實際接口再由當前組件確定。"
-      ]
-    },
-    {
-      "heading": "追碼實作：讓兩種單向故障產生不同失敗",
-      "kind": "lab",
-      "paragraphs": [
-        "執行media情境，在Connect、Attach與Tx/Rx判定設斷點，先手畫兩條路，再逐行驗證。將missing.Attach(\"C1\")修正行改成Attach(\"C2\")，預期C1雙向檢查失敗、C2可能符合附著；復原再只刪除receiver→speaker連接，預期接收路徑失敗。兩次故障需要不同證據才能區分，避免把任何失敗都稱“聲卡問題”。",
-        "接著運行lifecycle，觀察每個LabSession自己創建媒體，Ended後邊數0、handler0、DisposeCount1。若把media共享且在C1結束Dispose，預測C2無法Start，並說明此故障與不Connect第二通的差異。僅在臨時副本改造，不需要連接真實設備。最終復原all並寫“基準—變因—預期—實際—復原結果”。",
-        "真實環境映射時列出採集、路由、附著、RTP發送、RTP接收、解碼、輸出七個觀測位置，選目前能取得的證據。沒有內部解碼統計時可以用授權錄音或裝置回環補證，但不能把控制CallState當替代。練習結束應能解釋為甚麼每個節點存在、怎樣失敗和怎樣驗證，而不是只記住六行API。"
-      ]
-    },
-    {
-      "heading": "故障鑑別：對方聽不到我，但我聽得到對方",
       "kind": "diagnostic-case",
+      "heading": "用分叉點區分錄音正常、播放斷續",
       "paragraphs": [
-        "開始只有Active且本端可聽，不能決定原因。候選甲是採集端沒產聲：選錯麥克風、裝置未Start或靜音；候選乙是採集有資料但sender未Attach本通；候選丙是本機路由全對而網路媒體目的地或方向不符。補證按成本順序：記錄裝置ID/工作狀態與本地採集內容，接著sender附著目標，再比SDP與出站RTP。",
-        "資料集A顯示本地錄音清楚、senderCall=C8而當前C9、C9無出站媒體；修附著歸屬並處理C8清理。資料集B顯示senderCall=C9、路由存在，但採集值持續零、裝置ID是無輸入的虛擬設備；修裝置選擇或靜音，保留用戶正確設置。兩者同症狀，但A不能靠提高音量修，B不能靠重連PBX修。",
-        "驗收要兩端用已知語音逐方向測試，驗證C9數據與可聽內容；再重撥C10確認未回到舊物件。若本地採集與sender正確仍無遠端包，才繼續網路路徑，修正範圍需有對端證據支持。診斷是從完整聲音模型縮小候選，不是把所有不確定都列一遍而沒有下一步。"
+        "以下資料是合成練習，不是實機量測：Mic-A 每秒約 50 個區塊活動；Recorder-R 檔案持續增加且最後可解析；Speaker-S 有啟動紀錄，但輸出每隔一段時間停頓。這只能證明來源到 recorder 的支路有活動，不能推論 speaker 按時消耗了每一段資料。",
+        "比較分叉前後的活動計數和時間：若分叉前連續、錄音端連續，候選範圍轉向 speaker 邊、接收格式、緩衝和 OS 裝置；若兩支路同時缺資料，回頭查來源或分叉前處理。緩衝策略是 SDK/handler 的具體契約；增大緩衝可能減少欠載，也可能增加等待時間。",
+        "分別用固定提示音、麥克風來源做基準，先測單一來源再加第二來源。若只有多來源時失敗，檢查目前版本的多來源支援、connector 行為和升級說明。驗收要聽出兩種內容、檢查錄音結果，並覆蓋 Stop/Start 後重複接線的狀態。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【基礎】Connect、Attach、Start分別建立甚麼條件？",
       "level": "foundation",
+      "question": "分流、混音與錄音支路有何不同？",
       "answer": [
-        "Connect建立本機來源→目標路由，Attach把媒體處理器歸到指定通話，Start啓用設備/來源。",
-        "三者獨立：路由對但目標舊call仍可能失敗；附著對但來源沒工作也可能無聲。",
-        "按兩條方向逐項觀察，不用單一mediaReady代替。"
+        "分流是同一來源送往多個目的端，每條目的支路各自接收。",
+        "混音是多個來源合併成共同資料流，必須確認目的端或中間節點支援。",
+        "錄音器是接收端；接在混音前後會決定保存個別來源還是合流結果。"
       ]
     },
     {
-      "question": "【基礎】為甚麼receiver→speaker的sender/receiver從本端看？",
-      "level": "foundation",
-      "answer": [
-        "receiver是本端從通話收到資料的來源，speaker是本端輸出。",
-        "sender接受本端來源並送入通話，因此mic→sender。",
-        "畫箭頭能校驗方向，變量名稱不能代替實際連線。"
-      ]
-    },
-    {
-      "question": "【基礎】RTP包有負載且序號增加能保證聲音清楚嗎？",
-      "level": "foundation",
-      "answer": [
-        "只能說明某觀察點有相關傳輸，仍需匹配本通、編碼與可解碼資料。",
-        "靜音、格式不對、遲到丟棄或播放到錯裝置都可能有包卻無可用聲音。",
-        "補內容、節奏和輸出證據，不能把byte數當聽感。"
-      ]
-    },
-    {
-      "question": "【應用】24kHz、16-bit、mono、10ms區塊，算每塊byte與每秒塊數。",
       "level": "application",
+      "question": "麥克風需同時送喇叭與錄音器，畫出拓樸並給出兩個不同驗收。",
       "answer": [
-        "每聲道樣本24000×10/1000=240；每樣本16/8=2byte。",
-        "每塊240×2×1=480byte，每秒1000/10=100塊，原始48000byte/s。",
-        "這是PCM採集格式，不包含codec及網路頭，不能直接當RTP流量。"
+        "圖為 Microphone→Speaker 及 Microphone→Recorder。",
+        "用測試詞確認 speaker 可聽，再確認錄音檔持續增長、停止後可解析且含相同測試內容。",
+        "分開驗收是因一支路成功不能證明另一支路已連線。"
       ]
     },
     {
-      "question": "【應用】micStarted=true，邊mic→sender，SenderCall=C4，當前C5。還缺甚麼？",
-      "level": "application",
+      "level": "understanding",
+      "question": "為什麼舊版範例使用 mixer，而新版可能不需要？",
       "answer": [
-        "來源和路由存在，但sender歸屬舊C4，C5發音路徑未建立。",
-        "在正確session/狀態下Attach C5，同時讓舊C4清理不能Detach C5。",
-        "驗證C5發/收、C4資源結束、下一通重用，不僅檢查一次Start。"
+        "SDK 的多來源拓樸規則會隨版本演進；官方發行紀錄有記載 11.0.0 支援多來源直連。",
+        "舊程式要按舊版 API 契約理解，新程式則依本地版本和變更指南驗證。",
+        "不能把舊用法當成永遠必要，也不能因新版特性就盲目刪除舊 mixer。"
       ]
     },
     {
-      "question": "【應用】每20ms一塊，來源50塊/s、處理45塊/s，初始沒有積壓且不丟棄。5秒多多少塊和多少媒體內容時長？此時停止新輸入，保持45塊/s，排空這些積壓需要多久？",
-      "level": "application",
+      "level": "reasoning",
+      "question": "麥克風接到喇叭和錄音器，只有錄音有資料。如何安排下一步？",
       "answer": [
-        "每秒多50−45＝5塊，5秒積25塊。",
-        "每塊20ms，積壓媒體內容時長25×20＝500ms；這不是實際排隊等待或排空時間。",
-        "停止新輸入、服務速率固定45塊/s時，排空25塊要25/45秒≈556ms。若持續輸入50塊/s則仍會增長；實際播放延遲還取決於其他緩衝與輸出策略。",
-        "這是本地排隊模型；檢查處理耗時和緩衝政策，不能僅因網路沒丟包排除延遲。"
+        "錄音活動支持來源到該支路有資料，但不證明 speaker 邊存在或輸出裝置啟動。",
+        "檢查 speaker 連線、接收端狀態、裝置 ID 和格式；之後用已知提示音區分來源支路與播放裝置。",
+        "同時核對該版本多接收端行為，避免以抽象拓樸替代 API 契約。"
       ]
     },
     {
-      "question": "【診斷】A本地錄音正常但sender舊C1；B附著C2正確但採集零，均對方無聲。各修甚麼？",
       "level": "diagnosis",
+      "question": "兩個來源各自 Connect 到 speaker，第二個沒有聲音。你如何驗證它是否會混音？",
       "answer": [
-        "A查session切換與附著歸屬，修到當前C2並保護舊清理。",
-        "B查裝置選擇/Start/靜音與內容，不改已經正確的附著。",
-        "均用兩端已知語音和第二通回歸，記錄修正前後具體節點變化。"
-      ]
-    },
-    {
-      "question": "【診斷】第一次Connect、每次結束Disconnect，第二次只Attach/Start，無聲。與舊事件Detach如何區分？",
-      "level": "diagnosis",
-      "answer": [
-        "前者第二通開始就沒有有效本地邊，記錄顯示從未重建。",
-        "後者第二通邊和附著曾成立，舊終態到來後附著消失，需按事件時間和歸屬區分。",
-        "統一生命週期設計或限制舊清理範圍，回歸快速重撥與晚到事件，確保整通路徑持續存在。"
+        "先查當前版本是否支援多來源目的端，或要求專用 mixer；不要把第二條 Connect 當作成功證據。",
+        "分別播放兩個來源建立基準，再按對應版本文件組拓樸並同時播放可辨識內容。",
+        "觀察兩種來源的輸出和重複操作結果；必要時以隔離測試核對 DLL 行為。"
       ]
     }
   ],
   "recap": [
-    "聲音是一串有格式和時序的資料，存在、質量和可聽不同。",
-    "兩條方向都需路由、附著與來源工作，CallState不能代替媒體圖。",
-    "媒體重用要有完整生命週期，第二通與晚到清理是必要驗收。"
+    "先定義錄音目標，再決定錄音器接在混音前或後。",
+    "一對多、多對一的支援是 SDK 版本契約；用實際 DLL 文件和已知內容測試。",
+    "按分叉前後的證據定位故障，避免把一條支路成功當成全圖成功。"
   ],
-  "resources": [
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab.zip",
-      "label": "下載本主題完整 C# 教學專案",
-      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
-    },
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
-      "label": "下載自製 C# 事件與媒體模型原始碼",
-      "description": "完整專案由主題練習包提供；本章追讀 media，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
-    }
-  ],
+  "resources": [],
   "sources": [
     {
-      "label": "Ozeki：MediaConnector與AttachToCall",
-      "url": "https://voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
+      "label": "Ozeki 官方 MediaHandlers 教學：handler、MediaConnector、多目的端、混音與錄音拓樸；範例須按版本核對",
+      "url": "https://www.voip-sip-sdk.com/p_7536-how-to-use-media-handlers.html"
     },
     {
-      "label": "Ozeki：雙向設備與通話生命週期",
-      "url": "https://voip-sip-sdk.com/p_7537-how-to-make-and-accept-calls-using-sip-voip.html"
+      "label": "Ozeki MediaConnector API 參考（頁面標 OzekiSDK 1.8.12.0）：單向 Connect、Disconnect、Dispose 和格式轉換說明",
+      "url": "https://voip-sip-sdk.com/doc/html/fd3ef57a-c7f3-df17-509b-9d11890938e5.htm"
     },
     {
-      "label": "RFC3550：RTP序號、時間戳與交付邊界",
-      "url": "https://www.rfc-editor.org/rfc/rfc3550.html#section-5.1"
+      "label": "Ozeki AudioMixerMediaHandler API 參考（頁面標 OzekiSDK 1.8.12.0）",
+      "url": "https://voip-sip-sdk.com/doc/html/315fe8a4-449c-06a0-a5a8-c6c2721fde4d.htm"
     },
     {
-      "label": "RFC8866：SDP媒體與方向描述",
-      "url": "https://www.rfc-editor.org/rfc/rfc8866.html"
+      "label": "Ozeki 官方發行紀錄：10.4.58 註明多接收端轉送問題；11.0.0 註明多來源可不經 mixer，顯示拓樸規則依版本變動",
+      "url": "https://www.voip-sip-sdk.com/p_7021-download-ozeki-voip-sip-sdk.html"
     },
     {
-      "label": "Ozeki：音訊裝置支持",
-      "url": "https://voip-sip-sdk.com/p_7307-voip-audio-device-support.html"
+      "label": "Ozeki 官方 FAQ：早期將多來源透過 AudioMixer 接至單一目的端的範例",
+      "url": "https://www.voip-sip-sdk.com/p_7227-frequently-asked-questions.html"
     }
   ]
 }

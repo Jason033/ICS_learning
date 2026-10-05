@@ -1,243 +1,157 @@
 {
-  "contentVersion": 2,
-  "intro": "斷線是傳輸會話的變化；重連是建立另一條會話；業務恢復還要重建狀態與處理結果未知的命令。三件事分開，才不會重送出重複操作或讓舊回呼改壞新畫面。",
+  "contentVersion": 3,
+  "intro": "斷線只描述一條通訊會話不能再照原狀使用；它不會自動告訴程式最後一筆命令有沒有執行。維護重連程式要同時處理舊連線的退出、新連線的狀態同步、命令結果未知時是否可安全重送，以及舊回呼能不能改動新會話。本篇用一次會改變狀態的命令追完整個恢復流程。",
   "prerequisites": [
-    "框架章的EOF與半框；本章進一步區分傳輸結束和業務結果。",
-    "知道狀態變數；正文建立世代、所有權、冪等與恢復條件。"
+    "先看 Socket〈Client 與 Server 的收送流程〉的「把 Dispose 責任交給一個清楚的範圍」，以辨認哪個 session owner 應釋放哪個 Socket。",
+    "需要重看 EOF 與讀取例外時，回到 Socket〈TCP 與 UDP 的 Socket 呼叫〉的「TCP：只消耗這次讀到的範圍，送出則按 n 推進」；若故障發生在半框，補看 Socket〈訊息邊界與緩衝〉的「EOF、取消與長度錯誤必須分開處理」即可。",
+    "重連前先確認請求期限如何結束，可回看 Socket〈阻塞、逾時與可讀寫通知〉的「回覆和期限接近同時到達時，只能有一個最終結果」。"
   ],
   "goals": [
-    "區分半關閉、正常EOF、重置、靜默失聯和本機取消。",
-    "判斷斷線時請求結果可能確定或未知，選擇查詢與重試規則。",
-    "用連線世代、單一所有者和狀態同步驗證恢復完成。"
+    "從實際讀取結果或例外區分會話結束、請求逾時和本機停止。",
+    "把尚未送出的命令、已確認結果和結果未知分開，避免逾時後盲目重送。",
+    "判斷業務操作能否重複，以及服務端是否提供跨連線的去重契約。",
+    "以連線世代隔離舊回呼，並只在新會話完成必要同步後恢復 Ready。"
   ],
-  "studyTime": {
-    "reading": [
-      13,
-      21
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      45
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
-  },
   "sections": [
     {
-      "heading": "一條TCP連線有兩個方向",
+      "heading": "先判斷舊會話發生了什麼結束事件",
       "kind": "concept",
       "paragraphs": [
-        "每個方向是自己的串流。A完成請求後Shutdown(Send)，表示A不會再送更多bytes；B讀完已排隊資料後看到EOF，但B仍可往A送回覆。這稱半關閉。Dispose或Close則釋放本機Socket資源，不能繼續在這個物件上操作；是否還有未交付資料、是否使用abort/linger設定，會影響對方觀測，不能把所有Close都理解為相同的乾淨收尾。",
-        "EOF描述對方送出方向結束，並非報告「裝置關機」或「業務完成」。如果應用協定規定一連線一回覆並以EOF做內容終止，可以依此解讀；長度框架則還要判定EOF在框架間還是中途。相同n=0在兩套應用可以觸發不同上層結果，但傳輸事實相同。",
-        "重置通常以SocketException等錯誤暴露，表示這條連線不能按原流繼續；也可能是程式退出、abort、裝置重啟或網路中間節點行為。拔線或防火牆靜默丟棄則未必立即有EOF/錯誤，可能長時間等。TCP keepalive、傳輸重試與應用心跳各有計時和作用範圍，不能把沒有立即錯誤當作對方仍正常。"
+        "在 stream Socket 上，對正長度 buffer 的讀取回傳 0 表示對端正常結束了送出方向，且目前沒有更多資料可讀；若程式收到 SocketException，需按操作階段和錯誤碼分類，例如連線重置；若應用取消 token，則是本機停止該操作。三者可能讓 UI 最後都顯示「離線」，但程式需要執行的清理與診斷不同。EOF 結束的是對端送出方向；TCP 另一方向是否仍可用，要依既有應用協定判斷，不能看到單向 EOF 就一律假設雙向立即關閉。",
+        "請求期限到期也不等於 TCP 已斷線：可能只是沒有在業務期限內收到匹配回覆，舊連線仍可接收其他事件。反過來，Socket.Connected 只反映最近一次 I/O 時的狀態，不是即時健康探測；它回傳 true 不能保證下一次 I/O 一定成功。",
+        "讀碼時沿著真正完成的 API 呼叫、返回值或例外往下追，不依畫面旗標自行猜連線仍活著。若是 framing parser 尚有未完成資料，依訊息邊界篇決定能否續用；本篇不重教如何拼回框架。"
       ]
     },
     {
-      "heading": "為何Connected不是持續健康探測",
+      "heading": "斷線時，命令可能已執行但回覆還沒回來",
       "kind": "mechanism",
       "paragraphs": [
-        "Socket.Connected描述最近相關操作所觀測的連線狀態，不會不停詢問遠端業務。if(Connected)後遠端仍可立刻斷線，這是檢查與使用之間的競爭。實際Send/Receive仍必須處理錯誤、EOF和取消；先檢查旗標不能讓後續操作免除失敗處理。",
-        "應用活性要由約定的心跳、狀態查詢或業務回應觀測。心跳逾時說明未在期限內得到足夠證據，原因可能是斷線、對方忙、自己的接收停止或UI阻塞。建立健康指標時要註明測到哪一段：TCP通道、協定回應、業務進度或畫面顯示，不能以單一布林覆蓋所有維護責任。",
-        "持續監控也有成本。過短心跳與重連門檻可能在正常暫停下頻繁換會話，增加負載與狀態混亂；過長可能延後發現真正停機。門檻應根據正常延遲分佈、可接受故障偵測時間與協定約束，先記錄實際資料再調整，而非憑感覺選擇某個秒數。"
+        "假設客戶端送出 ToggleRelay，伺服器把繼電器由 OFF 改成 ON，隨後回覆在回程中遺失。客戶端只看見 Send 呼叫完成、等待期限到期。這些證據不能分辨「伺服器沒收到」、「伺服器收到但尚未處理」或「已執行、回覆未到」；這段結果應記為 Unknown，不能改寫成確定失敗。",
+        "可以按證據把命令分三類：傳送路徑尚未開始且本機明確拒絕的，才可記為 NotSent；收到協定定義的匹配完成回覆，才可記為 Confirmed 或 Rejected；傳送開始後沒有匹配結果，則保留 Unknown。TransportConnected、SendAsync 正常完成和 TCP ACK 都不是業務處理完成的回覆。",
+        "重連的目的不是把每個 Unknown 自動再送一次。若操作有副作用，重複可能改變狀態兩次；先查協定是否能用操作識別碼查詢結果、去重或安全地設定目標狀態。不能取得這些保證時，應保留未知並採系統明定的人工確認或補償政策。"
       ]
     },
     {
-      "heading": "會話恢復時快照與增量的銜接",
+      "heading": "重送能否安全，取決於操作效果與協定契約",
       "kind": "concept",
       "paragraphs": [
-        "新的TCP連線沒有舊連線業務事件的自動補送能力。若斷線期間裝置狀態變更，Connect成功只建立現在的傳輸；當前狀態可能仍停在斷線前。恢復可以請求完整快照、讀取持久事件或依協定重放，必須知道哪種資料可以覆蓋過去，哪種增量缺失會破壞累計狀態。",
-        "快照與事件也有競爭。假設快照版本40取到後，版本41事件先應用，隨後較慢的快照40返回又覆蓋狀態，畫面會倒退。協定可提供版本或原子訂閱/快照機制，客戶端按規則緩衝和排序；若沒有這些欄位，不能假造比較規則。維護者應找伺服器端的快照基準、事件序號和訂閱邊界，解釋它們怎樣銜接。",
-        "把所有新事件丟到Ready之後也可能丟關鍵增量；把所有舊事件接受又可能汙染會話。恢復期間的資料政策是狀態機的一部分，需要對應版本規則與緩衝上限。驗收故意製造快照慢、事件先到與斷線缺口，確認當前結果符合協定，而非只用裝置靜止時的快照驗證。"
+        "冪等描述重複執行的預期效果：將模式設定成 Night，若每次都把同一資源設成 Night，通常是冪等的；Toggle 每次都反轉狀態，重送兩次會回到原狀，並非冪等。實際系統仍要檢查這項效果是否會觸發額外脈衝、通知或一次性工作；命令名稱和 HTTP 類型都不能替公司協定證明它安全。RFC 9110 用 HTTP 方法說明這個效果定義；這裡只借用「預期效果能否重複」的概念，不能把 HTTP 方法保證套到未知的 Socket 協定。",
+        "分清三種識別值：connection generation 標記本機的第幾個會話；requestId 關聯某次請求與回覆；operationId 標記同一個業務意圖跨重試仍是同一件事。重連通常產生新 requestId 與新 generation；若伺服器支援去重，operationId 必須沿用原值，而不是為了新連線改成新操作。",
+        "相同 operationId 本身不會讓操作自動「只執行一次」。服務端協定必須明確承諾會辨認重複 ID、把執行與去重結果一致保存，並在重複請求時回覆原結果；還要確認該記錄保留多久、作用範圍是單一連線還是跨連線。沒有此契約，不可從客戶端重用 ID 推定服務端已去重。"
       ]
     },
     {
-      "heading": "TCP收尾狀態不等於應用故障",
-      "kind": "concept",
-      "paragraphs": [
-        "正常TCP終止要處理兩方向的結束與確認；系統可能保留TIME_WAIT等狀態以處理遲到傳輸段和避免舊連線資料混入新連線。看到netstat中的TIME_WAIT不是自動證明資源洩漏，更不應為消掉它強制abort所有Socket。應用物件已釋放與傳輸層暫存狀態是不同層的生命週期。",
-        "另一方面，大量長期CLOSE_WAIT可能提示對方已結束送出，而本機應用還沒執行自己的關閉責任，但還需對照實際協定是否允許半關閉、持續時間和程式資源。單個狀態快照不足以判根因，記錄數量隨時間與所屬PID，再檢查退出路徑。",
-        "重連失敗的本機Port複用、監聽繫結和linger行為又涉及平臺選項，不能任意開啟ReuseAddress當通用修復。教材使用系統暫時Port並明確定義所有權；真實部署若固定本機Port，必須查作業系統規則和供應商協定，再設計有限變動與回歸。"
-      ]
-    },
-    {
-      "heading": "重試間隔有上限，業務結果也要有上限",
+      "heading": "新 Socket 建立後，先恢復會話狀態再標成 Ready",
       "kind": "mechanism",
       "paragraphs": [
-        "教學重連延遲可規定base=200ms、cap=1600ms，第1..5次失敗後視窗為200、400、800、1600、1600。抖動在各視窗範圍內選等待值，讓多客戶不在同一毫秒一起重連；不得把這個示例當公司系統推薦設定。總恢復預算還包含Connect與同步本身，不能只把延遲視窗相加就宣告在期限內。",
-        "假設只允許總共5秒恢復，而前兩次Connect各用2秒，剩餘不到1秒時不能再開始一個2秒等待加無界同步。每步基於剩餘預算和停止token，失敗到達預算後保留明確不可用狀態及下一步，而不是背景繼續重試卻畫面已當停止。若政策允許長期重連，也必須有速率、停止與可觀測性。",
-        "重連嘗試次數與命令重試次數不是同一個計數。通道可以再建立，但結果未知命令不能在每次Connect成功後自動新ID重送。恢復所有者管理傳輸生命週期，業務協定管理操作對帳；兩層透過明確狀態合作，而非共用一個RetryCount就認為全部可靠。"
+        "新的連線是一個新的 transport session，不是舊 Socket 復活。常見應用狀態可表示為 Disconnected → Connecting → TransportConnected → Synchronizing → Ready；實際產品可能有登入、版本協商或設備初始化等額外步驟。Connect 成功只完成傳輸連線，不足以讓程式宣稱裝置目前狀態已同步。",
+        "如果伺服器提供狀態快照與後續增量事件，需依協定確認快照版本和事件序號連得上。若快照期間漏掉一段事件、版本跳號，或協定沒有證明連續性的方式，就重新取得狀態或標示未同步，不要把連線成功當成可安全操作。這是在重建應用會話，不是再排查 IP 或路由。",
+        "每次建立 session 時由本機增加 generation，並把該值放在該 session 的讀取工作、計時器和回呼上下文。收到事件時先核對它屬於目前活動的 generation；舊 generation 只能清理它自己的資源，不能改寫新會話的 Ready、目前 Socket 欄位或新請求結果。"
       ]
     },
     {
-      "heading": "結果未知的區間由證據決定",
-      "kind": "mechanism",
-      "paragraphs": [
-        "請求發出前本機序列化失敗且未Send，可確定這次沒有經由該路徑送出；但Send接受部分或全部後斷線，未得到回覆，不能判斷遠端是否執行。即使抓到TCP ACK，也只證明遠端傳輸堆疊收下那段，不證明業務完成。對只讀查詢可重新問；對切換或啟動命令，重複可能改變裝置兩次。",
-        "重試安全取決於操作定義。SetState(ON)在某些協定是冪等，重複仍為ON；Toggle則每次翻轉，兩次等於原狀態。命令名字不是證明，例如Set也可能觸發額外計數或動作。要看伺服器是否記錄operationId、重複相同ID如何處理、去重儲存多久，以及斷線或重啟後是否仍儲存。",
-        "若只有「啟動」指令而沒有查詢和去重，系統不能憑客戶端重試創造確定結果。維護者應將它標為結果未知並依協定/操作流程確認，而不是把超時改成成功或自動無限重試。本章重連工具只驗證傳輸恢復，不會對公司命令做任何重送。"
-      ]
-    },
-    {
-      "heading": "例題一：同樣沒有回覆，三種結果",
-      "kind": "worked-example",
-      "paragraphs": [
-        "操作op7是Toggle。時間線甲：本機Encode失敗，未Send；乙：Send完成，對方執行並在日誌記錄狀態ON，回覆丟失；丙：Send完成但對方沒有處理日誌，之後斷線。甲可依本次路徑確定未傳送；乙有遠端證據證明執行，不能因沒回復而再Toggle；丙則結果未知。",
-        "若對乙再用新ID傳送Toggle，狀態從ON回OFF，使用者會以為第一次沒成功，而實際上執行兩次。若伺服器約定相同operationId持久去重，同ID重試可得到原結果，但必須確認該約定及生命週期；換新ID不再是同一意圖。查詢當前狀態也有邊界：若別的使用者能同時改變，ON不必然證明就是op7造成。",
-        "可靠結論要結合操作ID、伺服器執行紀錄與版本/時間等關聯。修正可以是禁止在未知結果下自動新ID重送、增加協定允許的對賬，或改由伺服器的去重操作。驗證需讓回覆丟失而操作已執行，確認副作用不重複，不只測正常回復。"
-      ]
-    },
-    {
-      "heading": "例題二：舊回呼晚到，新連線被誤改",
-      "kind": "worked-example",
-      "paragraphs": [
-        "連線世代g=5發r12，斷線後建立g=6並取得snapshot版本80，畫面READY。此時舊g=5的延遲迴呼報告DISCONNECTED。如果處理函式只改全域isConnected=false，新會話被舊事件覆寫。正確規則是在狀態入口核對事件攜帶的世代與目前擁有者；g5只負責清理舊資源，不得改變g6。",
-        "同理，r12的遲到回覆不能滿足g6的新r13。關聯至少包含generation與requestId，收到後還核對訊息型別及格式。是否跨重連追同一operationId由應用協定定義；會話ID和業務意圖ID要分開，前者隔離生命週期，後者可能刻意跨重試保持相同。",
-        "假設g6只收到連線成功而未登入/同步，卻設READY，也是不完整恢復。重連完成條件應包括新接收迴圈在執行、協定握手透過、必要快照與事件缺口處理、舊訂閱不會干擾。驗收需故意讓g5事件在g6同步後到達，確認狀態保留，舊資源仍正確釋放。"
-      ]
-    },
-    {
-      "heading": "恢復流程是有所有權的狀態機",
-      "kind": "maintenance",
-      "paragraphs": [
-        "可用狀態示意為Disconnected→Connecting→TransportConnected→Synchronizing→Ready；每個轉換都有輸入條件與退出責任。Connecting失敗回Disconnected並有上限退避；同步失敗不能跳Ready。停止服務則進入Stopping，阻止新重連，取消並等待讀取退出，解訂閱並釋放資源，最後Stopped。實際公司狀態名字可能不同，重點是轉移規則可追。",
-        "只允許一個恢復所有者，避免心跳、Send錯誤和UI按鈕各自啟動Connect，生成多條會話與重複訂閱。重試使用有上限的指數退避與抖動，減輕多客戶端同時故障後的負載；退避不是修復事實，需要監控嘗試次數、失敗階段和恢復耗時。UI應反映等待/同步而非把每個失敗都寫死成裝置故障。",
-        "舊任務清理也要繫結其資源，避免finally拿全域currentSocket把新連線關掉。先捕獲自己持有的socket與generation，清理這份每個流程自己的資源；釋出新連線也需讓讀者看見一致的socket/世代配對。並行保護和生命週期需一起審查，只加一個lock卻仍清錯物件不能解決。"
-      ]
-    },
-    {
-      "heading": "模型中的半關閉順序可直接追算",
+      "heading": "舊回呼晚到時，清理舊物件，不碰新會話",
       "kind": "code-reading",
       "paragraphs": [
-        "C#模型client先送REQ，再Shutdown(Send)，server讀取REQ和乾淨EOF後送RSP，最後也Shutdown(Send)。client讀取RSP後再讀取到EOF。兩個方向各自終止，using最後釋放；這能驗證半關閉不等於馬上禁止反方向回覆。",
-        "如果在client Shutdown後立刻Dispose並不再讀取，回覆可能無法被應用觀察。把「我不再傳送」和「我不再用整個Socket」混成同一操作，會讓一請求一連線的程式丟掉合法回應。實際長連線協定未必允許每次請求Shutdown，本模型只是展示傳輸能力，不能複製到未知公司協定。"
+        "例如 generation 12 的讀取 Task 在重連後才結束；此時 generation 13 已收到快照並進入 Ready。若舊 Task 的 finally 使用全域 currentSocket.Dispose()，欄位此刻可能已指向 13 的 Socket，於是清理舊資源反而切斷新連線。若舊錯誤回呼只寫全域 isConnected=false，也會把新狀態改壞。",
+        "程式形狀應保留每個讀取工作的 owner，並在套用狀態前核對 generation。下面是判斷片段，Generation、RecordLate 與 ApplyReply 均是應用自定義內容；generation 是本機上下文，不要求線上協定一定傳這個欄位。這個檢查與套用狀態還必須由同一個序列化狀態擁有者完成，或放在同一個鎖定區段；如果先檢查 generation、之後才在另一個執行緒更新，重連可能插在兩步之間，舊回覆仍會覆寫新狀態。",
+        "即使舊回覆格式完整、requestId 看起來有效，只要它來自已退役 session，就不能拿來完成新 session 的待處理項目。資源清理應用捕獲的舊 Session/Socket 物件，不要在延遲回呼內重新讀取可能已被替換的全域 Socket 欄位。範例依據 .NET 10 文件與現代 C# 寫法；較舊公司 TFM 請核對實際 overload／語法，資料流程判讀仍以已確認的 API 返回契約為準。"
       ],
       "code": {
-        "title": "只結束本機送出方向，仍讀取回應",
-        "text": "await SendAll(client, Encode(\"REQ r41 STATUS\"), ct);\nclient.Shutdown(SocketShutdown.Send);\nstring? response = await ReadFrame(client, ct);\nCheck(response == \"RSP r41 READY\", \"application response after client half-close\");\nCheck(await ReadFrame(client, ct) is null, \"EOF exactly between frames\");"
+        "title": "只接受活動會話的回覆",
+        "text": "void OnReply(SessionContext session, Reply reply)\n{\n    if (session.Generation != activeGeneration)\n    {\n        RecordLate(session.Generation, reply.RequestId);\n        return;\n    }\n\n    ApplyReply(reply); // requestId 仍須對上本 session 的 pending 項目\n}"
       }
     },
     {
-      "heading": "實作：驗證反方向仍然存活",
-      "kind": "lab",
+      "heading": "例題：Toggle 已改變狀態，回覆遺失後又被重送",
+      "kind": "worked-example",
       "paragraphs": [
-        "執行.NET10模型，按輸出找到server parsed request、client half-close observed after request、application response after client half-close、EOF exactly between frames。不要把Socket分配的臨時Port寫成斷言，因為每次可能不同；比較端點關係與應用內容即可。",
-        "變因是把client Shutdown(Send)改成Shutdown(Both)，觀察原本讀取回應的流程不再能滿足正常半關閉斷言，具體異常/EOF可能隨平臺與排程變化。復原後重跑全部。另以紙上世代時間線增加g5遲到事件，寫出哪些可清理、哪些不可更新；模型沒有實現全套重連狀態機，不能宣稱測試了公司恢復。驗收是能夠說明半關閉和釋放差別以及舊事件隔離條件。"
+        "時間線：t=0，generation 12 送出 operationId=op-77、requestId=r-31 的 ToggleRelay；t=80 伺服器記錄 OFF → ON；t=100 回覆未抵達；t=600 客戶端期限到，結果是 Unknown；重連後若客戶端用新的 op-78 再送 Toggle，伺服器可能把 ON → OFF。使用者看見命令「又成功一次」，實際狀態卻回到原點。",
+        "若公司協定已保證跨連線去重並保存 op-77 的結果，可用同一 operationId 重試，並用新的 requestId 表示這次交換；伺服器應返回原結果而不再 Toggle。若協定沒有去重，但提供按 operationId 查詢，就先查該次操作；若只可查目前狀態，還要考慮其他控制者是否可能在其間改變狀態，因此快照未必能證明 op-77 的歷史結果。",
+        "若以上能力都不存在，安全處理可能是維持 Unknown、阻止自動再 Toggle，並採產品規定的人工確認或補償流程。對冪等的目標狀態命令，可在協定確認重複設定不會觸發額外副作用後重送；仍須等待新連線同步，再檢查最終狀態與本次操作關聯。"
       ]
     },
     {
-      "heading": "診斷：重連後數秒又顯示斷線",
+      "heading": "診斷：新連線已 Ready，畫面又立刻顯示斷線",
       "kind": "diagnostic-case",
       "paragraphs": [
-        "甲與乙都Connect成功後數秒變Disconnected。甲有g9連線成功、g8接收EOF回呼、全域狀態清除；乙g9接收迴圈根本未啟動，心跳超時，g8早已清乾淨。甲補證支援舊事件汙染，乙支援新會話缺接收責任，不能都用增加退避修。",
-        "甲在事件入口核對generation並清理自己捕獲的舊 Socket 資源，乙確保釋出Ready前接收與同步成立。回歸必須包含正常重連、舊EOF遲到、連續失敗、停止時尚在連線、結果未知命令。分別觀測新連線存活、舊資源釋放和業務狀態，不只看Connect成功。"
+        "合成案例：generation 20 發生 EOF，程式啟動 generation 21；21 的新快照在 t=90 套用並記錄 Ready；t=95，舊讀取工作的 catch/finally 記錄 connection closed，畫面又變成 Disconnected。若只查 transport error，可能誤以為新 Socket 也立刻斷線。",
+        "將事件按 generation、session 物件和時間排列，會看到 Disconnected 事件屬於 20，而 Ready 屬於 21。檢查舊回呼是否寫全域連線旗標或 Dispose 目前欄位；若是，有限修正是在更新與清理前核對 owner，只清理舊 session，讓 21 保持狀態。若 21 的接收器其實未啟動，則會缺少新 generation 的讀取紀錄，是另一個不同故障。",
+        "回歸至少包含：舊 EOF 在新 Ready 前到、新 Ready 後到、連續重連及服務停止期間仍有舊工作。驗收同時看新 generation 持續收件、舊 Socket 釋放、操作結果分類與快照／版本同步；只看到新 Socket Connect 成功不足以通過。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "Shutdown(Send)和Dispose的責任有何區別？",
+      "question": "命令進入本機佇列時就因服務停止而被拒，Send 尚未呼叫。和 Send 已開始、隨後逾時但沒有回覆的情況，結果應如何分類？",
       "level": "foundation",
       "answer": [
-        "前者結束本機送出方向，另一方向仍可讀；後者釋放整個本機資源。",
-        "對方讀完排隊資料後見EOF不代表反向不能送。",
-        "操作必須依應用收尾協定安排，不能每個請求都隨意半關閉。"
+        "第一種可依本機控制流程記為 NotSent，因為傳送路徑未開始。",
+        "第二種應記為 Unknown；缺少回覆不能證明服務端沒有收到或執行。"
       ]
     },
     {
-      "question": "Connected=true能保證下一次Send成功嗎？",
-      "level": "foundation",
-      "answer": [
-        "它是近期操作觀察，不是持續業務健康保證。",
-        "檢查後遠端可以立刻失敗，仍需處理實際操作錯誤。",
-        "應用活性另依心跳/回應證據判斷。"
-      ]
-    },
-    {
-      "question": "Toggle op22已遠端執行，回覆失去；新ID op23重發會有什麼風險？",
+      "question": "伺服器收到 ToggleAlarm 後已切換警報，但回覆遺失。客戶端建立新連線並用新 operationId 重送，可能發生什麼？",
       "level": "application",
       "answer": [
-        "新ID可能被當新意圖，第二次Toggle把狀態翻回。",
-        "沒回應不等於沒執行，遠端已執行證據支援原操作成功。",
-        "根據協定查詢/對賬或同ID去重，禁止不經確認的新ID重送。"
+        "伺服器會把它看成另一個業務意圖，再切換一次；兩次 Toggle 可能恢復原狀。",
+        "若協定支援跨連線去重，沿用同一 operationId 查回原結果；否則先查可關聯的操作狀態，或保留 Unknown，不能換新 ID 自動重做。"
       ]
     },
     {
-      "question": "g4遲到的r30回覆在g5等待r31時到達，如何配對？",
+      "question": "SetMode(Night) 與 ToggleMode 哪個較可能是冪等操作？還需要核對哪個限制？",
       "level": "application",
       "answer": [
-        "先核對世代，g4與當前g5不一致，不能滿足g5請求。",
-        "再看requestId，r30也不是r31；即使內容合法仍是舊回應。",
-        "按協定處理舊結果並記錄，回歸不同結果交錯抵達。"
+        "重複 SetMode(Night) 通常維持同一目標狀態；ToggleMode 每次都反轉，通常不是冪等。",
+        "仍須查協定是否會讓重複 Set 觸發額外一次性副作用，以及服務端對重複操作的正式保證。"
       ]
     },
     {
-      "question": "收到00 03 41後EOF，是正常完成還是截斷？",
+      "question": "generation 30 已退役；它的 EOF 回呼晚於 generation 31 的 Ready。這個回呼能否把新 UI 改成 Disconnected？Dispose 哪個物件？",
+      "level": "diagnosis",
+      "answer": [
+        "不可以改寫 31 的狀態；先檢查回呼捕獲的 generation/owner。",
+        "只釋放 generation 30 自己擁有的舊 Socket，不要經由可變的全域 currentSocket 關閉 31。"
+      ]
+    },
+    {
+      "question": "新 Socket 的 Connect 已完成，但還沒完成登入與狀態同步。UI 可直接允許送控制命令嗎？",
       "level": "application",
       "answer": [
-        "宣稱本文3bytes，目前只有1byte。",
-        "EOF落在框架內，缺2，不可當完整A或業務失敗回覆。",
-        "儲存expected/received與關閉階段，查傳送和清理責任。"
-      ]
-    },
-    {
-      "question": "finally呼叫currentSocket.Dispose，恢復同時換了currentSocket，為什麼危險？",
-      "level": "diagnosis",
-      "answer": [
-        "finally可能看到新物件，舊任務清理了新會話。",
-        "資源所有者應捕獲自己的socket和generation，釋放其自己持有的 Socket 資源，不依可變全域欄位。",
-        "回歸讓新連線釋出早於舊finally，確保新不被釋放且舊確實釋放。"
-      ]
-    },
-    {
-      "question": "新連線成功但未同步就顯示Ready，日誌有缺事件版本15。應驗證哪些恢復條件？",
-      "level": "diagnosis",
-      "answer": [
-        "傳輸成功不能填補業務狀態缺口。",
-        "需按協定取得完整快照或補事件，確認版本一致與接收迴圈可用，再發布Ready。",
-        "回歸斷線期間發生變更、重複通知與舊回呼，不能只比較連線旗標。"
-      ]
-    },
-    {
-      "question": "同症狀無回覆：A有遠端操作完成日誌，B沒有遠端日誌許可權。能寫相同結論嗎？",
-      "level": "diagnosis",
-      "answer": [
-        "A有明確完成證據，可定位回覆路徑或本端觀察缺口。",
-        "B沒有證據不能斷言未執行，也不能斷言執行，結果仍未知。",
-        "結論分別註明已確認階段與待驗證候選，按協定做有限確認。"
+        "不能只根據 TransportConnected 設 Ready。",
+        "依實際協定等待必要的驗證及快照／事件連續性證據；若尚無法確認狀態同步，保持未就緒並記錄缺少哪一步。"
       ]
     }
   ],
   "recap": [
-    "區分半關閉、正常EOF、重置、靜默失聯和本機取消。",
-    "判斷斷線時請求結果可能確定或未知，選擇查詢與重試規則。",
-    "用連線世代、單一所有者和狀態同步驗證恢復完成。"
+    "回傳 0、Socket 例外、本機取消與請求期限表示不同事件；逾時後的命令結果可能未知。",
+    "只有操作語意和服務端協定都支持時才自動重試；識別同一個 operation 和識別一次 request 是不同責任。",
+    "每條新連線建立新 generation；舊回呼只清理舊資源，新會話需完成必要同步才可標成 Ready。"
   ],
   "sources": [
     {
-      "label": "Microsoft：Socket半關閉方向",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.shutdown?view=net-10.0"
-    },
-    {
-      "label": "Microsoft：Connected觀測限制",
+      "label": "Microsoft .NET 10：Socket.Connected 只反映最近一次 Send／Receive 時的狀態",
       "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.connected?view=net-10.0"
     },
     {
-      "label": "IETF RFC 9293：TCP 串流、連線與關閉機制",
+      "label": "Microsoft .NET 10：NetworkStream.ReadAsync 的返回值與正常 EOF",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.networkstream.readasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft .NET 10：SocketException.SocketErrorCode，按實際 Socket 操作錯誤碼分類",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socketexception.socketerrorcode?view=net-10.0"
+    },
+    {
+      "label": "Microsoft .NET 10：Socket.Dispose 釋放 Socket 資源",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.dispose?view=net-10.0"
+    },
+    {
+      "label": "IETF RFC 9293：TCP 連線關閉與重置的傳輸語意",
       "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
     },
     {
-      "label": "Microsoft Azure Architecture：重試、冪等與延遲政策",
-      "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/retry"
-    }
-  ],
-  "resources": [
-    {
-      "label": "下載 C# Socket 維護教材模型",
-      "path": "./assets/labs/sockets-maintenance-lab.zip",
-      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
+      "label": "IETF RFC 9110 §9.2.2：冪等請求效果與通訊失敗後重試",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2"
     }
   ]
 }

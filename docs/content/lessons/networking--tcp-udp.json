@@ -1,271 +1,278 @@
 {
-  "contentVersion": 2,
-  "intro": "TCP與UDP是不同的交付契約。本章從位元組流為何需要序號與累積確認，推到遺失恢復、兩種視窗、連線狀態及關閉；再用資料報機制解釋UDP適用與限制。",
+  "contentVersion": 3,
+  "intro": "TCP與UDP的工程差異不是一張可靠／不可靠的名詞表，而是程式把哪些責任交給傳輸層、哪些留給應用程式。本篇用「不能漏掉的控制命令」與「過期即可丟棄的即時樣本」比較兩種選擇，並沿C# Socket呼叫判讀何時只是本機收送完成、何時才有遠端處理證據。",
   "prerequisites": [
-    "byte是資料量；序號不是封包號，首節重新定義。",
-    "C#片段只需跟變數變化，TCP實現由OS負責。"
+    "假設讀者已聽過TCP、UDP、IP、Port和Socket；本文把重點放在這些元件如何改變程式責任，不重講協定百科。",
+    "C#例子採用.NET 10的Socket API；程式只展示通用收送模式，並非任何公司的實際架構。"
   ],
-  "studyTime": {
-    "reading": [
-      11,
-      18
-    ],
-    "practice": [
-      25,
-      45
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀包含兩個逐步例題與C#追碼；實作需預測、跑基準、改一個變因、復原並寫證據表；作答需計算與診斷。尚待使用者實際計時校準。"
-  },
   "goals": [
-    "計算TCP序號、ACK、未確認資料與接收視窗。",
-    "解釋重傳、流量控制與壅塞控制各自解決的問題。",
-    "讀出握手、FIN、RST與應用逾時的不同因果。",
-    "用訊息邊界及UDP資料報契約判斷程式假設。"
+    "依資料是否能遺失、延遲或重排，選擇符合需求的傳輸契約，而非套用快慢口訣。",
+    "追出TCP連線與UDP資料報在client、server和應用協定上的不同交接點。",
+    "從C# SendAsync、ReceiveAsync、SendToAsync和ReceiveFromAsync的回傳值，判斷它們能證明到哪個階段。",
+    "用兩端封包和程式紀錄區分傳輸問題、socket收送問題與應用處理問題。"
   ],
   "sections": [
     {
       "kind": "concept",
-      "heading": "先選交付契約，而不是背快慢口訣",
+      "heading": "先問資料是否過期，再決定傳輸契約",
       "paragraphs": [
-        "TCP提供按順序交付的byte stream，像把兩端之間的所有bytes排成連續編號。send分成幾次、網路切成幾段，不會保留為接收程式的訊息邊界；應用需自行定義長度或終止符。UDP提供datagram，每次傳送有一筆邊界，卻不提供TCP式可靠交付與排序。這是語意差異，不是「TCP慢、UDP快」的效能結論。",
-        "TCP會嘗試修補遺失並避免重複bytes進入應用，但等待修補會阻擋後續連續交付，稱為有序流的阻塞後果。UDP可讓下一筆不因上一筆遺失而等TCP補齊，但應用若自己要求所有筆按序，就仍要設計相應等待。哪種較適合取決於時效、完整性、協定與負載；可靠不等於永久成功，故障仍會令Socket出錯或等待到期。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "序號與累積ACK如何讓遺失可被發現",
-      "paragraphs": [
-        "每方向都有自己的32-bit sequence space。TCP段的SEQ通常是該段第一個資料byte編號，LEN是資料長度；ACK=N代表對方下一個期待連續byte是N，即N之前連續資料已確認。ACK不是封包流水號，也不代表應用已經read。SYN與FIN各佔一個sequence number，純ACK不佔；大數會wrap，本章數值遠離邊界。",
-        "若接收方收到101–200與301–400，缺201–300，即使後段已到，累積ACK仍停201。接收方可暫存後段，SACK選項可指出已收到哪些額外區塊；待缺口補齊後ACK躍401。傳送方可能從重複ACK與SACK判斷缺口，也可能依重傳計時器恢復。ACK延遲、抓包遺漏或原段延遲也會造成重傳觀測，所以「重傳」不是唯一丟包證明。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "兩個視窗控制不同瓶頸",
-      "paragraphs": [
-        "Receive window（rwnd）由接收方告訴傳送方還能接受多少資料，保護接收緩衝。如果程式不讀，緩衝耗盡可宣告zero window；對端暫時停止正常新資料傳送並用探測觀察視窗恢復。Congestion window（cwnd）由傳送方依據網路反饋調整，避免過度填塞路徑。可傳送量受兩者與未確認資料限制，粗略是min(rwnd,cwnd)減flight，而不是只看網卡速率。",
-        "Window Scale在握手協商放大TCP頭16-bit視窗值。讀抓包必須分清raw與calculated window；原始欄位4096若scale為4，實際視窗65536，不能把值直接當bytes上限。rwnd低可能是應用處理慢，cwnd低可能是網路恢復或擁塞；同樣傳送變慢的兩個機制需要不同測點，視窗不是網路頻寬本身。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "可靠交付與應用重試的交界",
-      "paragraphs": [
-        "TCP用序號把重傳bytes定位到原位置，接收端不因相同SEQ再來便交付第二份同位置資料。這是byte stream層的去重。若A應用在業務timeout後重新send一次完整命令，新的bytes有新的序號；TCP不會知道兩段文字代表同一動作。因此TCP可靠不等於裝置命令只執行一次，應用仍需請求ID、操作語意與相應去重/查證政策。",
-        "Checksum用於檢查傳輸資料的錯誤，不是密碼學驗證身分；加密、認證與完整性有另個安全協定責任。中間代理可能終止一條TCP再開另一條，某段ACK只確認到該終止點，不應畫成直接原服務收到。這讓「ACK是誰回的」成為拓撲與契約問題，而不只是一個封包旗標。",
-        "接收緩衝在kernel與應用之間形成分界：OS可先收資料並ACK，應用後來才read；read後也可能排入另一工作佇列才處理。觀測到ACK、read、dequeue、result這四個時間，才有辦法分解TCP流量控制與應用排隊。理解這個分界也解釋為何增加Socket buffer有時只延後zero window，沒有增加真正處理速度。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題一：SYN、資料與FIN都放進編號",
-      "paragraphs": [
-        "A的ISN=1000，B的ISN=5000。A SYN seq1000；B SYN/ACK seq5000 ack1001；A ACK seq1001 ack5001。A接著送8-byte STATUS?\n，覆蓋1001–1008，B回ACK1009。B回9-byte OK,READY\n從5001到5009，A ACK5010。兩方向獨立，不能拿1009與5010的差當資料量。",
-        "A隨後FIN seq1009，B應ACK1010，因為FIN也佔1。純ACK若無資料沒有讓A下次SEQ繼續增加。握手同步兩端編號及相關選項；建立完成只是讓可收送TCP流的狀態成立。B是否接受STATUS?、是否最新READY由應用parser及協議決定。"
-      ],
-      "code": {
-        "title": "原創教學資料／C#，按本節假設判讀",
-        "text": "A -> B SYN       seq=1000 len=0\nB -> A SYN,ACK   seq=5000 ack=1001 len=0\nA -> B ACK       seq=1001 ack=5001 len=0\nA -> B DATA      seq=1001 ack=5001 len=8\nB -> A ACK       seq=5001 ack=1009 len=0\nB -> A DATA      seq=5001 ack=1009 len=9\nA -> B ACK       seq=1009 ack=5010 len=0\nA -> B FIN,ACK   seq=1009 ack=5010 len=0"
-      }
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題二：計算可傳送範圍並解釋缺口",
-      "paragraphs": [
-        "A已獲ACK1009，B公佈有效rwnd4096，所以接收範圍從1009起共4096bytes，右邊界為5105（不含）。A已傳送到2008，SND.NXT=2009，flight=2009−1009=1000，若cwnd充足，可再發4096−1000=3096bytes。若cwnd只有2048，則可發min(4096,2048)−1000=1048。以上是同一時刻簡化範圍，不把更新中的狀態混算。",
-        "另一組資料：seq1009 len100、seq1209 len100抵達，而1109–1208未到。累積ACK為1109，不是1309；補齊1109 len100後，可確認到1309。如果接收程式只記錄第一段100bytes而後停讀，視窗趨零；如果ACK持續增加但業務無reply，優先看應用階段。數量推導給了「下一步」的理由。"
+        "假設一個軟體同時交換兩種資料：操作人員送出「把輸出設為ON」，以及每50毫秒更新一次的感測值。前者需要知道是哪一條命令得到成功或失敗結果，不能把沒有回覆當成已執行；後者若只用來顯示即時狀態，100毫秒前的樣本可能已經沒有價值，收到較新的樣本時可以放棄舊值。這兩個需求對遺失與延遲的容忍度不同，才是傳輸選擇的起點。",
+        "TCP提供有序、可靠的byte stream。丟失資料時，它會恢復缺口再把後續連續bytes交給程式；因此同一連線後續資料可能要等前面的缺口恢復。這讓程式較容易把命令序列交給對端，但TCP仍不懂「ON」代表什麼，也不知道設備有沒有照做。應用仍要解析訊息、配對請求與回覆，並用期限、請求識別碼及適當的重試政策處理結果不明的情形。",
+        "UDP保留一筆datagram的邊界，但資料可能遺失、重複或重排，傳輸層不替應用補送、去重或排序。若最新樣本比舊樣本重要，應用可以用序號辨認重複與順序；若規則是「產生超過100毫秒就過期」，還要帶量測時間，並讓收送兩端能依同一時間基準比較。序號本身不能算出樣本年齡；若兩端時鐘不同，必須明定可比較的時間基準，沒有可比較的時間基準時，仍可依序號判斷相對新舊，但不能判定樣本年齡。若每筆感測紀錄都不能漏，UDP就不會自動滿足需求，必須另有可靠性與壅塞控制設計。選UDP不會自動變快，也不會免除容量、重試及安全檢查。",
+        "現有對端、設備通訊規格、網路政策及既有函式庫也可能已經規定只能使用其中一種。此時工程任務是確認程式是否符合既定協定，而不是只因另一種協定在理論上有優點就更換傳輸層。"
       ],
       "table": {
-        "caption": "例題二：計算可傳送範圍並解釋缺口",
+        "caption": "依應用需求評估傳輸方式；表內是責任提示，不是無條件的選型規則",
         "headers": [
-          "專案",
-          "計算",
-          "結果"
+          "需要先確認的需求",
+          "TCP會替程式處理的部分",
+          "UDP程式仍須決定的部分"
         ],
         "rows": [
           [
-            "接收右邊界",
-            "1009+4096",
-            "5105不含"
+            "資料遺失可否接受？",
+            "傳輸層恢復遺失的byte；仍須訂出應用逾時與命令重試規則。",
+            "是否重送、怎麼確認，以及重送如何避免重複執行。"
           ],
           [
-            "已送未確認",
-            "2009−1009",
-            "1000bytes"
+            "順序重要嗎？",
+            "同一連線依序交付bytes；前方缺口會影響後續資料可見時間。",
+            "每筆資料可獨立處理或帶序號；接收端如何辨認較舊資料。"
           ],
           [
-            "rwnd餘裕",
-            "4096−1000",
-            "3096bytes"
+            "資料過期後還有用嗎？",
+            "舊bytes仍會依序恢復交付；應用需判斷它們是否仍符合期限。",
+            "接收端用序號辨認順序與重複；若要判斷資料產生多久，還須有可比較的量測時間。"
           ],
           [
-            "cwnd=2048時餘裕",
-            "2048−1000",
-            "1048bytes"
+            "怎麼知道功能已完成？",
+            "TCP確認傳輸到對端TCP，不是功能完成；需解析應用回覆。",
+            "沒有UDP傳輸層確認；若要確認，需定義應用層回覆與識別方式。"
           ]
         ]
       }
     },
     {
       "kind": "mechanism",
-      "heading": "握手與關閉的狀態是資源管理，不是業務狀態",
+      "heading": "傳輸選擇會改變server如何接收資料",
       "paragraphs": [
-        "Client主動連線從SYN-SENT等待；Server監聽收到SYN可進入SYN-RECEIVED；適當確認後到ESTABLISHED。Accept由服務端程式取出已接連線，不等於開始執行命令。正常關閉FIN表示該方向沒有更多資料，另方向仍可傳送，叫half-close；收到EOF不表示資料格式完整。主動關閉端常經TIME_WAIT，為舊段存活與最終確認的處理保留時間，不能當成仍在業務通話。",
-        "RST是重置，可能由沒對應連線的端點或連線異常觸發，結果要看時機及來源；它與FIN順序收尾不同。應用read deadline到期不自動說明TCP斷線，OS可能仍ESTABLISHED。Keepalive可輔助探測閒置連線但不代表服務完成業務。診斷要並排看TCP狀態、應用phase與遠端狀態，三者各有自己的生命週期。"
-      ]
-    },
-    {
-      "kind": "code-reading",
-      "heading": "以同一buffer理解TCP流與UDP資料包",
-      "paragraphs": [
-        "TCP ReadAsync可能回3bytes STA，下一次5bytes TUS?\n；必須累積。也可能一次收到兩條查詢，要留下第二條未消費資料。UDP ReceiveAsync返回一筆資料報的buffer與來源端點，應用可按該筆邊界解析；資料報過大、接收緩衝不足或路徑限制仍會失敗。單筆UDP傳送成功只反映本機送出動作，不是遠端確認。",
-        "不要把PSH當TCP業務訊息終點，或把TCP段數當應用命令數。下方為原創實驗解析邏輯的閱讀片段，檢查每次append後何時出現LF，並解釋為什麼首輪不能報壞命令。完整生產parser還需長度上限、多個訊息消費、編碼與錯誤政策。"
+        "TCP server先在本地端點Bind並Listen，接到連線後以Accept取得一個代表該client連線的新Socket；listener仍可接受其他連線。每個已接受的Socket承載該連線兩方向的byte stream。client以Connect建立傳輸連線後，雙方才在各自的連線Socket上收送。Connection建立不代表應用已解析命令，Accept也不代表命令已執行。",
+        "UDP server通常Bind一個本地端點，讓同一個Socket反覆接收來自不同來源的datagram；ReceiveFrom會一併提供這筆資料的來源端點。client用SendTo指定目的端點，作業系統可替client選本地來源Port。若應用需要回覆，server會將回覆送往該次ReceiveFrom回傳的來源端點；這是另一筆獨立的datagram，client仍要用訊息識別碼判斷它對應哪個要求。沒有每個client一個Accept出來的連線Socket；伺服器通常依來源端點及訊息內的識別欄位處理資料。接收buffer小於收到的datagram時，API可能以截斷資料或socket錯誤結束這次接收；多出的內容不會留到下一次Receive補回，需檢查實際API錯誤並配置足夠buffer。若完整資料超過應用協定允許上限，應拒絕；只有協定確實需要更大的邏輯訊息時，才設計上層分片重組或改用合適的傳輸方式。",
+        "某些UDP API也有名為Connect的方法。以.NET的UdpClient為例，它設定預設遠端主機，讓後續Send不必每次重給目的地；這個API狀態不會替UDP加入TCP握手、重傳或業務回覆；而且UdpClient.Connect會丟棄來自其他遠端端點的資料報，讀取時要核對預設遠端端點是否符合預期。讀既有程式時，應先看Socket實際的SocketType、ProtocolType和呼叫序列，不要只靠方法名稱判斷線上協定。"
       ],
-      "code": {
-        "title": "原創教學資料／C#，按本節假設判讀",
-        "text": "var pending = new System.Text.StringBuilder();\nstring[] readChunks = { \"STA\", \"TUS?\\n\" };\nforeach (string chunk in readChunks) {\n    pending.Append(chunk);\n    bool complete = pending.ToString().EndsWith('\\n');\n    Console.WriteLine($\"read={chunk.Length} buffered={pending.Length} complete={complete}\");\n}\n// Expected: read=3 buffered=3 complete=False\n//           read=5 buffered=8 complete=True\n// For UDP, one ReceiveAsync result is one received datagram.\n// Neither read completion nor a datagram boundary defines business success."
+      "table": {
+        "caption": "沿同一筆應用資料看client與server程式入口的不同",
+        "headers": [
+          "流程位置",
+          "TCP",
+          "UDP"
+        ],
+        "rows": [
+          [
+            "client開始送資料",
+            "ConnectAsync後，在同一個連線Socket上SendAsync。",
+            "SendToAsync把一筆datagram送往目的端點；可不建立傳輸連線。"
+          ],
+          [
+            "server準備接收",
+            "Bind、Listen、Accept；每個已接受連線有自己的Socket。",
+            "Bind後在同一個datagram Socket上ReceiveFromAsync，讀回來源端點。"
+          ],
+          [
+            "交給應用協定",
+            "從stream找出一則或多則完整訊息；TCP讀取範圍不是訊息邊界。",
+            "一次接收對應一筆datagram；協定仍要驗證長度、欄位和來源。"
+          ],
+          [
+            "把成功交回呼叫端",
+            "解析與本次請求相符的應用回覆。",
+            "若需求要確認，就讓對端回傳含本次識別碼的應用訊息。"
+          ]
+        ]
       }
     },
     {
-      "kind": "lab",
-      "heading": "實作：改編號、視窗與讀分段驗證機制",
+      "kind": "code-reading",
+      "heading": "讀C#收送碼：await完成不等於遠端功能完成",
       "paragraphs": [
-        "執行 dotnet run -- tcp。對照程式initial、payload、next、ack、window與sentNext，自己畫兩方向編號；把payload改12，預期ACK從1009變1013。模型Check原本限定8bytes，會提示不符，改斷言前先解釋輸入契約為何變化。把window改1024，flight仍1000，則餘裕24；改window0說明一般新資料應受限，而非網路物理線斷。",
-        "讀分段從3+5改成1+2+5，訊息內容應不變；再改缺LF，累積8等於完整只在該字串規則成立，不能僅憑length猜結束。復原所有變因後重跑。驗收是序號表、視窗算式、分段狀態以及一段解釋「傳輸成功為何不同業務成功」，不用網路裝置便能檢驗概念。"
+        "以下是互相替代的client API片段，不是完整可上線的client，也省略了server和應用協定解析器。TCP片段刻意只呼叫一次ReceiveAsync，讓你觀察本次取回的byte數；它沒有實作累積資料及讀到完整回覆的迴圈，不能直接當作完整的TCP收件程式。範例假設測試server接受LF結尾的命令；UDP片段則假設一個datagram就是一筆命令。",
+        "兩段各使用一個涵蓋整段操作的兩秒取消期限，以免範例無限等待。在C#中，await等待眼前這個Socket API操作完成並取得回傳值，不會自動等到遠端功能完成；若期限取消，只表示本機不再等這個API操作，不能據此推論遠端沒有收到或沒有執行命令。TCP的payload.AsMemory(offset)把尚未送出的buffer區段交給下一次SendAsync；ReceiveAsync只用回傳數量標出本次有效範圍，完整收件仍須由應用協定決定何時讀夠。"
       ],
-      "steps": [
-        "先算模式每個輸出數值，再執行。",
-        "單獨改payload與window各做預測，註明模型assert適用範圍。",
-        "改變chunks分法，確認完整條件依訊息內容而非read次數。",
-        "復原，計算兩個新數值題並給出能分開rwnd/cwnd問題的觀測項。"
+      "code": {
+        "title": ".NET 10 Socket API節錄：部分TCP收送與單筆UDP資料報",
+        "text": "using System;\nusing System.IO;\nusing System.Net;\nusing System.Net.Sockets;\nusing System.Text;\nusing System.Threading;\n\nvar tcpEndpoint = new IPEndPoint(IPAddress.Loopback, 9000);\nvar udpEndpoint = new IPEndPoint(IPAddress.Loopback, 9001);\nbyte[] payload = Encoding.UTF8.GetBytes(\"seq=105;value=72\\n\");\nbyte[] buffer = new byte[2048];\n\nusing (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2)))\nusing (var tcp = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))\n{\n    await tcp.ConnectAsync(tcpEndpoint, deadline.Token);\n\n    int offset = 0;\n    while (offset < payload.Length)\n    {\n        int sent = await tcp.SendAsync(payload.AsMemory(offset), SocketFlags.None, deadline.Token);\n        if (sent == 0) throw new IOException(\"TCP send made no progress\");\n        offset += sent;\n    }\n\n    int received = await tcp.ReceiveAsync(buffer, SocketFlags.None, deadline.Token);\n    if (received == 0)\n    {\n        // 非零長度buffer下，對端已正常結束這個傳送方向。\n        // 若協定預期的回覆尚未完整，這次回覆仍不完整。\n    }\n    else\n    {\n        // 只處理buffer[0..received]；交給協定解析器累積或判斷回覆。\n    }\n}\n\nusing (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2)))\nusing (var udp = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))\n{\n    int sent = await udp.SendToAsync(payload.AsMemory(), SocketFlags.None, udpEndpoint, deadline.Token);\n    if (sent != payload.Length) throw new IOException(\"Unexpected UDP datagram send length\");\n\n    EndPoint peer = new IPEndPoint(IPAddress.Any, 0);\n    var reply = await udp.ReceiveFromAsync(buffer, SocketFlags.None, peer, deadline.Token);\n    // 檢查reply.RemoteEndPoint、訊息識別碼與期限，再交給應用處理。\n    // reply.ReceivedBytes == 0可代表合法的空datagram，不是TCP式EOF。\n}"
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "把API回傳值放回它真正代表的完成階段",
+      "paragraphs": [
+        "讀取上表和既有程式時，先比對呼叫要求的長度與SendAsync實際回傳的byte數；若沒有送完，程式要保留未送區段並繼續處理。ReceiveAsync一次只回報本次取到的stream bytes，不能單靠一次呼叫判定應用訊息已完整。",
+        "TCP ReceiveAsync在buffer長度大於零時回傳0，Microsoft文件定義為對端已正常結束這個傳送方向；已累積的應用資料仍要檢查是否完整。相對地，UDP ReceiveFromAsync回傳0仍可能是一筆合法空datagram。SendToAsync成功也只表示本機完成這次API送出操作，不表示遠端收到。",
+        "如果業務需要知道輸出是否已切換，兩種傳輸都要由應用協定定義可核對的回覆，例如回覆包含requestId、結果和設備回報狀態。傳輸層恢復TCP資料遺失，不會替應用層第二次命令去重。"
+      ],
+      "table": {
+        "caption": "日誌或debugger中的回傳值能支持的結論",
+        "headers": [
+          "呼叫或觀測",
+          "可以得出的結論",
+          "尚不能得出的結論"
+        ],
+        "rows": [
+          [
+            "TCP ConnectAsync完成",
+            "TCP連線建立階段完成。",
+            "遠端handler已開始處理資料或服務功能正常。"
+          ],
+          [
+            "TCP SendAsync回傳n",
+            "本次呼叫回報送出n個bytes；比較n與要求長度，確認是否還有剩餘。",
+            "對端應用已收齊、解析、執行或回覆。"
+          ],
+          [
+            "TCP ReceiveAsync回傳n大於0",
+            "本次有n個stream bytes可供程式處理。",
+            "收到一則完整應用訊息。"
+          ],
+          [
+            "TCP ReceiveAsync對非零buffer回傳0",
+            "對端正常結束傳送方向，stream不再提供後續bytes。",
+            "此前累積的應用訊息一定完整或成功。"
+          ],
+          [
+            "UDP SendToAsync完成",
+            "本機完成送出這次datagram的API操作。",
+            "對端收到datagram、處理資料或送回確認。"
+          ],
+          [
+            "UDP ReceiveFromAsync返回資料",
+            "Socket收到一筆datagram，並能取得來源端點與資料量。",
+            "資料內容可信、屬於目前要求、未重複或未過期。"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "TCP已確認資料，但程式仍等不到控制命令的結果",
+      "paragraphs": [
+        "假設client log寫出：ConnectAsync完成、命令SendAsync總共送出16 bytes，之後等兩秒便取消ReceiveAsync。假設沒有終止TCP連線的proxy，client側Wireshark看到這16 bytes，並看到server回ACK確認到這批資料之後沒有本應用協定回覆。若proxy會終止TCP，ACK只確認到該proxy，須分別追查前後兩條連線。這些證據指出TCP資料到達了server端TCP堆疊可確認的階段；它們沒有證明server的應用程式已從Socket讀取或執行命令。TCP本身沒有內建應用程式存活或業務完成訊號。",
+        "接下來按交接點查server側：對應連線是否被Accept、Receive是否有增加、parser是否判定命令完整、requestId是否送進handler、handler是否等待鎖或外部設備、結果是否排入回覆佇列。若server側根本沒有相同連線的封包或ACK，先查兩端端點、封包方向、抓包位置及重傳，再判斷路徑問題。所有觀測都要用相同端點、方向、連線和requestId對齊，不能拿另一個client的成功回覆填補這筆請求。",
+        "兩秒逾時只表示client在期限內未取得應用回覆。server可能尚未執行，也可能已執行但回覆遺失或延遲；直接重送可能讓命令執行兩次。像「把輸出設為ON」重做仍是ON，通常可安全重複；「計數器加一」每執行一次都再改變結果，就不是冪等操作。協定應明定操作識別碼、結果查詢或server去重方式，再分別測試回覆延遲、連線中斷和handler逾時。"
       ]
     },
     {
       "kind": "diagnostic-case",
-      "heading": "案例：都很慢，Zero Window與重傳如何分開",
+      "heading": "UDP送出成功但沒有回覆：用另一端證據定位",
       "paragraphs": [
-        "A顯示讀結果慢。候選H1接收程式不讀導致rwnd耗盡；H2路徑丟失觸發恢復；H3服務已收齊卻處理慢。第二輪B宣告有效window0，A無持續新資料，B read計數30秒不動而工作執行緒在等同一鎖，這支援H1及其程式原因。若相反視窗充足卻相同SEQ重複、雙端顯示中途缺口，才加強H2；ACK資料全確認而應用開始後拖延則查H3。",
-        "隔離測試修正B讀迴圈避免持鎖等待業務工作，取得read增長、視窗重新開放、無額外排隊的相符回覆。回歸刻意慢業務、分段與連線關閉三種條件，驗證緩衝仍有界、讀任務不死鎖。不能把「加大buffer後短暫好轉」當根因修正，因為可能只是延後填滿。"
-      ]
+        "現在同一筆16-byte命令改用UDP。client的SendToAsync回傳16，client抓包也看到目的端點正確的送出資料報，但兩秒內沒有回覆。這只確認資料離開到client抓包點附近；UDP沒有傳輸層ACK，所以不能從沉默判定server沒有收到，也不能假設傳輸層會自動重送。",
+        "先在server抓同一目的IP與Port的入口流量。若server抓包沒有這筆資料，核對路徑、NAT／防火牆及抓包介面，並確認來源和目的欄位；若server抓到但ReceiveFromAsync沒有紀錄，查socket是否Bind到正確本地Port、收取迴圈、buffer限制及本機防火牆；若程式已收到，下一步追parser、序號／時間檢查、佇列及handler。若server已處理並送回覆，再從client的另一方向查回覆是否抵達及回覆是否配到同一messageId。",
+        "在需要確認命令的UDP協定中，回覆須包含能配對要求的messageId與結果。重送要沿用可識別的操作ID，server要能安全處理重複資料；同時應限制重送速率並考慮退避，避免網路壅塞時越送越多。RFC 8085特別把UDP應用的可靠性及壅塞控制責任交給上層協定設計。"
+      ],
+      "table": {
+        "caption": "從最早可確認的交接點選下一個觀測",
+        "headers": [
+          "證據",
+          "可先確認什麼",
+          "下一個能縮小範圍的觀測"
+        ],
+        "rows": [
+          [
+            "client SendToAsync回傳預期長度",
+            "本機API回報完成資料報送出操作。",
+            "server端抓包是否看到相同來源、目的、時間及messageId。"
+          ],
+          [
+            "server抓到資料報，但程式沒有Receive紀錄",
+            "封包到達目前server抓包點。",
+            "本地綁定的Port、socket收取程式、buffer及主機防火牆。"
+          ],
+          [
+            "server程式Receive到資料，但沒有回覆",
+            "資料交到server應用socket。",
+            "parser、驗證、handler結果和應用回覆送出紀錄。"
+          ],
+          [
+            "server有送回覆，client沒有配對結果",
+            "server端應用曾嘗試回覆。",
+            "回程封包、client來源Port及request/message識別碼。"
+          ]
+        ]
+      }
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "為什麼ACK1201不是「第1201個封包已收到」？",
+      "level": "reasoning",
+      "question": "設備每50毫秒發布一筆顯示用感測值。只顯示最新值，單筆遺失可接受，超過100毫秒的舊值應丟棄。TCP與UDP何者較符合這個資料契約？接收程式還須做哪兩件事？如果產品要求每筆值都保存，原判斷需如何改變？",
       "answer": [
-        "TCP編號針對bytes，ACK1201指下一個期待連續byte。",
-        "一個段可含很多bytes，SYN/FIN也佔編號。",
-        "必須配SEQ與LEN計算範圍，不用包數解釋。"
+        "UDP是合理選項，因為超過期限的舊樣本可以丟掉，不必等傳輸層重送；這是依題目的延遲條件選擇，不代表UDP必然較快或唯一可行。",
+        "每筆帶序號以辨認重複和順序，並帶量測時間，讓接收端能判斷是否已超過100毫秒。若量測時間來自不同主機，兩端要有可比較的時間基準；序號只能判斷相對順序，不能判定年齡。",
+        "若每筆值都必須保存，應採用具備持久化確認與補交策略的應用契約。TCP可承載資料，但TCP ACK只確認傳輸位元組，不能證明資料已被應用處理或寫入儲存。"
       ]
     },
     {
-      "level": "foundation",
-      "question": "rwnd與cwnd分別由誰控制什麼？",
+      "level": "understanding",
+      "question": "C#程式以非零長度buffer呼叫TCP ReceiveAsync得到0；另一程式以ReceiveFromAsync收到一筆ReceivedBytes為0的UDP資料。兩個0各代表什麼？可以共用同一段if (count == 0)當作斷線處理嗎？",
       "answer": [
-        "rwnd由接收方提供，保護接收容量。",
-        "cwnd由傳送方調整，限制路徑擁塞負擔。",
-        "可用傳送量受兩者及flight限制，問題測點不同。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新ISN=800，SYN後送12bytes，期望ACK多少？隨後FIN又是多少？",
-      "answer": [
-        "SYN佔1，第一資料byte801，12bytes覆蓋801–812。",
-        "下一期待ACK813；FINseq813後ACK814。",
-        "純ACK不佔編號，且另方向有自己的ISN。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "ACK500、rwnd2000、cwnd1500、SND.NXT1300，簡化可再發多少？",
-      "answer": [
-        "flight=1300−500=800。",
-        "min(2000,1500)−800=700bytes。",
-        "只適用同瞬間簡化狀態，視窗縮減等特殊情況需完整規範。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "收到seq100 len50及seq200 len50，缺150–199；ACK應多少？",
-      "answer": [
-        "連續已到100–149，所以ACK150。",
-        "後段200–249有缺口，不能累積ACK250。",
-        "補seq150 len50後ACK250；若有SACK可另報後段。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "raw window=2048，已協商scale3，計算有效window。",
-      "answer": [
-        "Window Scale是左移3位，即乘2^3=8。",
-        "2048×8=16384bytes。",
-        "先查握手協商及工具raw/calculated口徑，不能重複乘工具已算的值。"
+        "TCP情況是對端正常結束這個傳送方向，後續不再有stream bytes；接收端仍須檢查之前累積的應用訊息是否完整。",
+        "UDP情況可以是一筆合法的空datagram。RFC 768的Length欄位包含8-byte標頭，最小值為8，因此UDP資料內容可為0 bytes。",
+        "不可共用相同的斷線判斷。先依SocketType／協定決定回傳值語意，再由各自的應用協定處理空資料或EOF。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "20秒timeout但TCP Established與所有請求bytes已ACK，最有用下一項？",
+      "question": "client記錄UDP SendToAsync回傳12，client側抓包看到12-byte資料，但server沒有收到應用log。這能否證明server已收到？請指出兩個後續觀測，以及若命令可能已執行，重送時要避免什麼。",
       "answer": [
-        "傳輸狀態與確認不代表應用read/parse。",
-        "找B read、完整訊息、處理開始/結束及回覆證據。",
-        "按階段區分H3，不能僅增TCP重傳引數。"
-      ]
-    },
-    {
-      "level": "diagnosis",
-      "question": "UDP每20ms一筆，某筆丟失後下一筆抵達，能要求UDP自動補回嗎？",
-      "answer": [
-        "UDP本身沒有此可靠恢復契約。",
-        "若應用需補回，必須協議設計序號、期限、重試與去重；實時資料可能放棄過期筆。",
-        "依據業務時效與完整性選擇策略，不把TCP機制當UDP已有功能。"
+        "不能。回傳值只證明本機完成送出API操作；client側抓包也只證明該資料出現在這個抓包點，UDP沒有傳輸層送達確認。",
+        "先在server端同一介面和目的Port抓包；若已到server抓包點，再對照綁定Port與ReceiveFrom紀錄，之後才追解析和handler。",
+        "命令可能已執行但回覆遺失。重送時使用可辨識的messageId或操作ID，讓server查詢或去重，避免把重試當成新命令重複執行；並限制重試速率。"
       ]
     }
   ],
   "recap": [
-    "計算TCP序號、ACK、未確認資料與接收視窗。",
-    "解釋重傳、流量控制與壅塞控制各自解決的問題。",
-    "讀出握手、FIN、RST與應用逾時的不同因果。",
-    "用訊息邊界及UDP資料報契約判斷程式假設。"
+    "選TCP或UDP要看資料是否可遺失、能否過期、順序需求、遠端協定及應用能承擔的責任；速度口訣不能替代需求分析。",
+    "TCP server以Listen／Accept管理每條連線，程式仍需訊息 framing 和業務回覆；UDP server在綁定的Socket上收datagram與來源端點，可靠性與排序需由上層決定。",
+    "TCP Send／ACK及UDP SendTo的完成都不等於遠端功能成功；TCP Receive的EOF和UDP合法空datagram也不可混為一談。",
+    "診斷時從最早有證據的交接點往後追，用端點、方向、requestId或messageId關聯封包與程式紀錄，逾時後重試須考慮重複執行。"
   ],
   "sources": [
     {
-      "label": "IETF RFC 9293：3.4–3.8：序號、狀態與視窗",
+      "label": "IETF RFC 9293 §2.2、§3.8–3.9：TCP byte stream、連線、收送介面與狀態邊界",
       "url": "https://www.rfc-editor.org/rfc/rfc9293.html"
     },
     {
-      "label": "IETF RFC 5681：TCP壅塞控制",
-      "url": "https://www.rfc-editor.org/rfc/rfc5681.html"
-    },
-    {
-      "label": "IETF RFC 6298：TCP重傳計時",
-      "url": "https://www.rfc-editor.org/rfc/rfc6298.html"
-    },
-    {
-      "label": "IETF RFC 768：UDP資料報格式",
+      "label": "IETF RFC 768：UDP datagram格式、長度欄位與傳送／接收介面；UDP資料長度可為零",
       "url": "https://www.rfc-editor.org/rfc/rfc768.html"
+    },
+    {
+      "label": "IETF RFC 8085 §3.1–3.3：UDP應用的壅塞控制、可靠交付及datagram大小責任",
+      "url": "https://www.rfc-editor.org/rfc/rfc8085.html#section-3"
+    },
+    {
+      "label": "Microsoft Socket.ConnectAsync（.NET 10）：非同步連線操作的完成條件",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.connectasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft Socket.SendAsync（.NET 10）：回傳本次送出的byte數",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.sendasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft Socket.ReceiveAsync（.NET 10）：回傳讀取byte數；非零buffer讀到0代表對端正常結束傳送方向",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft Socket.SendToAsync（.NET 10）：UDP資料報送出成功不代表遠端成功收到",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.sendtoasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft Socket.ReceiveFromAsync（.NET 10）：取得datagram長度及來源端點",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receivefromasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft UdpClient.Connect（.NET 10）：設定預設遠端主機的API行為",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.udpclient.connect?view=net-10.0"
     }
   ],
-  "resources": [
-    {
-      "path": "./assets/labs/networking-maintenance-lab.zip",
-      "label": "下載本主題完整 C# 教學專案",
-      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
-    },
-    {
-      "path": "./assets/labs/networking-maintenance-lab/Program.cs",
-      "label": "網路維護 C# 讀碼模型（Program.cs）",
-      "description": "本章使用 tcp 模式；固定資料、不傳封包，.NET 10 可重跑。專案與操作說明見下一項。"
-    },
-    {
-      "path": "./assets/labs/networking-maintenance-lab/README.md",
-      "label": "實驗專案操作說明",
-      "description": "各模式、預期比較與模型界線；完整專案 ZIP 由本站提供。"
-    }
-  ]
+  "resources": []
 }

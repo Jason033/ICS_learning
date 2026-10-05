@@ -36,8 +36,8 @@ wait graph: A holds X -> waits Y; B holds Y -> waits X (cycle)
 
 [async]
 long-handler: ready=0 starts=0 queueWait=0
-status-callback: ready=20 starts=500 queueWait=480
-heartbeat: ready=100 starts=502 queueWait=402
+status-callback: ready=20 starts=50 queueWait=30
+heartbeat: ready=100 starts=100 queueWait=0
 logical UI model only: .NET Console has no WPF Dispatcher.
 
 [evidence]

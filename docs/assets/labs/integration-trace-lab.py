@@ -35,11 +35,11 @@ class DemoTrace:
         self.log('Adapter', 'SEND GetStatus to fictional DemoCtrl-A')
         self.schedule(5, lambda: self.log('Adapter', 'ACK accepted; final state not confirmed'))
         if self.case in ('success', 'duplicate', 'stale-session'):
-            self.schedule(20, lambda: self.on_device_event(1))
+            self.schedule(20, lambda: self.on_device_event(self.request_id, 1))
         if self.case == 'late':
-            self.schedule(80, lambda: self.on_device_event(1))
+            self.schedule(80, lambda: self.on_device_event(self.request_id, 1))
         if self.case == 'duplicate':
-            self.schedule(25, lambda: self.on_device_event(1))
+            self.schedule(25, lambda: self.on_device_event(self.request_id, 1))
         if self.case == 'stale-session':
             self.schedule(12, self.reconnect)
 
@@ -47,13 +47,18 @@ class DemoTrace:
         self.session = 2
         self.log('Controller', 'RECONNECTED; old-session events require verification')
 
-    def on_device_event(self, event_session):
-        self.log('FakeDevice', f'EVENT state=READY event_session={event_session}')
-        if event_session != self.session:
+    def on_device_event(self, event_request_id, event_session):
+        self.log('FakeDevice', f'EVENT state=READY event_request={event_request_id} event_session={event_session}')
+        if event_request_id != self.request_id:
+            self.log('Controller', 'REQUEST_MISMATCH; do not apply to this operation')
+        elif event_session != self.session:
             self.log('Controller', 'STALE_SESSION; do not apply to new session')
         elif self.result == 'pending':
             self.result = 'confirmed'
             self.log('Controller', 'CONFIRMED; View may display READY')
+        elif self.result == 'unknown':
+            self.result = 'confirmed'
+            self.log('Controller', 'LATE_MATCHED_EVENT; same request/session resolves Unknown')
         elif self.result == 'confirmed':
             self.log('Controller', 'DUPLICATE; already confirmed')
         else:

@@ -1,38 +1,23 @@
 {
-  "contentVersion": 2,
-  "intro": "UART沒有共用clock線，卻仍以時鐘取樣；雙方引數決定如何把變化恢復為字元。本章從start偵測、bit中心、data/parity/stop推導baud、錯誤與flow control的工程後果。",
+  "contentVersion": 3,
+  "intro": "接續前篇的資料交接路徑，本篇看每個byte如何依UART有效設定成為可辨識的字元，以及設定與讀取服務不一致時會留下什麼故障證據。重點放在程式實際套用的參數、線上時間、錯誤分類與接收積壓；晶片內部取樣細節以設備規格為界。",
   "prerequisites": [
     "從位元、位元組或本章必需概念開始，不要求先學其他完整主題。",
     "C#片段為閱讀輔助；獨立.NET10模型不代表公司程式或廠商API。"
   ],
-  "studyTime": {
-    "reading": [
-      11,
-      18
-    ],
-    "practice": [
-      20,
-      40
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 概念與兩個推導例題；實作需預測/變因/復原與產物；陌生題需計算與診斷，尚待使用者計時。"
-  },
   "goals": [
-    "畫出8N1與7E1欄位位置並計算時間。",
-    "解釋LSB-first、parity、framing及overrun差異。",
-    "以累計取樣偏移理解時鐘誤差。",
-    "區分軟硬體流控與應用訊息/業務成功。"
+    "讀出8N1與7E1有效欄位並計算傳送時間。",
+    "依錯誤類別區分字元恢復問題與應用接收積壓。",
+    "核對程式最後生效的UART與flow-control設定。",
+    "把串列線上時間與設備處理、交易間隔分開估算。"
   ],
   "sections": [
     {
       "kind": "concept",
       "heading": "非同步不是沒有時鐘，而是每字元重新對齊",
       "paragraphs": [
-        "UART傳送與接收各有時鐘，沒有同步clock線。線路idle，start邊緣通知新字元；接收者依據設定baud，在預計bit中心取樣資料與後續欄位。許多實現使用oversampling與多點判定，具體倍數由晶片決定。重新以每個start對齊減少跨長訊息的累計誤差，但單字元內仍會因時鐘不一致偏離中心。",
-        "Baud是每秒符號變化機會的速率；普通二值UART一符號承載一bit，因此線bit rate與baud數值相同，不代表有效應用bytes/s相同。每個byte還需start/stop/parity開銷；裝置處理與間隙再降低實際交易量。保持這個層次，才能解釋9600baud為何不是9600bytes/s。"
+        "UART兩端各自依本地時鐘恢復字元，沒有一條共用clock線。接收端從start條件辨認新字元，再依設定的速率和欄位讀取data、parity與stop。雙方設定要符合同一設備契約；維護時通常先確認有效設定與接收錯誤計數，不必推算晶片內部的oversampling實作。",
+        "Baud是每秒傳輸的符號數；本文討論的二值UART每個符號承載1bit，所以baud與線上bit/s數值相同，但不代表應用有效bytes/s。每個byte另有start、stop與可能的parity，設備處理、交易間隔和flow control再降低實際交易量。"
       ],
       "image": {
         "src": "./assets/diagrams/serial-8n1.svg",
@@ -58,9 +43,9 @@
     },
     {
       "kind": "mechanism",
-      "heading": "取樣重同步與有效吞吐：字元內與交易間的邊界",
+      "heading": "字元錯誤、有效吞吐與交易時間的邊界",
       "paragraphs": [
-        "每個字元start重新定位，意味著時鐘差不是跨整份1000bytes累積1000倍；但字元內部仍有約一個字元長度的漂移。接收oversampling讓邊緣定位與多數判定更穩定，並不能使兩時鐘任意不一致。實際有效誤差取決於發端與收端誤差的合成，不只一個裝置標示±1%；如果一端快、另一端慢，相對差會增加。",
+        "UART每個字元重新由start條件定位，因此取樣誤差主要影響當前字元；實際容許範圍依發送端、接收端和器件規格而異，不能從單一baud標示推定。若只有特定資料型態或負載出錯，先保留原始HEX、有效串列設定和錯誤類別，再比較出錯條件；不要用一個通用百分比代替設備規格。",
         "8N1只傳送0x00時data連續低，0xFF時data連續高，start/stop仍提供邊界。不同bit pattern對不良邊緣或取樣偏移的表現可不同，因此只測試AAAA等一種字串不保證所有字元穩定。可在授權軟體模型用00/FF/55/AA及實際命令作已知輸入，保留HEX與錯誤類別；真實電氣測量仍依手冊。",
         "有效吞吐還取決於查詢協議。例如9600 8N1，若每回合請求9/回覆10、裝置處理20ms，線與處理下界39.79ms，理想每秒約25.13回合，收到有效回覆約251.3bytes/s，遠低單方向960bytes/s。這不是UART浪費錯誤，而是交易順序與對端工作的後果；協議若要求逐筆，不能擅改併發。",
         "Flow control反應也有在途資料：接收者要求暫停時，傳送器/橋已排入或線上的字元可能繼續到達，容量必須考慮這個餘裕。軟體XOFF經過傳送與解釋也需時間，硬體control也非零延遲。若buffer只剩1byte才通知且在途10bytes，仍會overflow。維護應量暫停前後額外bytes與服務速率，不用「開handshake」代替完整容量模型。",
@@ -83,38 +68,33 @@
     },
     {
       "kind": "worked-example",
-      "heading": "例題二：取樣誤差與容量實算",
+      "heading": "例題二：生效設定不一致與接收積壓",
       "paragraphs": [
-        "理想模型假設start對齊，接收bit time比傳送長3%，到9.5傳送bit times附近，累計偏移約9.5×.03=.285bit；6%時.57bit，可能越過中心到另一位置。真實可容誤差需結合雙方誤差、偵測與取樣設計、data/stop配置，不把5%當所有產品保證。故障常取決於字元pattern而非每筆都壞。",
-        "容量例8N1/9600理論payload960bytes/s；來源以900bytes/s持續送，而APP平均只處理600，每秒積壓300。1200-byte可用buffer從空約4s填滿，burst會更早。提高read速度或啟用相應flow control與限速可處理容量問題；調整parity不會增加長期APP服務速率。硬體字元正確也可以在buffer丟失。"
+        "第一個維護線索是畫面設定不一定等於執行值：程式可能載入檔案後覆寫SerialPort屬性，也可能在建立其他物件時再次變更Handshake。發生亂碼或停傳前，沿建立、設定、Open與後續讀寫位置確認同一個port instance的有效參數，並與對端文件比對。",
+        "第二個線索是資料進得比應用處理得快。以8N1/9600計，忽略間隔時的上限約960bytes/s；若來源持續送900bytes/s，而讀取與處理平均只有600bytes/s，佇列每秒淨增加300bytes。1200bytes可用空間約4秒填滿；擴大緩衝只會延後，不會修正長期處理速率不足。這是應用服務量的估算，不是硬體設計題。"
       ],
       "table": {
-        "caption": "例題二：取樣誤差與容量實算",
+        "caption": "由設定與佇列觀測區分兩種故障",
         "headers": [
-          "量",
-          "計算",
-          "說明"
+          "觀察到的資料",
+          "推論範圍",
+          "下一個核對點"
         ],
         "rows": [
           [
-            "3%取樣偏移",
-            "9.5×0.03=.285bit",
-            "理想字元內模型"
+            "UI顯示9600，port instance記錄19200",
+            "程式有效設定與畫面設定不同",
+            "設定覆寫路徑與對端文件"
           ],
           [
-            "6%偏移",
-            "9.5×0.06=.57bit",
-            "不作器件允差保證"
+            "接收字元正確，佇列長期增長",
+            "應用處理速度低於輸入速度",
+            "Read排程、佇列容量與處理耗時"
           ],
           [
-            "payload上限",
-            "9600/10=960bytes/s",
-            "不含額外間隙"
-          ],
-          [
-            "積壓",
-            "900−600=300bytes/s",
-            "1200容量約4s"
+            "Parity/framing錯誤隨條件增加",
+            "字元恢復或線路條件可能不符",
+            "有效設定、設備規格及適當線路證據"
           ]
         ]
       }
@@ -137,16 +117,16 @@
     },
     {
       "kind": "lab",
-      "heading": "實作：算欄位而非只記8N1名稱",
+      "heading": "實作：從程式參數推到字元時間與接收負載",
       "paragraphs": [
-        "執行uart，先手算0x53的LSB序與even parity，核對時間輸出。將baud改19200，只線時間減半；把paritybits改1，bitsPerChar變11。另外紙算7E1與8N1的欄位位置並說明為何總長相同卻不同內容，避免只看時間認為相容。",
-        "模型不生成電壓波形或硬體錯誤。驗收交bit時序、兩種字元時間、交易下界及buffer積壓表；復原引數再重跑。實際硬體允差與flow方向需裝置manual，不能用理想6%示範替代規格。"
+        "執行uart，追出每字元欄位並核對0x53的LSB-first與even parity。用9600和19200各算一次同一筆請求的線上時間，再把baud改動與設備處理時間分開記錄。",
+        "另外用900bytes/s輸入、600bytes/s處理和1200-byte buffer重算積壓時間。模型不生成線路波形或硬體錯誤；驗收交有效設定比對、字元時間和應用緩衝估算。復原參數再重跑，並指出真實硬體允差應去哪份設備資料核對。"
       ],
       "steps": [
-        "畫start/data/parity/stop並標bit中心。",
-        "算9600與19200、8N1與8E1。",
-        "單改引數觀察時間，解釋哪些裝置處理項不變。",
-        "復原，列overrun與framing應取得的不同證據。"
+        "找到設定值寫入、Open與讀取的程式位置，標出最後生效值。",
+        "算一筆請求在9600與19200下的字元傳送時間，列明尚未計入的設備等待。",
+        "算來源與處理速率的差及buffer填滿時間，判斷是否為長期積壓。",
+        "復原模型，說明哪些錯誤需設備規格或線路觀測才能再區分。"
       ]
     },
     {
@@ -233,10 +213,10 @@
     }
   ],
   "recap": [
-    "畫出8N1與7E1欄位位置並計算時間。",
-    "解釋LSB-first、parity、framing及overrun差異。",
-    "以累計取樣偏移理解時鐘誤差。",
-    "區分軟硬體流控與應用訊息/業務成功。"
+    "從有效設定讀出字元欄位並估算串列資料時間。",
+    "區分字元錯誤、流量控制等待與應用佇列積壓。",
+    "用程式實際設定而非UI預設解釋目前行為。",
+    "把設備處理與交易間隔納入回覆時間判斷。"
   ],
   "sources": [
     {
@@ -248,12 +228,16 @@
       "url": "https://pyserial.readthedocs.io/en/latest/pyserial_api.html"
     },
     {
-      "label": "Microsoft：Handshake控制",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.handshake?view=net-10.0-pp"
+      "label": "Microsoft Learn：Handshake的控制模式",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.handshake"
     },
     {
-      "label": "Microsoft：DataReceived時序與執行緒",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived?view=dotnet-plat-ext-8.0"
+      "label": "Microsoft Learn：DataReceived通知限制與執行緒",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.ports.serialport.datareceived"
+    },
+    {
+      "label": "Analog Devices：baud符號率與bit rate的差別",
+      "url": "https://www.analog.com/en/resources/analog-dialogue/articles/selecting-mixed-signal-components.html"
     }
   ],
   "resources": [

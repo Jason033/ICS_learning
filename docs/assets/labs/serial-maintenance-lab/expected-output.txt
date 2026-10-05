@@ -6,19 +6,10 @@ COMMAND layers --fault
 COM-open=OK write=7 HEX=5354415455533F
 UART bytes available; message missing CR LF
 
-COMMAND wiring
-RS232 data voltage=-6.0V => mark=1
-RS232 data voltage=0.0V => undefined region
-RS232 data voltage=6.0V => space=0
-single-ended signal relative to receiver=3V
-differential before=3V after=3V
-No pin numbers or construction instructions are implied.
-
 COMMAND uart
 8N1 bitsPerChar=10 bitTimeUs=104.166667 charTimeMs=1.041667
 request9BytesMs=9.375000 response10BytesMs=10.416667
 byte=53 lsbFirst=11001010 evenParity=0
-receiver3percentSlow driftAt9.5bits=0.285bit; receiver6percentSlow=0.57bit (idealized)
 
 COMMAND frames
 RX AA0290

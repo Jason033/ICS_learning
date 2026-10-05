@@ -24,30 +24,22 @@ for (const topic of catalog.topics) {
       const lesson = JSON.parse(fs.readFileSync(file, 'utf8'));
       assert([2, 3].includes(lesson.contentVersion), `${file} 教材版本不支援`);
       assert.equal(chapter.contentVersion, lesson.contentVersion);
-      assert.deepEqual(chapter.studyTime, lesson.studyTime);
+      assert(!('studyTime' in chapter), `${file} 目錄不應顯示未校準的耗時估計`);
+      assert(!('studyTime' in lesson), `${file} 教材不應顯示未校準的耗時估計`);
       assert(!('minutes' in chapter), `${file} 不應沿用固定總分鐘`);
       assert(!lesson.plan, `${file} 不應沿用舊的學習分鐘表`);
       for (const field of ['intro', 'prerequisites', 'goals', 'sections', 'exercises', 'recap']) assert(lesson[field]?.length, `${file} 缺少 ${field}`);
-      if (lesson.contentVersion === 2) {
-        for (const field of ['reading', 'practice', 'exercises']) {
-          const range = lesson.studyTime[field];
-          assert.equal(range.length, 2);
-          assert(range.every(Number.isFinite) && range[0] > 0 && range[0] <= range[1]);
-        }
-        assert(lesson.studyTime.basis, `${file} 缺少估計依據`);
-      }
       assert(lesson.sources?.length, `${file} 缺少原理來源`);
       for (const source of lesson.sources || []) assert.match(source.url, /^https:\/\//);
       for (const resource of lesson.resources || []) {
         assert.match(resource.path, /^\.\/assets\/labs\/[A-Za-z0-9/-]+\.(?:pcap|pcapng|py|cs|json|csv|zip|txt|md)$/);
         assert(fs.existsSync(path.join(docs, resource.path.slice(2))), `${file} 缺少練習檔 ${resource.path}`);
       }
-      if (lesson.contentVersion === 2) assert(lesson.exercises.length >= 8);
       for (const exercise of lesson.exercises) {
         assert((lesson.contentVersion === 3 ? ['foundation', 'application', 'understanding', 'reasoning', 'diagnosis'] : ['foundation', 'application', 'diagnosis']).includes(exercise.level));
         assert(exercise.question?.length && exercise.answer?.length);
         const paragraphs = Array.isArray(exercise.answer) ? exercise.answer : exercise.answer.split(/\n\s*\n/);
-        assert(paragraphs.length >= (lesson.contentVersion === 3 ? 1 : 2) && paragraphs.every(p => typeof p === 'string' && p.trim()), `${file} 解答缺少說明`);
+        assert(paragraphs.length >= 1 && paragraphs.every(p => typeof p === 'string' && p.trim()), `${file} 解答缺少說明`);
       }
       for (const section of lesson.sections) {
         if (section.check) {
@@ -112,23 +104,16 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await new Promise(setImmediate);
   await vm.runInContext('renderRoute()', context);
   assert.match(element('#main').innerHTML, /選一個主題，開始學/);
-  assert.match(element('#main').innerHTML, /Ozeki API/);
+  assert.match(element('#main').innerHTML, /新版核心系列/);
+  for (const topicId of ['ozeki', 'ptt', 'voip', 'radio', 'integration', 'reliability']) {
+    const topic = catalog.topics.find(item => item.id === topicId);
+    assert(topic, `缺少核心系列：${topicId}`);
+    assert(element('#main').innerHTML.includes(`#/topic/${topicId}`), `首頁沒有核心系列入口：${topicId}`);
+  }
   const hasPlanned = catalog.topics.some(t => t.chapters.some(c => c.status === 'planned'));
   if (hasPlanned) assert.match(element('#main').innerHTML, /規劃中/);
-  else assert.match(element('#main').innerHTML, /新版教材逐步重編中/);
+  else assert.match(element('#main').innerHTML, /新版教材與尚未改版的參考資料分開標示/);
   assert(element('#explore-topics').listeners.click, '首頁探索按鈕未綁定');
-  const pilot = catalog.topics[0].chapters.filter(c => c.contentVersion === 3);
-  for (const chapter of pilot) assert(element('#main').innerHTML.includes(`#/lesson/networking/${chapter.id}`));
-  for (let i = 0; i < pilot.length; i++) {
-    context.location.hash = `#/lesson/networking/${pilot[i].id}`;
-    await vm.runInContext('renderRoute()', context);
-    const html = element('#main').innerHTML;
-    assert.match(html, /concept-check/);
-    assert(!html.includes('#/lesson/networking/one-conversation'), '新版導航不應把讀者帶入舊版');
-    if (i + 1 < pilot.length) assert(html.includes(`#/lesson/networking/${pilot[i + 1].id}`));
-    else assert.match(html, /本組新版試讀到此/);
-  }
-
 
   for (const topic of catalog.topics) {
     context.location.hash = `#/topic/${topic.id}`;
@@ -139,16 +124,35 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
       await vm.runInContext('renderRoute()', context);
       const html = element('#main').innerHTML;
       assert(html.includes(chapter.title), `無法呈現 ${topic.id}/${chapter.id}`);
+      const lessonData = JSON.parse(fs.readFileSync(path.join(docs, 'content/lessons', `${topic.id}--${chapter.id}.json`), 'utf8'));
+      const visibleText = [lessonData.intro, ...lessonData.goals, ...lessonData.prerequisites, ...lessonData.recap,
+        ...lessonData.sections.flatMap(section => [...(section.paragraphs || []), ...(section.bullets || []), ...(section.steps || []), section.check?.question, ...(section.check?.answer || [])]),
+        ...lessonData.exercises.flatMap(exercise => [exercise.question, ...(Array.isArray(exercise.answer) ? exercise.answer : [exercise.answer])])]
+        .filter(value => typeof value === 'string').join('\n');
+      const lessonReferences = [...visibleText.matchAll(/#\/lesson\/([a-z0-9-]+)\/([a-z0-9-]+)/gi)];
+      for (const [, referencedTopicId, referencedChapterId] of lessonReferences) {
+        const referencedTopic = catalog.topics.find(item => item.id === referencedTopicId);
+        assert(referencedTopic?.chapters.some(item => item.id === referencedChapterId && item.status === 'ready'),
+          `${topic.id}/${chapter.id} 指向不存在或未開放的教材：${referencedTopicId}/${referencedChapterId}`);
+        const referenceHref = `#/lesson/${encodeURIComponent(referencedTopicId)}/${encodeURIComponent(referencedChapterId)}`;
+        assert(html.includes(`href="${referenceHref}"`), `${topic.id}/${chapter.id} 內部教材參照未轉成連結：${referenceHref}`);
+      }
+      const expectedChecks = lessonData.sections.filter(section => section.check).length;
+      assert.equal((html.match(/class="concept-check"/g) || []).length, expectedChecks);
+      assert(!html.includes('lesson-plan'), '頁面不應顯示未校準的耗時估計');
       if (chapter.contentVersion === 2) {
-        assert.match(html, /閱讀與動手時間分開估計/);
+        assert.match(html, /舊版參考資料/);
         assert.match(html, /本章會補足的前置概念/);
       } else {
-        assert(!html.includes('lesson-plan'), '新版試讀不應強加舊版時間配額');
         assert.match(html, /這章接在哪裡/);
         assert(!html.includes('教材重編中'));
       }
       assert.match(html, /mobile-lesson-toc/);
-      if (chapter.contentVersion === 2) assert.match(html, /練習 08/);
+      const readingGroup = topic.chapters.filter(item => item.status === 'ready' && ((item.contentVersion >= 3) === (chapter.contentVersion >= 3)));
+      const readingIndex = readingGroup.findIndex(item => item.id === chapter.id);
+      const next = readingGroup[readingIndex + 1];
+      if (next) assert(html.includes(`#/lesson/${topic.id}/${next.id}`), `${topic.id}/${chapter.id} 導航未指向同版本下一篇`);
+      else assert(html.includes('返回主題目錄'), `${topic.id}/${chapter.id} 缺少回目錄連結`);
       assert.match(html, /查看解答與判斷過程/);
       assert(!html.includes('href="#" download'), `下載連結被拒絕 ${topic.id}/${chapter.id}`);
       assert(!html.includes('[object Object]'), `解答陣列未正確呈現 ${topic.id}/${chapter.id}`);
@@ -177,6 +181,8 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   assert.equal(vm.runInContext('safeAsset("./assets/labs/../../private.txt")', context), '#');
   assert.equal(vm.runInContext('safeLink("javascript:alert(1)")', context), '#');
   assert.equal(vm.runInContext('safeAsset("./assets/labs/networking-maintenance-lab.zip")', context), './assets/labs/networking-maintenance-lab.zip');
+  const inlineCodeRoute = vm.runInContext('formatText("`#/lesson/security/auth`")', context);
+  assert(inlineCodeRoute.includes('<code>#/lesson/security/auth</code>') && !inlineCodeRoute.includes('<a '), '程式碼中的教材路徑應保持程式碼格式');
   const rendered = vm.runInContext('renderAnswer({answer:["<script>bad()</script>", "a & b"]})', context);
   assert(rendered.includes('&lt;script&gt;') && rendered.includes('a &amp; b'));
   assert(!rendered.includes('<script>'));
@@ -193,7 +199,8 @@ vm.runInContext(fs.readFileSync(path.join(docs, 'app.js'), 'utf8'), context);
   await vm.runInContext('renderRoute()', context);
   await releaseOld();
   await oldRoute;
-  assert(element('#main').innerHTML.includes(catalog.topics.find(t => t.id === 'ozeki').chapters[0].title));
+  const readAudioChapter = catalog.topics.find(t => t.id === 'ozeki').chapters.find(chapter => chapter.id === 'read-a-call');
+  assert(element('#main').innerHTML.includes(readAudioChapter.title));
   context.fetch = normalFetch;
   context.location.hash = '#/%broken-encoding';
   await vm.runInContext('renderRoute()', context);

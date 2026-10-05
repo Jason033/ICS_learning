@@ -1,296 +1,229 @@
 {
-  "contentVersion": 2,
-  "intro": "整合除錯不是把所有工具結果排在一起，而是用完整模型解釋每項證據爲什麼指向某段機制。本章重新建立通話、媒體、數字音訊與時序的關係，示範兩條完整推理，再以陌生數據檢驗你的假說。你要能夠給下一位維護者可複查的結論與下一步，而不是一串協議名。",
+  "contentVersion": 3,
+  "intro": "本篇沿著一次呼叫的完整路徑做診斷：呼叫是否送出、信令是否建立、有效 SDP 指向哪個媒體端點、RTP 是否出現在該端點、負載是否按協商解碼，以及資料是否交回本機媒體層。所有地址、編號和時間線都是合成案例。目標不是背故障清單，而是找最早不符合預期的交接，提出能區分候選的下一個檢查。",
   "prerequisites": [
-    "已理解通話控制、SDP、RTP 與本機音訊路徑各自負責什麼。",
-    "能依同一來源與時間窗比對資料；本章給完整案例，工具擷取可於理解推導後再做。"
+    "建議依總覽、SIP 角色、呼叫流程、SDP、RTP/RTCP、音訊邊界、Codec、jitter 的路徑讀過；每個前置都可跳讀。",
+    "Wireshark filter、GUI 操作和 dissector 欄位查詢屬於 Wireshark 系列；本文只使用已取得的合成欄位與時間線。"
   ],
   "goals": [
-    "能以同呼叫、來源、版本與時鐘關聯控制、媒體及音訊證據。",
-    "能從症狀提出至少兩個原因並用新證據區分。",
-    "能選擇有限修正並驗證正常、故障、重連與期限行爲。"
+    "能以同一呼叫的識別資料串接信令、協商、媒體與程式觀測。",
+    "能依證據縮小假說並選擇下一個可反駁候選的檢查，不因單一狀態碼或封包指標下超出證據的結論。",
+    "能寫出範圍明確的修正、回歸條件與仍未知事項。"
   ],
   "sections": [
     {
-      "kind": "concept",
-      "heading": "先建立分層模型：同一個症狀爲何有許多原因",
-      "paragraphs": [
-        "「打不通」可能註冊位置無效、路由未達、邀請被拒、協商失敗或應用狀態沒更新；「接通無聲」可能媒體未生、目的錯誤、路徑缺口、解碼錯或裝置靜音。症狀是結果，不自帶根因。需要先確認用戶動作與方向，再把控制、媒體運輸和本機音訊拆成可觀察階段。",
-        "每階段的機制有明確條件：註冊租約讓邏輯身分可被聯絡；SIP交易／dialog關聯控制動作；SDP建立有效媒體契約；RTP來源與clock組織時間；編碼與PCM定義bytes；播放緩衝及裝置把數據變聲音。前階段可成功而後階段失敗，因此一個200、Connected或RTP包不能覆蓋全部。",
-        "排查圖應分已證實、候選與待取證箭頭，不把教材A/B模型畫成公司拓撲。看到廠商類名只拿作查定義與引用的線索，真實依賴從版本相符文檔、代碼、call stack和日誌確認。你不需要知道整個公司系統纔開始查一個動作，但每步需要守住證據邊界。",
-        "錯誤結果還要分成已拒絕、已完成、等待逾時而遠端未知；逾時不是遠端撤銷操作的證據。對有副作用的呼叫或控制流程，先查權威結果與關聯ID，再依正式契約重試。這樣能在基礎狀態模型中解釋爲什麼重複操作可能放大問題。"
-      ]
-    },
-    {
       "kind": "mechanism",
-      "heading": "關聯與範圍：同Call、同SSRC、同窗口才可比較",
-      "paragraphs": [
-        "控制按Call-ID、tag、CSeq方法及信令腿關聯；媒體按有效SDP端點、方向、SSRC及生效時間；音訊按call對象、裝置ID、格式與處理世代。跨模塊需要實際存在的request或call鍵鏈接，沒有鍵時使用內容與時間只能形成較弱候選。別把另一通正常媒體借來證明這通正常。",
-        "數字也有範圍：註冊期限不等通話期限，RTCP累計不等本期loss，包數不等唯一媒體，J單位不等毫秒，IP bytes不等codec有效負載。每個表標題寫計量對象、窗口與分母，報表正文再用機制解釋。這是讓外行可以單看報告懂結論的必要條件，不是添加更多CSV列。",
-        "時鐘誤差限制先後推斷。PCAP相對時間、SDK日誌牆鍾、音訊設備sample position有不同基準，需要映射與誤差。只有差5ms卻校時誤差±20ms，不能推出線程順序。先在同源資料讀次序，再補同步或同源探針，避免把時間格式相同當真正對時。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題一：完整控制正常卻實際格式錯",
-      "paragraphs": [
-        "輸入資料：INVITE/200/ACK同dialog完整，有效SDP PT8 PCMA/8000 mono；A發送RTP PT8、160-byte負載、20ms timestamp增160，B接收端看到同來源與序列；B decoder配置PCMU，輸出有樣本卻失真。候選先包括路徑損壞、格式映射或裝置。原字段、長度、clock和兩點序列支持運輸結構正常。",
-        "PT8本次PCMA與實際吻合，但decoder規則PCMU不符，是最直接可驗證的差異。有限修正只讓當前會話的decoder依有效map配置，保持網絡、ptime和輸入不變。修後以同已知聲音與數值輸入比較PCM輸出，不因包數不變就說沒修。若失真仍存在，再查增益削波及裝置而非同時亂改。",
-        "迴歸同codec正常通話、另一codec、快重撥與再協商，檢查映射不跨會話污染。結論可寫：「該方向傳輸字段與協商PCMA一致，接收解碼器使用PCMU；優先修會話映射並以同輸入驗證。」讀者明白前因後果，而不是看到一行decode error和一句換codec。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題二：最終包齊卻來不及播放",
-      "paragraphs": [
-        "本例固定 T0＝0ms、首 timestamp S0＝0；到達時間及播放期限均相對同一本地起點。輸入另一個來源clock8000，seq900..904、ts0/160/320/480/640，到達25/45/95/85/105ms。seq903在85先於902在95，最終五份都收到。固定buffer40的deadline40/60/80/100/120，902晚15ms。網絡總數5且唯一5，仍有一份不能照原期限播放。",
-        "候選包括接收緩衝不足以吸收burst、解碼調度慢與錯誤clock。補充log顯示按給定timestamp映射、decoder及時、late_drop發生902，對症是到達／期限關係。把buffer60後902 deadline100提前5ms，但所有播放多等20ms，網絡arrival沒改變。此修正是策略取捨而不是路徑變快。",
-        "驗收同時記錄late減少和總交互延遲，不只聽起來連續；還需足夠負載窗口與真實語音驗證。若業務不容許增加20ms，應追burst根因或適當恢復策略。這個例題讓完整接收、可用媒體與品質三者保持不同層級，不能把5/5叫全部正常。"
+      "heading": "把呼叫分成可驗證的交接，不照故障名詞輪流猜",
+      "flow": [
+        "程式發起 INVITE",
+        "SIP 結果與 dialog 狀態",
+        "有效 offer/answer 的媒體契約",
+        "每方向 RTP/RTCP 傳送",
+        "接收端排程/解碼",
+        "本機媒體邊界"
       ],
+      "paragraphs": [
+        "先選一條具體呼叫並建立識別：呼叫端本機 generation、SIP Call-ID/From/To tags/CSeq、SIP 腿、offer/answer 代次、媒體方向、RTP tuple/SSRC/PT、統一時間窗。經 Proxy/SBC/B2BUA 或 media relay 時，信令與 RTP 可換腿或重建標識，需用授權的中繼關聯紀錄搭橋。",
+        "沿正常路徑問每一站：輸入是什麼、誰處理、輸出或狀態在哪裡可見？例如 INVITE 回應只回答控制請求；SDP 導出媒體預期；sender counter/捕獲證明特定點有輸出；receiver capture/RTCP 表示收端觀察；decoder 和 local media counters 再證明資料處理到了更後面。",
+        "先找第一個「預期與觀察不一致」的邊界，不從症狀名稱開始挑解法。若某層證據缺失，表示目前不知道，不等於它一定失敗。這是本篇所有案例的共同推理方法。"
+      ]
+    },
+    {
+      "kind": "worked-example",
+      "heading": "整合案例一：已接通、對方完全無聲",
       "table": {
-        "caption": "同一媒體的運輸與播放結果",
+        "caption": "合成證據。端點為教學文件位址；沒有公司拓撲假設。",
         "headers": [
-          "seq",
-          "arrival",
-          "deadline40",
-          "結果"
+          "階段",
+          "觀察",
+          "目前能推論"
         ],
         "rows": [
           [
-            "900",
-            "25",
-            "40",
-            "及時"
+            "SIP",
+            "INVITE 200 / ACK 完成，Call-ID=c9",
+            "呼叫控制接受"
           ],
           [
-            "901",
-            "45",
-            "60",
-            "及時"
+            "SDP",
+            "有效 answer: B 接收 198.51.100.20:41000；sendrecv，PT0=PCMU",
+            "預期雙向媒體及格式"
           ],
           [
-            "902",
-            "95",
-            "80",
-            "晚15ms"
+            "A 送出",
+            "A capture 有 PT0 RTP，目的 198.51.100.20:41000，SSRC A7",
+            "A 觀察點有向 SDP 目的送包"
           ],
           [
-            "903",
-            "85",
-            "100",
-            "及時，先於902"
+            "B 接收",
+            "B 邊界捕獲無 SSRC A7 封包",
+            "目前第一個未證實交接位於兩觀察點之間"
           ],
           [
-            "904",
-            "105",
-            "120",
-            "及時"
+            "B 解碼/播放",
+            "無資料",
+            "尚不可判斷"
           ]
         ]
-      }
-    },
-    {
-      "kind": "mechanism",
-      "heading": "一個有區分力的實驗勝過更多同類截圖",
+      },
       "paragraphs": [
-        "假說要預測可不同的觀察。若是目標Port錯，抓實際目的會不符SDP；若是decoder錯，媒體端點與PT可正確但配置不符；若是輸出靜音，decode與樣本可正確卻設備路由／音量錯誤。反覆截圖200不會區分這三種，所以實驗應移動到尚未證實的段。",
-        "對照可用已知正常call、同一端點另一方向、同一輸入本地播放、同一輸入繞過某處理模塊或換可靠觀察位置。每次只改指定條件，記錄預期與實際。若一次更換裝置、codec、Port、buffer和程序版本，即使改善也不知道哪個機制被修復，長期維護會再靠試運氣。",
-        "有些實驗依賴授權設備或不易獲得資料，可先進行安全只讀追代碼、查文檔與合成模型計算。獲得新證據後再做有限更動，不以「謹慎」爲由只講一句未知。明確要取得哪段數據、它能排除哪個原因，讓用戶持續建立判斷能力。",
-        "比較需要控制條件：同一個用戶、同一輸入、相同負載與時間窗，才能看改動的效果。若修正前是尖峯時段、修正後是空閒，一次成功可能只是負載變少；若更換麥克風同時重啓程序，改善可能來自資源重建而非裝置本身。把基準、變因、結果與限制連成一句話，結論才能複查。",
-        "根因、觸發條件和放大機制也可分開。短暫網絡burst可能觸發請求timeout，應用盲重試進一步增加隊列，舊狀態錯誤映射讓畫面長時間Busy。只修其中一段可以改善但未消除全部風險；每項修改應對應哪種機制與迴歸範圍。不要爲了一個漂亮單因結論把相互作用省略。",
-        "日誌也會改變觀測成本：在實時callback同步寫大量內容可能影響期限，關掉日誌又失去階段證據。實際設計依支持API採用合適的輕量字段、緩衝與採樣，記錄是否啓用及drop。分析時若懷疑探針本身改變行爲，可用相同輸入比較輕量與重記錄條件，不能把任何新增日誌當完全無影響。"
+        "先確認表中呼叫身份與媒體腿一致、answer 是最新且未被中繼改寫，兩端 capture 時間窗口有重疊、B 的捕獲無 drop。若都成立，首要候選是兩觀察點之間的媒體路徑或映射；目前沒有理由先調 PCMU decoder 或喇叭，因封包尚未出現在 B 的入口證據。",
+        "下一個區分性檢查是在 relay/NAT/防火牆邊界尋找同一流；若 relay 有輸入但無輸出，查其轉送／分配；若最後一個邊界有、B ingress 沒有，縮小到其後路徑；若任何一側 flow mapping 證明 SSRC 被重建，改用 relay session ID 和新腿的 tuple 關聯。不可要求所有網路上的五元組都相同。",
+        "若新證據顯示 B 已有 RTP，但 decoder output 為零，假說轉向 PT mapping/codec/decryption；若 decoder 正常而本機提交停止，轉到本機媒體邊界與 Ozeki 篇。處理順序隨證據改變，而非把原假說一路帶到底。"
       ]
     },
     {
       "kind": "diagnostic-case",
-      "heading": "有註冊200卻沒有邀請回應：位置、路由或觀察範圍",
+      "heading": "整合案例二：單向音訊，程式只記錄一個 Connected",
       "paragraphs": [
-        "先給未解症狀：登記成功，之後呼叫只見INVITE重複。候選是綁定過期、Contact對服務器不可達、目標未處理、響應未回或抓包遺漏。第一組補證據看成功Contact期限與現在時刻；若早已過期而UI仍Registered，下一步修狀態刷新與重新登記，不先調媒體。",
-        "另一組證據綁定仍有效，服務器發INVITE到Contact，目標實際監聽另一Port；查生成Contact與運行監聽之間差異，有限更新正式配置並驗證邀請與回應。若目標已有200而發起端不見，則追反向或觀察完整性。每條分支都需對應數據，不把同症狀強塞固定答案。",
-        "迴歸初次、刷新、過期、重連、多終端與快呼叫，驗收正確目標及控制結果；媒體另外驗證。登記200作爲租約已接受的證據，不作爲電話接通。基本狀態關係在最後章節仍要解釋清楚，避免用題目數量僞裝深度。"
-      ]
-    },
-    {
-      "kind": "diagnostic-case",
-      "heading": "首音被裁：取樣、權限、編碼、網絡和播放的時間鏈",
-      "paragraphs": [
-        "未解症狀爲按PTT後第一字消失，後面正常。候選是採音啓動晚、VAD裁輕聲、許可前資料被丟、編碼湊包延遲、媒體建立晚或接收late。SIP會話存在不代表floor已允許，教材不虛構公司許可消息。先在獲準模型記錄按鍵、許可、輸入首個非零樣本、發送及播放。",
-        "追加證據版本A：輸入話頭完整，VAD把首段判靜音，出向首包已沒有話頭；接收等待不能補未發內容，應修前段判斷或合法預緩衝。版本B：發端話頭在許可後已送，接收可見但晚過期限，查運輸burst及buffer策略。兩種修正各有業務邊界，不能默認提前發未經許可音訊。",
-        "迴歸輕聲、快速按放、許可延遲、重複事件與不同輸入，驗證首音和釋放後不殘留媒體。真實無線電或PTT系統安全與權限按正式契約；這裏教時間鏈推理，不宣稱PCAP可以驗證實機發射動作。"
+        "合成症狀：A 與 B 都顯示 Connected，A 聽得見 B，B 聽不到 A。先拆兩個 RTP 方向；雙向媒體不是同一封包流。取相同的呼叫代次和 SDP，分別寫出 A→B 與 B→A 的接收端點、direction、PT mapping 和觀察點。",
+        "證據版本 1：A→B RTP 在 B 收到並有 decoder frame；B→A 在 B sender counter 不增。故障更靠近 B 的來源/編碼/送出條件，而不是 A 的接收播放。來源與裝置 API 屬 Ozeki 範圍。版本 2：B sender counter 增且 B capture 發出正確目的，A ingress 沒收到；轉查兩觀察點間媒體路徑。版本 3：A ingress 有包但 decoder 不輸出，查 A 目前呼叫的 PT mapping 與 payload 格式。",
+        "IsConnected 無法表示以上方向差異。需更改狀態模型或診斷 log，讓 each direction 有獨立 sender/receiver/decode/presentation evidence。修正後分別驗證兩方向，而不是只播放一段回音確認整通電話。"
       ]
     },
     {
       "kind": "mechanism",
-      "heading": "容量和資源生命週期：長運行才見的故障",
+      "heading": "區分常見現象時要按它依賴的證據",
+      "table": {
+        "caption": "從最早可見差異決定先查哪一段",
+        "headers": [
+          "觀察現象",
+          "優先候選",
+          "能改變判斷的下一項證據"
+        ],
+        "rows": [
+          [
+            "INVITE 沒回應",
+            "路由/信令交易/觀察範圍",
+            "呼叫當時 Proxy 目的、兩端同 Call-ID/CSeq 回應及超時"
+          ],
+          [
+            "200/ACK 有，單向沒 RTP",
+            "方向 SDP、sender 條件、媒體路徑",
+            "每方向 sender counter、有效 answer、兩端入口 capture"
+          ],
+          [
+            "RTP 有、decoder 無輸出",
+            "PT/codec mapping、payload 完整性、安全條件",
+            "有效 SDP mapping、decoder error/frame counter"
+          ],
+          [
+            "封包與 decode 正常、仍斷續",
+            "late deadline、buffer、呈現交接",
+            "late/discard/PLC、buffer occupancy、presentation counter"
+          ],
+          [
+            "隔幾分鐘才無聲",
+            "刷新/重協商/資源或時鐘狀態",
+            "同呼叫長期狀態、refresh/re-INVITE 與生命週期 log"
+          ]
+        ]
+      },
       "paragraphs": [
-        "音訊輸入平均快於處理，隊列隨時間增長；多次call沒有解除事件或釋放device，舊任務會繼續消費和回報；重連舊世代callback可污染新狀態。這些問題可能短通正常、運行幾小時後才慢或無聲。單次正常PCAP不是長運行可靠性證據。",
-        "容量模型先記錄到達率與服務率、處理耗時和上限，選擇符合語義的丟棄或背壓；不能拿控制命令當媒體隨意丟。生命週期模型找創建、訂閱、啓動、停止、取消、釋放的路徑，正常與錯誤都要走。廠商API線程、資源所有權與銷燬規則以實際官方版爲準。",
-        "迴歸長運行與重複連接需要監控緩衝、線程、事件次數及裝置對象，不只成功call數。若修改後隊列仍增長，只把timeout變大不算容量問題解決；若call結束畫面Idle但媒體任務活着，清理也沒驗收。基礎機制讓這些指標有意義，而不是多寫幾個數字裝監控。"
+        "表格是首個檢查方向，不是把一個症狀對應唯一根因。譬如 INVITE 沒回應可能是抓包不完整或 TLS；RTP 有封包可能是另一個 call；長時間無聲可能是 binding 到期，也可能是本地物件提前釋放。每次都先確認關聯和時間窗口，再用新證據淘汰候選。",
+        "RTCP loss/jitter 是窗口統計，不代替兩端捕獲或播放器 deadline。UDP send API 返回成功只表示本地 API 接受資料，不保證封包抵達對端；對端 capture 看到包也不證明使用者聽見。結論動詞要和可見層級相符。"
       ]
-    },
-    {
-      "kind": "lab",
-      "heading": "整合實作：寫一份別人可讀的維護結論",
-      "paragraphs": [
-        "輸入本主題獨立項目輸出、mixed/reference及本章兩份完整資料。選一條作爲基準，列當前控制狀態、有效協商、媒體來源／clock、到達與deadline、解碼／輸出條件。先建立關係與假說，再引用CSV或frame字段，不能把manifest情境標籤當分析過程。",
-        "完成至少兩個對照：錯誤decoder與正確decoder規則的概念迴歸；同arrival buffer40/60的時間比較；另選reference檢查當前漏捕。報告用正文說問題、機制、核心證據、排除原因、有限修正和驗收。完整數據可以附CSV，讀者不用開啓CSV也能懂結論與限制。",
-        "驗收要求所有單位和關聯來源明確，既不借其他call證據，又不以包數／200作爲全部成功。項目只能自動驗證PCM/WAV、budget、clipping與deadline，GUI/SDK/裝置/真人品質未測；把這些寫在結論近處。這是誠實證據邊界，不是省略應教基礎。"
-      ],
-      "code": {
-        "title": "報告的最小結構，用實測或明確模型數據填",
-        "text": "症狀與方向：誰聽不到誰／哪個操作不完成\n機制模型：控制→協商→媒體→解碼→播放\n已觀測：同call、同來源、時間與字段\n候選與反證：每個原因預測什麼\n有限修正：只改哪項，爲什麼\n驗收：正常與故障迴歸；時間／容量／正確性\n限制：哪些是合成模型、哪些尚無真實設備證據"
-      }
     },
     {
       "kind": "maintenance",
-      "heading": "把知識落到公司代碼時保留準確邊界",
+      "heading": "用受控變因驗證修正，而不是一次改很多設定",
       "paragraphs": [
-        "先選一個可重現動作，追入口、SDK邊界、callback、媒體配置與UI更新；每個名稱找定義與調用者，不根據RCSCall或其他字符串推固定架構。若看不到DLL內部，可用官方契約和外部觀察界定，不能假裝教材知道隱藏實現。把公開通用規則與私有系統事實分開記錄。",
-        "版本是證據的一部分：部署程序、SDK、codec能力、工具與配置均可能改變。拿舊文檔解釋當前事件時先覈對相符性；引用錯誤碼需要該版本定義，不把教材的Lab模型碼當公司真實錯誤。測到一個方向可用也不宣佈冗餘、加密或安全機制都通過。",
-        "你最終應該能用機制解釋新數據，知道缺哪一段、如何取證、修正有什麼代價以及怎樣驗證。中級水準不是閱讀分鐘、篇數或專業詞密度，而是陌生場景可遷移的判斷。下面資料不同於正文示範，先獨立解題再用答案檢查自己的推導。"
+        "建立基準：一個可重現的呼叫、固定雙端版本/設定、同一方向和 duration、有效 SDP、兩端可關聯的媒體統計；記錄環境變化和 capture point。涉及真實語音或帳號需有權限；能用合成或測試流時優先，不要收集無必要的通話內容。",
+        "先寫可被反駁的假說，例如「PT mapping 未隨 re-INVITE 更新，導致 B decoder 無輸出」。指定預期觀察：封包 PT 與新 answer 不同、decoder 依舊 mapping；若兩者一致，假說下降。每次只變更一項設定或程式路徑，保存原值並設定回退。",
+        "驗收包含正向路徑和近鄰失敗：初始接通、重協商後媒體、短暫丟失/晚到、取消/結束清理及重新連線。除了使用者症狀，也看 sender、receiver、decoder、buffer 和本機交接計數。沒有可觀測的指標或真實設備時，清楚寫成未驗證。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "將產品程式對回責任鏈與避免跨層狀態覆蓋",
+      "code": {
+        "title": "教學用分方向摘要，不是廠商 API",
+        "text": "record MediaDirectionEvidence(\n    string Direction, string NegotiatedRemoteEndpoint,\n    int? PayloadType, string? Codec,\n    long PacketsSent, long PacketsReceived,\n    long FramesDecoded, long FramesPresented);\n\n// UI 的 Connected 只反映 SIP/呼叫狀態。\n// 每個計數都要附來源、時間窗口和 call generation。"
+      },
+      "paragraphs": [
+        "把一個寬泛 `Connected` 分解成控制、各方向協商和媒體計數。程式側找撥號入口、SIP response event、SDP 更新回呼、sender/receiver counter、decoder/media callback 和 teardown；對照狀態寫入是否使用同一呼叫世代，是否有舊 callback 覆蓋新狀態。",
+        "不要為追 log 把 payload、音訊、憑證或帳密全部輸出。通常 Call-ID 可在報告中雜湊/遮罩；SSRC、CSeq、方向、PT、長度、時間、回應碼和處理階段足以協助關聯。遵守公司資料政策，取證只留最小必要內容。",
+        "不同 SDK 對 ACK、重傳、編碼、緩衝和裝置提交的責任不同。確認公司 DLL 版本、部署模式與官方契約，再將本系列的一般機制映射到實際程式。若拿不到版本或端點資料，列為調查前提而不是寫成推測結論。"
+      ]
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "交付一份能讓下一位工程師接手的結論",
+      "paragraphs": [
+        "結論按四件事寫：可重現症狀與範圍；已建立的正常路徑和最早不一致點；證據支持的候選與已排除候選；有限修正、回退條件與回歸結果。附上同一呼叫的關聯鍵、方向、時間窗口和觀察位置，並說明哪個結論仍未知。",
+        "例如不要寫「RTP 壞了」。可寫成：「在 B ingress 的授權 capture 中，對應 SDP answer 的媒體目的下未見 A7 流；A sender 在其網卡送出同目的封包，兩 capture 窗口已校時且無 drop。下個檢查點是 relay egress；尚未取得該處證據，因此未定位到具體設備。」這讓結論既可理解，也可由下一筆資料推翻或確認。",
+        "交付前核對數字與方向、確認例子是否標為合成、來源是否支持協定主張、答案是否能由正文推導。網站閱讀完成標記只保存瀏覽器進度，不代表學會；真正能力仍要由公司授權測試環境中的程式、文件和證據驗證。"
       ]
     }
   ],
   "exercises": [
     {
       "level": "foundation",
-      "question": "同Call有200與RTP就宣佈雙向聲音正常，缺哪些條件？",
+      "question": "合成證據：INVITE/200/ACK 正常；B ingress 看見 RTP，但 PT=111，而目前有效 answer 將 PT 111 映射 Opus，decoder log 卻使用 PCMU。請寫出第一個不一致處和下一步。",
       "answer": [
-        "200需先與INVITE/CSeq/dialog配對；RTP需分方向、來源與有效格式。",
-        "再驗證兩邊解碼、期限和輸出，不只網絡出現媒體。",
-        "結論限定觀察位置與窗口，完整功能需實際體驗或裝置證據。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "完整CSV爲何仍不能代替維護報告正文？",
-      "answer": [
-        "CSV保存證據但沒有自動解釋模型、因果、候選與限制。",
-        "正文列核心數據如何支持結論和下一步，外行纔可單讀理解。",
-        "附完整記錄用於複覈，二者用途不同且都要明確計量範圍。"
+        "第一個已見不一致在接收端 payload mapping/decoder 配置，不在 SIP 接通狀態或封包可達性。",
+        "確認兩份證據屬於同一媒體腿和 SDP 代次、是否存在 relay PT 改寫，再追程式 PT table 的建立/更新。",
+        "迴歸重新協商及並行不同 PT mapping 的呼叫，確認 decoder 選擇對應 codec。"
       ]
     },
     {
       "level": "application",
-      "question": "新資料：answer PT0 PCMU，但發送payload是20ms16bit PCM320bytes、PT0。哪一段優先查？",
+      "question": "新案例：A→B 方向 RTP 和 B decoder frame 正常；B→A 方向沒有 RTP，B 程式只有全域 `Connected=true`。補哪兩類方向性證據能最大幅縮小範圍？",
       "answer": [
-        "協商PCMU20ms通常160bytes，本給定實際是PCM320，格式不符合。",
-        "查編碼是否跳過及媒體配置，不先改網絡。",
-        "修正後覈對PT、payload規則、decode輸出，迴歸別格式與靜音。"
+        "查 B→A 的有效 SDP direction 和 A 提供的接收端點，再確認 B sender/encoded-frame/packet-sent counter 是否增加。",
+        "若 B sender 有輸出，在 B 端 capture 與 A ingress 對照 tuple、SSRC/relay 關聯和同一時間窗；若 sender 未輸出則追本機媒體來源/encoder 邊界。",
+        "只憑全域 Connected 無法區分方向或來源；A→B 正常也不證明 B→A 正常。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：A聽不到B；B有輸入樣本卻沒有encoder輸出，A無RTP。先修A喇叭嗎？",
+      "level": "reasoning",
+      "question": "新數據：接收端 RR fraction loss=0%；RTP 序號在 capture 中完整；應用 late-discard 和 PLC 每分鐘增加。下一個優先量測是什麼？",
       "answer": [
-        "證據先在B輸入到encoder間缺口，未證明媒體發出。",
-        "查B靜音/VAD、編碼錯誤與call媒體啓動狀態，補階段日誌。",
-        "有限修正後沿B發送到A接收解碼播放逐項驗，不跳過前段。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：共同本地相對時間軸 T0＝0ms，媒體起點為0；clock8000、媒體0/20/40ms、arrival20/40/100ms，buffer50ms。最後晚多少？改buffer70ms是否可用？",
-      "answer": [
-        "原最後deadline90，arrival100晚10ms。",
-        "新deadline110，提前10ms可用，但全鏈多等20ms。",
-        "網絡不變，需同時測反應代價與真實播放策略，不只late0。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：登記200在t10 expires60，t100 INVITE發給舊Contact無回。最先覈對什麼？",
-      "answer": [
-        "簡化租約到t70已過期，先查當前服務器綁定與刷新結果。",
-        "舊200不能支持t100位置仍有效，UI狀態可能過期未清。",
-        "按契約重新登記／查詢並驗證路由，之後媒體另驗。"
+        "封包雖完整且 RR 未估計遺失，仍可能晚於 playout deadline，造成接收端丟棄。",
+        "量測 arrival-to-deadline/實際 buffer target、late packet 數與 jitter buffer occupancy，並核對報告和應用 counters 的時間窗。",
+        "依結果比較適度調整 buffer 與根因修正；不能將 RTCP loss=0 當成無媒體品質問題。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "新資料：decoder10ms/幀，媒體20ms；render隊列仍增長且消費只40幀/s。瓶頸怎樣區分？",
+      "question": "兩端 capture 的信令 Call-ID 相同，但 RTP SSRC 不同。能否直接判定抓錯通話？",
       "answer": [
-        "decoder理論趕得上50幀/s輸入，render40不足，重點輸出消費與裝置調度。",
-        "測各段入出率、queue及實際device格式，別把所有慢都歸解碼。",
-        "修具體消費能力後驗證queue穩定、期限與聲音，保持網絡對照。"
+        "不能。正常相反方向通常本來就有不同 SSRC；media relay/B2BUA 也可能重建媒體流和識別值。",
+        "按 SDP 各腿、RTP 來源目的、時間窗口、RTCP SSRC/SDES 或中繼關聯 ID 確認對應關係。",
+        "只有在方向/腿/時間等都不相符時才提高抓錯通話候選；未建立映射前保留未知。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "新資料：兩檔缺口不同，接收應用seq全部記錄且及時，旁觀鏡像drop高。可宣佈線路丟包嗎？",
+      "level": "application",
+      "question": "某修正把 jitter target、codec 和網路防火牆規則一次都改掉，症狀消失。怎樣做才能知道修正有效且不擴大風險？",
       "answer": [
-        "不能，應用證據支持收到，旁觀capture缺口可能來自鏡像／擷取。",
-        "校準關聯與窗口，改善可靠觀測再重做，同業務不改。",
-        "報告取證限制與功能證據，不將更換filter當網絡修復。"
-      ]
-    },
-    {
-      "level": "diagnosis",
-      "question": "新資料：關閉call後舊callback把新call結束，修改handler只忽略所有end事件可接受嗎？",
-      "answer": [
-        "不可，會忽略新call有效結束且泄漏資源。",
-        "按call實例／世代關聯，管理訂閱與過期事件，依SDK生命週期。",
-        "迴歸舊遲到、新正常、重複結束與重連，驗正確清理和狀態，而非所有事件消失。"
+        "無法由一次多變因修改識別因果；在允許情況下逐項回退或於隔離測試重建單變因對照。",
+        "對原症狀建立同條件基線，量各方向 loss/late/decode/播放及頻寬，限定改動範圍與回退條件。",
+        "驗證正常、高負載、重連/重協商和清理路徑，記錄哪項變更對哪項觀察造成改變；規則需最小權限。"
       ]
     }
   ],
   "recap": [
-    "能以同呼叫、來源、版本與時鐘關聯控制、媒體及音訊證據。",
-    "能從症狀提出至少兩個原因並用新證據區分。",
-    "能選擇有限修正並驗證正常、故障、重連與期限行爲。"
+    "除錯從同一呼叫的可關聯證據出發，沿控制、SDP、RTP、播放期限與本機媒體交接找第一個不一致。",
+    "單一 200、RTP capture、RTCP 統計或播放旗標都只支持有限結論；方向、窗口和觀察點必須寫清楚。",
+    "有效修正要能被新的觀察驗證、能回退並有近鄰回歸；公司版本/拓撲未知時明確保留未知。"
   ],
   "sources": [
     {
-      "label": "IETF RFC3261：SIP的角色與消息",
+      "label": "IETF RFC 3261：SIP 交易、dialog、註冊與呼叫控制",
       "url": "https://www.rfc-editor.org/rfc/rfc3261.html"
     },
     {
-      "label": "IETF RFC3264：媒體Offer/Answer",
+      "label": "IETF RFC 3264：媒體 Offer/Answer 協商",
       "url": "https://www.rfc-editor.org/rfc/rfc3264.html"
     },
     {
-      "label": "IETF RFC 3550：RTP 標頭、來源與到達抖動",
-      "url": "https://www.rfc-editor.org/rfc/rfc3550.html#section-6.4.1"
+      "label": "IETF RFC 3550：RTP/RTCP 媒體觀察欄位與統計界限",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550.html"
     },
     {
-      "label": "IETF RFC3551：音頻RTP profile與格式",
-      "url": "https://www.rfc-editor.org/rfc/rfc3551.html"
-    },
-    {
-      "label": "Microsoft：WASAPI與音訊端點緩衝",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi"
+      "label": "IETF RFC 8866：SDP session/media description 格式",
+      "url": "https://www.rfc-editor.org/rfc/rfc8866.html"
     }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/voip-maintenance-lab.zip",
-      "label": "VoIP獨立計算與WAV示範（.NET10）",
-      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
-      "label": "第二版對照觀測 PCAP",
-      "description": "172 個合成 frame；與混合檔的遺漏位置不同，可練習觀測不完整的推理。"
-    }
-  ],
-  "studyTime": {
-    "reading": [
-      13,
-      22
-    ],
-    "practice": [
-      50,
-      80
-    ],
-    "exercises": [
-      45,
-      70
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

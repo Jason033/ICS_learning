@@ -1,310 +1,339 @@
 {
-  "contentVersion": 2,
-  "intro": "封包告訴你運輸在哪個觀察點發生，程序日誌告訴你哪個處理階段發生，兩者不是互相替代。若沒有先建立時間基準、請求關聯與日誌語義，把它們拼在一張表很容易製造假的因果。本章建立事件與證據模型，帶你從正常請求到超時排隊，再用新的跨層案例練形成可交接的有限結論。",
+  "contentVersion": 3,
+  "intro": "封包和程式紀錄分別觀察通訊流程的不同位置。要判斷一筆請求卡在哪裡，必須先知道每個探針何時記錄、用什麼鍵關聯，以及時間欄位從哪個起點計算。本篇用維護教材的合成 q17 與 q18，把 C# 寫入、PCAP bytes、server 處理和 client 顯示串成可複核的證據鏈。",
   "prerequisites": [
-    "知道 IP 是主機位址、Port 是應用端點；本章遇到傳輸與擷取新概念會從機制解釋。",
-    "可以使用自己電腦上的 Wireshark 開檔；未安裝時可先讀本章完整資料與推導，再進行操作。"
+    "已會查看 Wireshark 的封包列表、欄位與 bytes；本篇不重教擷取、display filter、TCP 標頭或序號分析。",
+    "假設熟悉 request/response 與非同步程式的大致用途；重點是將既有 C# 呼叫位置和封包觀察對上。",
+    "本篇只使用 wireshark-maintenance 合成資料。wireshark-first-capture.pcap 的 13-frame HTTP 練習是另一案例，不共享端點、request ID 或時間線。"
   ],
   "goals": [
-    "能以請求ID、端點、連接世代與時間基準關聯封包和程序事件。",
-    "能建立觀察、候選、區分實驗與修正驗收的完整推理鏈。",
-    "能把未知轉成明確取證任務，並解釋修正解決哪個機制。"
+    "把程式探針、request ID、連線端點與 PCAP frame 組成可檢查的關聯，而不只按時間猜測。",
+    "讀懂序列化和 NetworkStream.WriteAsync 的程式邊界，區分本機寫入完成、封包被觀察、遠端解析與業務完成。",
+    "將程式紀錄和 Wireshark 時間換到共同起點，計算具體階段間隔並保留時鐘限制。",
+    "面對逾時或擷取缺口時提出能區分候選原因的下一個觀測，並為修正訂出驗收條件。"
   ],
   "sections": [
     {
-      "kind": "concept",
-      "heading": "事件與觀察不是一回事：每一筆記錄來自一個探針",
-      "paragraphs": [
-        "應用按下按鈕是事件，log輸出CLICK是對此事件的一個觀察；網絡發送是事件，PCAP捕捉到segment是另一種觀察。探針可能放在方法入口、成功返回、錯誤處理或隊列階段，日誌名稱SEND不自動告訴你放在哪。先定義每個stage到底何時記，才能用它作爲證據。",
-        "一個請求從輸入、校驗、排隊、序列化、Socket寫入、遠端接收、解析、處理、回覆到UI更新，每段可獨立成功或失敗。TCP ACK由傳輸實現產生，PARSE由應用解析邏輯產生，READY由特定協議定義產生。它們描述不同狀態，必須按實際契約連接，不能因爲名字都像success就合併。",
-        "日誌缺失有兩種含意：事件未發生，或事件發生卻未被記錄／保存。若日誌層級關閉、緩衝未刷新、寫入失敗、版本沒有該探針，也會沒有行。PCAP也有類似漏捕與窗口限制。工程取證先評估探針完整性，再把未見當候選證據；否則每個缺行都會被誤稱程序沒有執行。"
-      ]
-    },
-    {
       "kind": "mechanism",
-      "heading": "關聯鍵：請求、端點、連接世代與媒體來源",
+      "heading": "先問每筆紀錄在哪裡打點，再把它放進流程",
       "paragraphs": [
-        "Request ID幫助把一次業務操作貫穿不同模塊；TCP端點與stream識別運輸連接；連接世代區分斷線重建後的狀態；SIP Call-ID與tag關聯dialog；RTP SSRC和協商端點關聯媒體。它們對應不同層級，不是任意挑一個ID就可代替全部。長TCP裏有多個request，同端點重連也可能換業務session。",
-        "可靠關聯應優先用協議中明確的鍵，再結合時間與內容覈對。只有時間相近尤其危險：q17和q18可能同時排隊，另一次回覆可能晚到，重試還可能用新連接。若協議沒有ID，可以用類型、順序與內容建立較弱候選，但需說清不確定性，不憑空在公司協議加一個不存在字段。",
-        "媒體通常不帶業務request ID，所以從SIP SDP確定有效端點與格式，再以方向、SSRC及時間窗鏈接到RTP。改Port或換SSRC時記錄生效時間。維護記錄可用自建圖表達已驗證關係，但來源必須是實際文檔、代碼與觀察；教材模型的關係不能當公司真實依賴。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "對時的三個問題：基準、偏移與誤差",
-      "paragraphs": [
-        "絕對時間是日期時刻，相對時間是相對於某起點的間隔，單調時間適合量持續而不受牆鍾校正跳變。本套件PCAP Time從首筆wire .015起算，因此wire .130變相對.115；logs.csv也使用這個捕捉起點，雙方synthetic時鐘刻意一致。你可以精確相減，但不能把這個條件默認爲現場都成立。",
-        "真實跨主機牆鍾可能有固定offset、逐漸drift與取樣誤差。可先用明確同一事件或同步資料估計偏移，再以多個點核對是否穩定。例如服務器比客戶端快120ms，顯示12:00:00.250的事件先減120ms纔可比較；若偏移波動±15ms，5ms的先後順序並無可靠證據。",
-        "PCAP時間可能在驅動或硬體階段記，log在應用階段記，寫入文件又可延後；輸出行順序也不一定等於線程事件真實順序。對時不是把畫面時間格式改成相同就完成。報告保留時鐘來源、估計偏移與誤差範圍，運算單位統一秒或毫秒，才能避免把記錄機制差誤判成網絡慢。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題一：正常q17爲何有多種延遲數值",
-      "paragraphs": [
-        "mixed的q17請求wire .130，所以相對Time .115；回覆wire .170，所以相對.155。log的client SEND在.118，定義爲send調用返回後記錄；server PARSE .121、COMPLETE .151，client DISPLAY .166。PCAP請求到回覆.155－.115＝40ms，服務器解析到完成.151－.121＝30ms，客戶端回覆觀測到顯示.166－.155＝11ms。",
-        "SEND日誌比網絡請求晚3ms不表示時間錯誤，因爲它記在調用返回，而PCAP可以較早看到資料經過。若把SEND誤讀成調用入口，就會製造「還沒送已上網」的假矛盾。服務器處理30ms不包括網絡、讀緩衝與parser之前階段；40ms也不包含按鍵前後。定義位置才讓數字有含意。",
-        "使用同request ID與明確bytes把這些事件鏈接，而不是只按第幾行。q17網絡13-byte請求對應GET，15-byte回應對應READY，正常關閉的seq/ack也自洽。可交接結論是本模型q17從網絡請求至回應40ms、解析到完成30ms、之後11ms顯示；未知按鍵到送出階段不應被憑空補零。"
+        "同一筆操作可能經過呼叫、序列化、寫入 Socket、網路觀察點、遠端解析、處理、回覆及 UI 更新。log 的 `SEND`、`PARSE`、`COMPLETE` 只是標籤；只有查到程式中的探針位置，才知道時間戳記記的是呼叫前、非同步操作返回後，還是資料寫入檔案時。檔案中的行順序也可能受多執行緒和緩衝影響，不應代替事件時間。",
+        "這份教學模型把 CSV 的 `SEND` 定義成寫入呼叫成功返回後立即打點；`PARSE` 是 server 解析出一筆 request；`COMPLETE` 是教材中的處理完成探針；`DISPLAY` 是 client 記錄畫面狀態更新。CSV 本身沒有保存這些程式碼位置，因此這是本案例明訂的探針契約；讀公司程式時必須回到呼叫點、callback 與 log helper 驗證，不能照搬這個定義。",
+        "封包則是擷取點看到的 bytes 和時間。它能支持資料經過該觀察點、TCP 對端確認了某段序號，或某個應用 payload 可被讀出；它不會自動證明寫入函式已返回、server parser 已執行、業務副作用已完成或 UI 已更新。反過來，缺少一行 log 或一個 frame 也可能是探針未執行、未保存、捕捉窗口不同或 capture 遺漏，不直接等於事件未發生。"
       ],
       "table": {
-        "caption": "q17同起點的不同階段",
+        "caption": "同一流程的探針能支持到哪個位置",
         "headers": [
           "觀察",
-          "相對秒",
-          "含意"
+          "可支持的結論",
+          "單獨不能證明"
         ],
         "rows": [
           [
-            "PCAP request",
-            ".115",
-            "請求經過捕捉點"
+            "序列化函式輸出 13 bytes",
+            "程式產生了特定長度與內容的記憶體資料。",
+            "資料已交給 Socket 或離開本機。"
           ],
           [
-            "client SEND",
-            ".118",
-            "send返回後日誌"
+            "WriteAsync 正常返回後的 SEND log",
+            "該次 stream 寫入操作完成，並依探針契約記錄了 request。",
+            "對端已收到、解析或完成業務處理。"
           ],
           [
-            "server PARSE",
-            ".121",
-            "已解析GET"
+            "PCAP 出現 q17 request bytes",
+            "該擷取觀察點看到此內容經過；端點、ID 和時間可供關聯。",
+            "程式使用了哪個方法，也不能只靠 frame 推斷 UI 或業務狀態。"
           ],
           [
-            "server COMPLETE",
-            ".151",
-            "模擬業務完成"
+            "對端 TCP ACK 覆蓋 request bytes",
+            "對端 TCP 層確認了該序號範圍。",
+            "對端應用程式讀取或處理了 request。"
           ],
           [
-            "PCAP response",
-            ".155",
-            "回應經過捕捉點"
-          ],
-          [
-            "client DISPLAY",
-            ".166",
-            "畫面更新日誌"
+            "同 ID 的 PARSE／COMPLETE log",
+            "若探針契約可靠，對應應用階段已到達。",
+            "另一個不同 ID 的回覆也屬於此 request。"
           ]
         ]
       }
     },
     {
       "kind": "worked-example",
-      "heading": "例題二：q18超時發生在運輸之後、完成之前",
+      "heading": "先固定時間起點和關聯鍵：本篇 q17 的資料範圍",
       "paragraphs": [
-        "q18請求wire .430，即Time .415，client SEND .418，服務器ACK .440即Time .425。服務器PARSE .421，QUEUE .425 depth8；client TIMEOUT .918，正好比send返回.418晚500ms。服務器COMPLETE1.105，說明模擬處理完成比客戶端期限晚187ms，而不是命令確定從未執行。",
-        "從PARSE .421到COMPLETE1.105是684ms，但其中有排隊與處理兩部分，log只有QUEUE而沒有DEQUEUE或START，不能把684ms全部叫計算耗時。下一步補隊列出隊時間與處理起止，才能決定瓶頸是工作過多、單次處理太慢還是線程被其他任務阻塞。PCAP看到ACK4014有助定位運輸已接收，不能替代這些探針。",
-        "模型註明reply failed closed session，且檔中無q18應用回應。這讓客戶端結果仍未知：逾時只結束等待，不證明遠端未完成。修正策略需要考慮請求契約與遲到結果處理；若是切換命令，自動重發可能重複副作用。驗證要看正確結果與期限，同時檢查重試不會重複執行，不是把timeout標籤刪掉就通過。"
-      ]
+        "本篇的主要關聯只在 `wireshark-maintenance-mixed.pcap` 與 `wireshark-maintenance-logs.csv` 之間：client `192.0.2.10:51000` 連到 server `198.51.100.20:9100`，應用本文帶有 ID `q17`。mixed 的第 8 frame 在 `frame.time_relative=0.115`，TCP payload 是 13 bytes；第 11 frame 在 `0.155`，是同 ID 的 15-byte 回覆。CSV 的 q17 時間均以本案例第一個擷取 frame 為相對起點。",
+        "manifest 另外保留 PCAP 的合成 epoch 基準 `1760000000`，而 `wire_time` 是加在該基準上的時間。mixed 第一個 frame 的 `wire_time=0.015`，所以 q17 request 的 `wire_time=0.130` 換算為 `frame.time_relative=0.130−0.015=0.115`。CSV 的 `0.118` 已是相對第一個 frame 的時間。先統一起點再比；不要直接拿 `0.118` 和 `0.130` 相減。若換成 epoch 比較，CSV SEND 對應 `1760000000.015+0.118=1760000000.133`，比 request frame 的 `1760000000.130` 晚 3 ms。",
+        "關聯時以本文中的 `q17` 為主要業務鍵，再核對兩端點、方向、本文內容和合理時間順序。TCP stream 編號與 frame number 只在各自擷取檔內有意義；跨檔時不能拿相同 stream 或 frame number 當全域 ID。這也能阻止把同一份 logs.csv 的 q18，或另一份 PCAP 的事件誤接到 q17。"
+      ],
+      "table": {
+        "caption": "q17 使用同一起點後的事件順序",
+        "headers": [
+          "資料來源",
+          "事件",
+          "相對秒",
+          "可複核內容"
+        ],
+        "rows": [
+          [
+            "mixed.pcap 第 8 frame",
+            "client → server request",
+            "0.115",
+            "端點 192.0.2.10:51000 → 198.51.100.20:9100；13-byte payload 含 q17。"
+          ],
+          [
+            "logs.csv",
+            "client SEND",
+            "0.118",
+            "本模型定義為寫入呼叫返回後；detail=13 bytes。"
+          ],
+          [
+            "logs.csv",
+            "server PARSE",
+            "0.121",
+            "request=q17，解析內容 GET。"
+          ],
+          [
+            "logs.csv",
+            "server COMPLETE",
+            "0.151",
+            "request=q17，教材處理結果 READY。"
+          ],
+          [
+            "mixed.pcap 第 11 frame",
+            "server → client response",
+            "0.155",
+            "同一 tuple 反向；15-byte payload 含 q17 與 READY。"
+          ],
+          [
+            "logs.csv",
+            "client DISPLAY",
+            "0.166",
+            "request=q17，畫面記錄 READY。"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "code-reading",
+      "heading": "從 C# 序列化讀出 q17 bytes 和 SEND 探針",
+      "paragraphs": [
+        "PCAP 第 8 frame 的 TCP payload 是 `00 0b 52 45 51 20 71 31 37 20 47 45 54`。前兩個 bytes 是大端序的本文長度 `0x000b`，表示後面有 11 bytes；ASCII 本文 `52 45 51 20 71 31 37 20 47 45 54` 解成 `REQ q17 GET`。因此這段應用資料總長為 2+11=13 bytes。這是自訂教學 framing，本文不是 HTTP。",
+        "以下 C# 示範從 request ID 建立相同格式，再將完整 byte array 寫到已連線的 NetworkStream。它只建構與送出示範資料，不是 PCAP 生成器，也沒有聲稱真實產生了這個擷取檔；PCAP 和 CSV 是獨立製作、內容相符的教學素材。 程式中的 Console.WriteLine 是標示探針位置的簡化替身，不會自行產生 CSV 的時間欄；真實程式必須確認時間戳是在事件點取得，而不是檔案稍後 flush 時才生成。"
+      ],
+      "code": {
+        "title": ".NET C#：兩-byte長度前綴、ASCII本文與寫入後探針",
+        "text": "using System;\nusing System.Buffers.Binary;\nusing System.Net.Sockets;\nusing System.Text;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nstatic byte[] EncodeRequest(string requestId)\n{\n    byte[] body = Encoding.ASCII.GetBytes($\"REQ {requestId} GET\");\n    if (body.Length > ushort.MaxValue)\n        throw new ArgumentOutOfRangeException(nameof(requestId));\n\n    byte[] wire = new byte[2 + body.Length];\n    BinaryPrimitives.WriteUInt16BigEndian(wire.AsSpan(0, 2), (ushort)body.Length);\n    body.CopyTo(wire, 2);\n    return wire;\n}\n\nstatic async Task SendRequestAsync(\n    NetworkStream stream, string requestId, CancellationToken cancellationToken)\n{\n    byte[] wire = EncodeRequest(requestId);\n    Console.WriteLine($\"serialized id={requestId} length={wire.Length} hex={Convert.ToHexString(wire)}\");\n\n    await stream.WriteAsync(wire.AsMemory(), cancellationToken);\n    Console.WriteLine($\"stage=SEND request={requestId} bytes={wire.Length}\");\n}"
+      }
     },
     {
       "kind": "mechanism",
-      "heading": "從症狀到假說：選擇能區分原因的下一筆證據",
+      "heading": "SEND 返回、封包觀察與遠端處理是不同邊界",
       "paragraphs": [
-        "症狀是使用者描述的結果，例如畫面不更新；候選是假設機制，例如網絡未回、parser拒絕、事件派送遲滯、舊狀態覆蓋。觀察則是已經取得的具體資料。把三者分開能避免在症狀旁直接寫一個未經證明的原因。一個好的實驗預測不同原因會出現不同結果，否則收集更多相同日誌只是重複。",
-        "若PARSE_OK已出現而UI未變，繼續增加網絡抓包通常區分不了事件派送與狀態映射。應補callback入口、排隊／執行時刻、狀態來源與連接世代。若服務器連SYN都沒見，則補parser日誌也不會有幫助；先查路徑與觀察點。每次選擇信息最大的缺口，比固定「先ping再重啓」更有可遷移性。",
-        "候選也有條件與反證。例如「網絡全斷」被完整握手、請求與ACK反駁，但不排除稍後回覆路徑故障；「parser沒調用」被同ID PARSE成功反駁，但不證明處理完成。修正越過已證實階段時，應明確爲何新證據改變優先級，而不是無原因來回調參數。"
+        "程式在 `await stream.WriteAsync(...)` 之後記錄 SEND，代表探針放在這次寫入正常返回之後；序列化輸出則只能說 bytes 已存在記憶體。NetworkStream.WriteAsync 不回傳 bytes 數，Socket.SendAsync 會回傳本次送出的 bytes 數；用 Socket 時若回傳少於剩餘 buffer，呼叫端還要繼續送，直到完整 payload 處理完或操作失敗，才可記 `SEND_DONE`。兩種 API 成功返回都不等於 server 應用已解析。",
+        "TCP 是 byte stream，寫入呼叫邊界不保證和封包邊界一一相同。此教材 q17 恰好在 mixed 第 8 frame 看到同一個 13-byte segment；其他執行可能把一次 WriteAsync 分成多個 segment，也可能與相鄰資料一起傳送。讀既有程式時，應用長度前綴和 parser 的接收緩衝狀態還原 message，不能用一次 Send／Write 的長度直接預測 frame 數。",
+        "本例 q17 的 client→server request bytes 出現在 mixed 第 8 frame；server→client 第 9 frame 帶 ACK=1014，確認 request 序號 1001–1013，logs.csv 的同 ID PARSE 又記錄 GET；這些證據由傳輸觀察推進到應用探針。仍不能只由 ACK 說 parser 成功，也不能把 server COMPLETE 當成 client 已顯示；要各自找到對應 ID 的探針與 response bytes。"
       ]
     },
     {
-      "kind": "diagnostic-case",
-      "heading": "同樣UI停Busy：運輸缺口或事件更新缺口",
+      "kind": "worked-example",
+      "heading": "計算 q17 的階段時間，不把它們都叫網路延遲",
       "paragraphs": [
-        "第一階段只給CLICK、SEND_DONE與UI Busy，可有請求未達、遠端無回應、回覆解析失敗、更新隊列未執行等候選。取PCAP並關聯同ID，不要用另一正常stream的READY填空。若沒有業務回覆，再補服務器處理；若完整回應在客戶端觀察點，繼續查本地read、parse和UI，而不是倒退宣稱握手失敗。",
-        "追加版本A：客戶端PCAP見回覆，log無READ_COMPLETE，接收任務早在cancel後退出。有限修正處理任務生命週期或取消與連接清理，驗證收到並解析同ID；不要擴大網絡timeout掩蓋程序停止。追加版本B：READ_COMPLETE和PARSE_READY都在，UI dispatch queue等待800ms，主線程做長計算。應處理主線程阻塞，迴歸看派送延遲。",
-        "這些是逐步取證的示範，不是未知公司的答案。實際SDK callback是否運行UI線程、狀態如何映射需正式文件與代碼證據。共同方法是把網絡副本、應用讀取、解析狀態與畫面更新分階段：每補一條信息都讓候選減少，並讓修正有專門的驗收指標。"
-      ]
+        "按第一個 captured frame 歸零後，request frame 是 `0.115`，response frame 是 `0.155`，兩者相差 40 ms。這是本檔觀察點上的 request 到 response 跨度，包含中間排程、server 處理和回程，不等於純網路傳輸時間。log 的 `PARSE 0.121 → COMPLETE 0.151` 是 30 ms；`response frame 0.155 → DISPLAY 0.166` 是 11 ms。每個數字都用同一相對起點，且兩端 log 時鐘在此合成模型中設定為一致。",
+        "SEND 的 `0.118` 比 request frame 的 `0.115` 晚 3 ms，與「WriteAsync 返回後打點」並不矛盾：本機傳送路徑可以在非同步呼叫返回前，已讓 bytes 經過擷取點。這個 3 ms 是合成資料設定，不能當作真實系統的 API 固定延遲；現場若兩台機器各自記牆鐘，先估時鐘偏移與誤差，再判斷幾毫秒先後。",
+        "本案例沒有 CLICK 或使用者輸入探針，所以不能計算按下按鈕到 request 的時間。若真實 app 的 log 時鐘是單調計時器、PCAP 是牆鐘時間，需以共同事件或同步資訊建立兩者映射；單調時間適合同一 process 內量間隔，但沒有校準時不能直接和另一台機器的 Wireshark epoch 比大小。"
+      ],
+      "table": {
+        "caption": "q17 可計算的三段時間與其範圍",
+        "headers": [
+          "計算",
+          "結果",
+          "能回答的問題"
+        ],
+        "rows": [
+          [
+            "response frame 0.155 − request frame 0.115",
+            "40 ms",
+            "兩個 PCAP 觀察點事件間隔；包含處理與往返路徑。"
+          ],
+          [
+            "server COMPLETE 0.151 − PARSE 0.121",
+            "30 ms",
+            "兩個 server 探針間的時間；不代表純 CPU 計算。"
+          ],
+          [
+            "client DISPLAY 0.166 − response frame 0.155",
+            "11 ms",
+            "回覆被擷取到 UI 更新探針的模型間隔。"
+          ],
+          [
+            "SEND 0.118 − request frame 0.115",
+            "3 ms",
+            "SEND 探針比該 frame 晚；受捕捉位置與探針定義限制。"
+          ]
+        ]
+      }
     },
     {
       "kind": "diagnostic-case",
-      "heading": "兩端抓包不同：路徑遺漏與捕捉遺漏怎樣區別",
+      "heading": "q18 超時：已確認 request 到達，不等於 client 得到結果",
       "paragraphs": [
-        "取mixed與reference的q20：前者看不到回覆15bytes卻有客戶端ACK9016，後者有回覆。候選是路徑丟失、客戶端捕捉遺漏、兩文件來自不同請求或觀測窗口不同。先覈對端點、初始seq、請求ID與時間，再看ACK是否覆蓋未捕獲的原始範圍；這一步避免拿不相關檔互相對照。",
-        "本合成數據明確讓mixed漏存.650一筆，而ACK仍覆蓋；reference補齊。真實條件還應看capture drop、鏡像方向、snaplen與offload。若完全相同連接客戶端ACK已確認該bytes，較支持實際收到但當前捕捉不完整，不能仍堅持未送達。若ACK也沒有，則路徑與雙方捕捉限制都還存在。",
-        "修正取證環境需保持業務操作不變，只調整捕捉容量或觀測位置再取一對窗口，驗證完整性。若改善捕捉後bytes齊，報告的是觀察修復，不是設備故障修復。若兩點穩定差異仍存在，再沿路徑查。區分這兩類修正讓使用者不會誤以爲網站或工具提醒就等同實際系統異常。"
+        "q18 是另一個 request、另一條 TCP 連線，client source port 是 51003；不要接在 q17 的 51000 stream 上。mixed 第 29 frame 在相對時間 0.415 看到 `REQ q18 GET`，第 30 frame 的 ACK 覆蓋 request bytes。logs.csv 的 PARSE 0.421、QUEUE 0.425 與 ID q18 相符；client 在 0.918 記錄 500 ms deadline 到期，server 到 1.105 才記 COMPLETE。完成時間比 client deadline 晚 187 ms。",
+        "這組證據讓判斷收斂：request 並非只停在 client 序列化；TCP ACK 加上 q18 PARSE 支持資料到達 server 應用解析階段。QUEUE depth=8 和晚於期限的 COMPLETE 支持排隊／服務處理速度是候選，但缺少 DEQUEUE、工作開始與處理結束探針，不能把 PARSE 到 COMPLETE 的 684 ms 全算成排隊時間。CSV 的 COMPLETE detail 表示 reply 因 session closed 而失敗，mixed 中也沒有 q18 response payload；client timeout 只說等待期限先結束，不能說 server 沒做完，也不能由此推定副作用未執行。",
+        "下一個高辨識力的取證是在同一 request ID 記錄入隊、出隊、handler start/end、response write start/return、取消與連線世代；若有權限，再核對 server 側擷取和 client READ/PARSE 探針。這能分出工作排隊、處理耗時、回覆未寫出、回程未到觀察點及 client 未讀取。若操作會改變設備狀態，在查清 q18 結果前不要只因 timeout 就盲目重送；先依既有協定確認重試是否冪等或能查詢結果。"
+      ],
+      "table": {
+        "caption": "q18 各證據的判斷範圍",
+        "headers": [
+          "證據",
+          "支持",
+          "仍未知"
+        ],
+        "rows": [
+          [
+            "mixed 第 29 frame：q18 request bytes；第 30 frame ACK",
+            "該合成連線的 request bytes 被觀察且 TCP 對端確認序號範圍。",
+            "server 應用是否完成。"
+          ],
+          [
+            "CSV q18 PARSE 0.421、QUEUE 0.425 depth=8",
+            "按本案例探針契約，server 已解析並進入佇列。",
+            "精確排隊多久、handler 花多久。"
+          ],
+          [
+            "client TIMEOUT 0.918；server COMPLETE 1.105",
+            "server 完成晚於 client 的 500 ms 等待期限。",
+            "操作是否已在設備或外部系統生效。"
+          ],
+          [
+            "COMPLETE detail: reply failed closed session；PCAP 無 q18 response payload",
+            "回覆路徑／連線關閉是候選，需查 write 與兩端觀察。",
+            "bytes 是否曾由 server 寫出、client 是否收到或解析。"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "q20 擷取缺口與截短檔：先判斷少的是事件還是觀察",
+      "paragraphs": [
+        "另一個獨立的 q20 合成案例中，mixed 第 43 frame 有完整 request，第 45 frame 的 client ACK 值為 9016，但 mixed 檔沒有 server response payload。receiver/reference 檔是另一個生成的參照變體：q20 response 在該檔第 44 frame 保存為 15 bytes。它們不是同一次現場雙端同步擷取，frame 編號也各屬自己的檔案；可把相符的 q20 sequence 與 response bytes 當成教材控制對照，不能把兩檔相對時間直接相減來宣稱網路延遲。",
+        "在這組合成資料中，ACK=9016 覆蓋 server response 的序號 9001–9015，較支持 client TCP 層已收到該資料、mixed 的捕捉觀察卻缺少 response frame；它不證明 client 應用已讀取。真實現場若只在一個擷取點缺 frame，仍要查 capture drop、介面、方向、擷取窗口和另一端證據，才能分辨路徑遺失與擷取遺漏。",
+        "`wireshark-maintenance-truncated.pcap` 又是另一個用途：它按 record 將長 frame 最多保存 64 bytes；q17 frame 8 的原始長度 67、保存長度 64，少的尾端 3 bytes 是本文最後的 `GET`。這能驗證工具顯示的是保存缺口，不是原始 TCP segment 只有 10 payload bytes。不要把 truncated 檔當作另一個 q17 實際連線或重新建立一份 q17 時間線。第一抓包課的 `wireshark-first-capture.pcap` 則是 13-frame HTTP `/status` 練習，端點、frame 編號和內容均與這裡無關。"
       ]
     },
     {
       "kind": "lab",
-      "heading": "實作：製作一份有因果說明的排查報告",
+      "heading": "交付可複核的排查結論和修正驗收條件",
       "paragraphs": [
-        "輸入mixed、reference、truncated與logs.csv。先選q17作正常基準，建立共同起點的事件表，計算三個不同延遲，並解釋SEND爲何晚於PCAP請求。再選q18，逐項列運輸確認、解析、隊列、timeout與late complete，給至少三個候選及最有區分力的補探針。",
-        "第三項選擇q20或RTP305，利用兩份抓包比較當前缺口；truncated作爲保存長度變因，確認無法靠日誌恢復未保留的bytes。報告正文先講系統模型、問題與所見，再用小表列關鍵證據，最後說結論、限制、修正與驗收。CSV保留完整記錄但不能代替這些說明。",
-        "驗收須能讓未看教材的人明白：q17各延遲是不同階段；q18業務結果爲何未知及爲何queue是候選；q20缺回覆不能直接說網絡遺失；每個下一步能區分什麼。不要只貼filter和術語。所有素材爲合成固定時間，未驗證公司程序；GUI行爲未在製作環境運行。"
-      ],
-      "code": {
-        "title": "先導出目標請求連接，再與log同起點比對",
-        "text": "tshark -r wireshark-maintenance-mixed.pcap -Y \"tcp.port == 51000 || tcp.port == 51003\" -T fields -E header=y -E separator=, -e frame.time_relative -e ip.src -e tcp.srcport -e tcp.seq_raw -e tcp.ack_raw -e tcp.len\n# logs.csv的SEND定義爲調用返回；不是發送開始時間。"
-      }
-    },
-    {
-      "kind": "maintenance",
-      "heading": "有限修正與迴歸：讓修改真的針對原因",
-      "paragraphs": [
-        "診斷確認後先改最小能檢驗的因素，保持相同輸入、負載、時間窗與正常對照。若修改多個參數即便改善，也難知道哪個條件有效。先寫預測，例如「把長計算移出UI後dispatch延遲應降低，而網絡請求間隔不變」，再記錄結果；這讓修正成可檢驗機制而非試運氣。",
-        "迴歸不僅看故障消失，還看正常功能、超時、斷線重連、重複／遲到事件與資源清理。處理q18時不能只增加deadline到2秒，然後把所有200ms回應叫改善；業務容量未改、queue可能仍增長。適當deadline是策略，消除排隊根因與保證副作用安全是不同工作。",
-        "將未能確認的限制寫成具體下一步：需哪版本文檔、哪探針、哪觀察點，而不是整篇反覆「未知」。真實公司數據若不能公開，就把本教材方法應用在獲準私有記錄中；公開教程保留虛構類型與數字。這樣有完整觀念又不冒充公司系統。"
-      ]
-    },
-    {
-      "kind": "concept",
-      "heading": "建立獨立判斷的檢核：每個結論都能退回證據",
-      "paragraphs": [
-        "完成報告後反問每一條結論：它是原始字段、工具推算、文件規定還是假說？哪些數來自同一基準？是否借了別個request的回覆？是否把未記錄當未發生？是否把transport確認當執行？能清楚回答這些問題，纔有能力把工具結果交給其他人複覈。",
-        "最有價值的記錄常是一個可證僞的機制關係：相同seq重複意味着重複傳輸範圍；ACK覆蓋未捕獲範圍提示觀察缺口；網絡及時但queue增長支持本地服務能力候選。它們各有條件，遇到新協議仍可以按條件驗證，不需要硬套本套件情境名稱。",
-        "中級能力不能由讀完八篇或題數決定。可操作的目標是拿到陌生資料能還原層級、算中間值、識別限制、取新證據、有限修正並驗證。下面題目改用正文未給的數據；先自行建表和推理，再看多段答案比較自己的假說爲何保留或排除。"
+        "用 q17 寫一張精簡事件表：文件名、request ID、兩端點、frame 編號、相對起點、探針位置和可支持的結論。從 `00 0b` 解出長度，再逐 byte 核對本文；把 C# WriteAsync 返回後的 SEND log 放在同一時間線，但明確標示它是本模型約定。算出 request-to-response、PARSE-to-COMPLETE 及 response-to-DISPLAY 三個間隔，寫出各自包含和不包含的階段。",
+        "再用 q18 練候選區分：先列已被 request bytes／ACK／PARSE 支持或削弱的原因，再指出缺少哪些 queue 與 reply 探針。最後用 q20 練 observation gap：區分一份 PCAP 缺 frame、對端 TCP 已確認 bytes、應用是否讀取，以及 reference/truncated 各自的角色。報告只引用同一案例同一檔案內的 frame；跨檔參照時標明是合成控制檔而非同一現場時間線。",
+        "若提出修正，先寫對應機制及可驗收預測。q18 的修正需在相同輸入與可比負載下，驗證 queue 深度／等待時間、deadline 內完成率、response write 結果和重試副作用；只延長 timeout 或看到 UI 不再 Busy 不算根因已排除。擷取修正則固定業務操作，只改觀察位置或保存條件，驗證同 request 的資料在預期兩端可重現；這是在修證據品質，不等同修復網路或應用。"
       ]
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "同一log名稱SEND在兩個項目分別放調用前和返回後，能直接比較耗時嗎？",
+      "level": "understanding",
+      "question": "q17 的 body 是 `REQ q17 GET`。長度前綴應是哪兩個 bytes？混合 PCAP 的 13-byte payload 各部分為何？",
       "answer": [
-        "不能，兩種探針位置不同，記錄的是不同階段邊界。",
-        "查代碼或文件確認位置，再用明確的SEND_START/SEND_DONE語義對齊。",
-        "保留版本與時鐘定義，才能算傳輸等待；不能由名稱相同推出測量相同。"
+        "ASCII body 有 11 bytes；兩-byte big-endian 長度為 `00 0b`。",
+        "總 payload 是 `00 0b` 加 `52 45 51 20 71 31 37 20 47 45 54`，共 2+11=13 bytes。",
+        "這是 maintenance PCAP 的自訂教學協定，不是 13-frame HTTP 案例中的 GET。"
       ]
     },
     {
-      "level": "foundation",
-      "question": "沒有PARSE日誌，爲什麼至少應保留未解析和沒記錄兩個候選？",
+      "level": "reasoning",
+      "question": "manifest 顯示 q17 request 的 `wire_time=0.130`，mixed 第一 frame 的 `wire_time=0.015`，logs.csv 的 SEND 是相對時間 0.118。要比較 SEND 與 request frame 時，應如何換算？差多少？",
       "answer": [
-        "事件與記錄不等同，可能parser未執行，也可能日誌級別、緩衝或版本沒記錄。",
-        "用同版本正常請求檢查探針是否工作，再補入口／錯誤或讀取bytes證據。",
-        "只有記錄完整性獲得支持，缺行才更能區分程序階段；不要直接宣稱設備沒收到。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：PCAP從epoch1000.200開始，請求1000.500、回覆1000.620。log用同起點SEND_DONE.305、PARSE.312、COMPLETE.405、UI.450。算網絡請求間隔、處理間隔、回覆到UI。",
-      "answer": [
-        "PCAP相對請求.300、回覆.420，所以間隔.120秒120ms。",
-        "處理.405－.312＝.093秒93ms；UI.450－.420＝.030秒30ms。",
-        "SEND_DONE.305晚於網絡請求5ms可因探針在返回後；註明階段，不稱三數同一種延遲。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：服務器鍾比客戶端快80ms且誤差±10ms。服務器打印.500，客戶端打印.425。校正後能確定服務器事件先5ms嗎？",
-      "answer": [
-        "服務器減.080變.420，與客戶端.425名義上差5ms。",
-        "但誤差±10ms大於5ms，所以不能可靠宣告先後。",
-        "需更精確同源探針或擴大證據，不依微小牆鐘差推同步鎖或網絡因果。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：q60在.1送、.11 ACK、.12 PARSE、.60 TIMEOUT、.75 COMPLETE。log沒有START。能說處理花630ms嗎？",
-      "answer": [
-        "PARSE到COMPLETE爲.75－.12＝630ms，但包含排隊、調度和真正處理。",
-        "缺START/DEQUEUE不能分解，下一步補入隊、出隊、處理起止。",
-        "結果在timeout後完成，客戶端不能假設未執行；副作用請求應按契約查結果再決定重試。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "陌生資料：q70的網絡回覆READY完整，應用READ_COMPLETE記錄爲q69，UI更新q69。可以說q70成功嗎？",
-      "answer": [
-        "不能，關聯ID矛盾，可能日誌錯標、錯配回覆或借舊結果。",
-        "先按原payload解析q70，追該bytes到本地read與狀態映射，覈對連接世代。",
-        "修正關聯後迴歸併發與遲到回覆，不能用任何READY填本次請求的成功。"
+        "先用同一起點：PCAP 相對時間是 0.130−0.015=0.115 秒；logs.csv 的 0.118 秒已相對同一個第一 frame 起點。",
+        "SEND 比 request frame 晚 0.003 秒，即 3 ms。不可直接把不同起點的 0.118 和 0.130 相減。",
+        "按教學探針契約，SEND 在寫入呼叫返回後；擷取點較早看到 bytes 可以與這個順序相容，但數值不代表真實 API 固定耗時。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "陌生資料：A媒體在接收PCAP及時，解碼正常，UI長計算700ms同時播放隊列停消費。候選與有限修正？",
+      "question": "q18 已有 request frame、ACK、PARSE 和 QUEUE；client 在 0.918 timeout，server 到 1.105 才 COMPLETE，detail 說回覆寫入時 session 已關閉。可以下什麼有限結論？下一個最有辨識力的探針是什麼？",
       "answer": [
-        "證據支持本地線程／隊列消費受阻，不優先支持網絡遺失。",
-        "查播放消費與UI依賴，把長工作從關鍵線程隔離或採用合適調度，保持輸入與負載。",
-        "驗證消費穩定、隊列和播放期限改善，網絡時序維持基準；不只看UI不卡。"
+        "request 至少到達教材所定義的 server parser，且 server 完成晚於 client deadline；現有資料支持佇列／處理時間與回覆 session 關閉為候選。",
+        "缺少出隊／handler 起止，不能把 684 ms 全算成排隊；也沒有 q18 response bytes 或 client READ/PARSE 證據，所以不能稱 client 收到成功結果或操作未執行。",
+        "以同一 q18 ID 補 QUEUE_DEQUEUE、HANDLER_START/END、RESPONSE_WRITE_START/RETURN、取消／關閉時間及 client READ/PARSE，便能分辨工作等待、回覆未寫出、回程與 client 處理。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "陌生資料：客戶端PCAP無20byte回覆，ACK覆蓋該範圍；服務器PCAP有，客戶端應用READ20成功。報告該怎樣下結論和迴歸？",
+      "question": "mixed 的 q20 response frame 缺席，但第 45 frame 是 client→server ACK=9016（確認 server→client 序號 9001–9015）；reference 變體有 q20 的 15-byte response。這支持什麼？若修擷取，怎樣驗收？",
       "answer": [
-        "兩項接收證據支持資料到客戶端，而本機捕捉遺漏比網絡完全未送更符合。",
-        "查capture drop、鏡像、snaplen與觀測位置，有限修正擷取方式。",
-        "重抓同操作驗證回應完整保留；報告觀察修復與功能已被應用確認，不能聲稱換filter修好網絡。"
-      ]
-    },
-    {
-      "level": "diagnosis",
-      "question": "陌生資料：提高timeout後失敗變少，但隊列平均由10增至80、完成時間更長。可以稱根因解決嗎？",
-      "answer": [
-        "不能，等待策略延長使部分請求來得及回應，但處理壓力與queue變更嚴重。",
-        "比較入隊／服務速率、處理耗時和負載，針對容量或工作源修正。",
-        "迴歸成功率、時限、queue穩定與副作用安全；僅失敗標籤變少不足以證明系統可靠性提升。"
+        "在這組合成觀測中，client→server 的 ACK=9016 確認對端先前傳來的 server→client 15 bytes（序號 9001–9015）；reference 變體也保存了該 response。因此 mixed 少 frame 更符合擷取觀察缺口，不符合「client TCP 一定沒收到」。",
+        "ACK 不證明 client 應用已讀取；兩個 PCAP 是生成的控制變體，不是同一現場的同步雙端擷取，不能把 frame-relative 時間相減當網路延遲。",
+        "固定同一業務操作與負載，只改擷取位置或保存條件，重做後核對 request ID、回覆 bytes、ACK 及 drop 統計；報告應稱擷取完整度改善，除非另有證據證明應用或路徑也被修好。"
       ]
     }
   ],
   "recap": [
-    "能以請求ID、端點、連接世代與時間基準關聯封包和程序事件。",
-    "能建立觀察、候選、區分實驗與修正驗收的完整推理鏈。",
-    "能把未知轉成明確取證任務，並解釋修正解決哪個機制。"
+    "用同一 request ID、端點、方向、內容和相對起點關聯程式與 PCAP；stream 編號及 frame number 僅在各自檔案內有效。",
+    "q17 的 `00 0b` 加 11-byte ASCII body 是 13 bytes；寫入呼叫返回、擷取點看到 bytes、ACK、PARSE、COMPLETE 和 DISPLAY 各是不同探針邊界。",
+    "先把 `wire_time` 轉成相對第一 frame 的時間，才能與本案例 logs.csv 的相對秒比較；真實跨主機還需估時鐘偏移和誤差。",
+    "逾時後才 COMPLETE 不代表操作未執行；某檔缺少 frame 也不單獨證明路徑丟包。下一步探針應用來區分候選，修正則要按機制和可重現指標驗收。"
   ],
   "sources": [
     {
-      "label": "Wireshark 官方：TShark 讀檔、篩選與匯出",
-      "url": "https://www.wireshark.org/docs/man-pages/tshark.html"
+      "label": "Wireshark User's Guide：封包時間格式、第一個 captured frame 與 Time Reference",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChWorkTimeFormatsSection.html"
     },
     {
-      "label": "Wireshark 官方：TCP 分析旗標的判定條件",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvTCPAnalysis.html"
+      "label": "Wireshark Display Filter Reference：frame.time_relative 與 frame.time_epoch",
+      "url": "https://www.wireshark.org/docs/dfref/f/frame.html"
     },
     {
-      "label": "Wireshark 官方：capinfos 檔案資訊",
-      "url": "https://www.wireshark.org/docs/man-pages/capinfos.html"
+      "label": "Microsoft .NET：BinaryPrimitives.WriteUInt16BigEndian",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.buffers.binary.binaryprimitives.writeuint16bigendian?view=net-10.0"
     },
     {
-      "label": "IETF RFC 9293：TCP 序號與接收確認",
+      "label": "Microsoft .NET：Encoding.ASCII 與 ASCII.GetBytes",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.text.encoding.ascii?view=net-10.0"
+    },
+    {
+      "label": "Microsoft .NET：NetworkStream.WriteAsync(ReadOnlyMemory<byte>, CancellationToken)",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.networkstream.writeasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft .NET：Socket.SendAsync 與回傳的 bytes 數",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.sendasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft .NET：Stopwatch.GetTimestamp 與本機計時器",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch.gettimestamp?view=net-10.0"
+    },
+    {
+      "label": "IETF RFC 9293 §3.4：TCP ACK 與確認的序號範圍",
       "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4"
-    },
-    {
-      "label": "Wireshark 官方：RTP Streams、Analysis 與播放限制",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelRTP.html"
     }
   ],
   "resources": [
     {
       "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
-      "label": "第二版對照觀測 PCAP",
-      "description": "172 個合成 frame；與混合檔的遺漏位置不同，可練習觀測不完整的推理。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-truncated.pcap",
-      "label": "只保留前 64 bytes 的變因檔",
-      "description": "與混合檔同一批 frame，長封包只留前 64 bytes，原長度保留。"
+      "label": "Maintenance 案例：混合流量 PCAP",
+      "description": "171-frame 合成 PCAP。本篇 q17 的主要封包證據是第 8 frame request、第 11 frame response；q17 時間需和該檔第一 frame 對齊。"
     },
     {
       "path": "./assets/labs/wireshark-maintenance-logs.csv",
-      "label": "合成程式紀錄",
-      "description": "配合 q17 與 q18 對時分析；時間為捕捉起點的相對秒，不是實際公司 log。"
+      "label": "Maintenance 案例：合成程式紀錄",
+      "description": "含 q17、q18 的 request ID、stage 與相對秒。SEND-after-write-return 是本篇明訂的教學探針契約，CSV 不代表真實公司程式碼。"
     },
     {
       "path": "./assets/labs/wireshark-maintenance-manifest.json",
-      "label": "可重現資料清單",
-      "description": "檔案雜湊、frame 的原始欄位與合成情境名稱；先獨立分析，再用清單核對。"
+      "label": "Maintenance 案例：PCAP 欄位與時間基準清單",
+      "description": "記錄每份 PCAP 自己的 frame 編號、wire_time、frame.time_relative、長度與雜湊；跨檔參照前先確認來源檔。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
+      "label": "另一個合成觀測變體：q20 response 參照",
+      "description": "獨立生成的 reference 變體，供對照 q20 response 是否保存；不是 mixed 的同步第二端擷取，frame 編號和時間欄勿直接混用。"
+    },
+    {
+      "path": "./assets/labs/wireshark-maintenance-truncated.pcap",
+      "label": "另一個資料保存案例：長 frame 截短至 64 bytes",
+      "description": "合成 PCAP record 保存上限為 64 bytes，用來比較 cap_len 與原始長度；不是另一條實際 q17 連線。"
     }
-  ],
-  "studyTime": {
-    "reading": [
-      13,
-      21
-    ],
-    "practice": [
-      50,
-      80
-    ],
-    "exercises": [
-      45,
-      70
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

@@ -1,267 +1,168 @@
 {
-  "contentVersion": 2,
-  "intro": "編碼決定聲音如何表示，封包化決定一次發送多少媒體時間，網絡封裝決定額外花多少bytes。三者相互影響帶寬、延遲和遺失後果，不能只用「G729比較省」建立工程判斷。本章從PCM和編碼機制到完整帶寬預算、時鐘例外與靜音抑制，學會解釋取捨。",
+  "contentVersion": 3,
+  "intro": "SDP 中的 payload type 只映射到一種格式；Codec 定義這種格式如何把音訊 frame 編碼或解碼。Packetization 再決定每個 RTP payload 合併多少編碼時間。這些選擇會一起影響封包數、頻寬與等待時間。本篇從 PCMU 的 10/20/40ms 算例建立可自行重算的預算，不把 codec bitrate 誤當網路總速率。",
   "prerequisites": [
-    "理解 RTP payload 是媒體內容、timestamp 是媒體時間；兩者的單位不同。",
-    "會做比例與秒／毫秒換算；本章從取樣、量化與每包時間解釋格式及頻寬。"
+    "先讀「SDP 與媒體協商」及「RTP/RTCP」；本篇沿用 PT mapping、RTP clock 與 RTP packet。",
+    "音訊邊界篇有 PCM sample 數的快速例子；若已理解 sample rate 和時間，不需重讀。"
   ],
   "goals": [
-    "能區分採樣率、編碼位率、codec frame、ptime與網絡位率。",
-    "能手算不同封包化的payload、包數、標頭成本與等待代價。",
-    "能根據協商、實際PT及編碼能力定位不相容和靜音症狀。"
+    "能區分 codec、RTP payload type、packetization time 與 RTP clock rate。",
+    "能計算每秒 RTP 封包數、payload bytes 和一個明確假設下的 IPv4/UDP/RTP 頭部開銷。",
+    "能解釋 packetization 如何在額外 header 頻寬與封包等待之間取捨。"
   ],
   "sections": [
     {
       "kind": "concept",
-      "heading": "Codec是表示與還原規則，不是另一個Port",
+      "heading": "Codec 是資料表示規則；PT 是這次流的標籤",
       "paragraphs": [
-        "Codec包含編碼與解碼機制，把樣本轉成約定的bytes再還原成可播放樣本。PCM保留直接幅度值，PCMU／PCMA用不同壓擴規則把每樣本表示成8bit，幀式壓縮還可能分析一段聲音的規律後保存參數。它們的目標、複雜度與失真不同，網絡不能自動把一種編碼轉成另一種。",
-        "採樣率決定每秒時刻，PCM bit depth決定每值精度，編碼位率決定平均或固定壓縮資料量，ptime決定包內媒體時長。8000Hz並非8000bit/s，16bit樣本並非16kbit/s；把這些單位寫全，纔可從輸入算到傳輸量。聲道數影響樣本值總量，但RTP時鐘一般按時刻推進而非值數。",
-        "容器、編碼與運輸也不同：WAV可描述PCM等資料，RTP提供媒體時間和來源，UDP提供datagram運輸。不能把.wav整檔直接塞進每個RTP負載就當標準實時編碼，也不能因檔名mp3推當前RTP PT。實際要依協商profile與payload格式讀。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "G711、G729、G722與Opus的不同層次",
-      "paragraphs": [
-        "G711常見PCMU/PCMA爲8000Hz、每樣本8bit，固定64kbit/s有效媒體；PCMU和PCMA映射不同，同樣長不代表可互解。G729經典語音編碼以10ms frame爲單位，8kbit/s語音frame10bytes；打包多個frame可降低標頭比例，靜音模式還需看對應規範。本文只介紹規則與封包算式，不提供未驗證的編碼器或授權實現。",
-        "G722可處理較寬語音帶寬，但RTP歷史映射使用8000Hz時鐘，不應從16000Hz聲音採樣直接推timestamp。Opus RTP使用48000Hz時鐘，實際輸入率與編碼模式可變化；20ms媒體對應960時鐘單位，payload不必960bytes。特殊映射是爲什麼時鐘必須查規範，而不能全按裝置採樣率。",
-        "編碼選擇還考慮雙方實際支持、profile、參數、CPU、可接受延遲、網絡負載與使用需求。沒有一個codec名稱自動勝過全部其他條件。廠商版本和授權能力要覈對，不從理論支持或其他終端的能力表推出本部署可用。共同相容格式比擅自強制所謂更好格式更重要。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "Codec frame與packetization：累積資料會引入等待",
-      "paragraphs": [
-        "Codec frame是編碼算法處理的一段媒體，packetization可把一個或多個codec frames放進一個RTP包，ptime表示包內媒體時長。兩者可不同：G72910ms frame，20ms包可含兩個；PCMU以樣本編碼，包可累積80、160或更多連續樣本。有效payload時長需按編碼規則覈對，不只看UDP大小。",
-        "包越短，封包數越多、標頭比例越高、處理次數越多，卻通常減少累積等待並讓單包遺失影響較短。包越長，標頭效率較好，卻讓第一份樣本等較久，而且丟一包損失較多媒體時間。把20ms視爲常見教學習慣，而不是所有產品必用的值。",
-        "在均勻採樣、湊齊後立即發送的簡單模型，包裏最早樣本等待約ptime，最新幾乎0，平均約ptime/2；這是packetization等待，不包含codec look-ahead、隊列和網絡。計算總延遲時這些要分開，不能只用20ms包就宣佈端到端20ms。",
-        "MTU限制一次網絡包可容納的大小；若payload加頭超過路徑限制，可能分片、拒絕或由協議特殊處理，不能認爲只要bytes省就永遠適合。一個媒體包被分成多片時，缺任一片可使整份不可用。預算先列媒體時長、格式、所有封裝與最大長度，再在授權模型中檢查，避免只按平均帶寬選擇ptime。"
+        "Codec 把輸入音訊表示成可傳送、可還原的編碼 frame；RTP packetizer 將一個或多個 frame 包成一個 RTP payload。RTP header 的 PT 欄位讓接收端依本通話 SDP mapping 選對 payload 格式。PT 是對照索引，不是 Codec 名稱，也不是網路 port。",
+        "作為常見窄帶例子，RTP/AVP 的靜態 PT 0 是 PCMU，8 是 PCMA。Opus 通常以動態 PT 表示，SDP 需把它映射到 `opus/48000/2` 等格式參數；PT 111 並非全球都代表 Opus。另要小心 RTP clock 不必等於解碼輸出的取樣率；Opus RTP 使用 48 kHz clock，即使實際音訊編碼取樣率不同。",
+        "不同 codec 的壓縮率、算法延遲、frame 長度與錯誤恢復能力不同。此課不比較聽感排行榜，也不假設公司部署支援哪個 codec；維護時先看實際 SDP 與 codec 文件，再對照程式實際選用的 encoder/decoder。"
       ]
     },
     {
       "kind": "worked-example",
-      "heading": "例題一：PCMU不同ptime的完整IP預算",
-      "paragraphs": [
-        "條件是PCMU/8000 mono、持續語音、無擴展RTP12bytes、UDP8、IPv4無選項20、不加加密或Ethernet。20ms媒體160bytes，每秒50包；IP每包200，200×50×8＝80000bit/s。媒體本身160×50×8＝64000，標頭每秒16000。兩數都正確但屬於不同層。",
-        "10ms時payload80、100包/s，IP120×100×8＝96000bit/s；40ms時payload320、25包/s，IP360×25×8＝72000bit/s。媒體都64k，不因ptime而壓縮更好；變化是每秒頭的次數。IP預算若要變線速還要加鏈路與封裝，若雙向兩邊各持續可先按兩倍估，再明確RTCP及其他開銷。",
-        "同丟一個包，10ms損10ms語音，40ms損40ms；獨立隨機每包遺失率與突發行爲也影響聽感，不能單看省24k就決定40ms。實際MTU、安全標頭及CPU需求也要覈對，過大包可能觸發分片或超限制。選擇建立在業務目標，不是從一張帶寬表排名。"
-      ],
+      "heading": "同一個 PCMU 流改 ptime：包越大，包數越少",
       "table": {
-        "caption": "本章條件下單方向IP層預算",
+        "caption": "PCMU 固定 64 kbit/s、IPv4 無選項、UDP、RTP 固定 12-byte header；不含 L2/SRTP/隧道等",
         "headers": [
           "ptime",
-          "payload",
-          "packets/s",
-          "IPbit/s"
+          "payload bytes/包",
+          "包/秒",
+          "IPv4+UDP+RTP bytes/包",
+          "本例 IP 層速率"
         ],
         "rows": [
           [
-            "10ms",
-            "80bytes",
+            "10 ms",
+            "80",
             "100",
-            "96000"
+            "40",
+            "96 kbit/s"
           ],
           [
-            "20ms",
-            "160bytes",
+            "20 ms",
+            "160",
             "50",
-            "80000"
+            "40",
+            "80 kbit/s"
           ],
           [
-            "40ms",
-            "320bytes",
+            "40 ms",
+            "320",
             "25",
-            "72000"
+            "40",
+            "72 kbit/s"
           ]
         ]
-      }
+      },
+      "paragraphs": [
+        "PCMU payload rate 是 64 kbit/s，即每秒 64000 bit。10ms 每包承載 0.010×64000/8=80 bytes，封包率 1/0.010=100 包/秒。以本表的標頭假設，每包外加 IPv4 20、UDP 8、RTP 12 bytes，計入 IP 層每包 120 bytes，120×100×8=96000 bit/s，即 96 kbit/s。",
+        "20ms 時 payload=160 bytes、50 包/秒，因此 (160+40)×50×8=80000 bit/s。40ms 時 payload=320 bytes、25 包/秒，得 (320+40)×25×8=72000 bit/s。較長封包攤低固定標頭成本，卻讓 sender 必須先累積較長的一段音訊才可送出；它增加封包化等待，且單包遺失會涉及更長的媒體時間。",
+        "這些速率只算 IPv4、UDP、RTP 這一層。它沒有 Ethernet/VLAN、SRTP tag、隧道、IP options/extensions、RTCP、重傳或舒適噪音等額外流量；Ethernet 的實際線路占用還有 frame/inter-frame 開銷。不要把表中 72–96 kbit/s 寫成介面卡上所有位元的完整線速。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "ptime 與 codec frame 不是同一個設定",
+      "paragraphs": [
+        "codec 先產生能表示特定時間的 frame；packetizer 可依格式規則將一個或多個 frame 放入 RTP payload。ptime 是 SDP 中以毫秒描述的 packet time 屬性，通常是媒體建議/描述，不是可以凌駕 codec 規則、強迫對方採用任意切分的命令。最大 frame 組合時間、可合併數量與 payload 結構需看該 codec RTP payload 規格。",
+        "封包率可先用 pps=1000/ptime(ms) 估算，但只有在持續傳送且固定時間封包的情況成立。若 DTX、VAD 或事件式媒體令某些時間不送一般 payload，實際平均 pps 會改變；若一包裝多 codec frame，單包時間戳與 marker 等語義也依該格式規範。不要只以收到的封包數推 codec frame 數。",
+        "兩端 SDP 格式交集成立，不代表兩端封包化與所有參數都相同。檢查 `fmtp`、ptime、實際 payload 長度、PT 和 decoder 計數，並確認同一時間的重新協商結果。動態 PT 若被錯誤共用，錯誤看起來可能像亂碼、靜音或解碼器拒絕。"
+      ]
     },
     {
       "kind": "worked-example",
-      "heading": "例題二：8kbit/s媒體爲什麼不是8kbit/s網絡",
+      "heading": "Bitrate 不是 IP throughput：把封裝比例算出來",
       "paragraphs": [
-        "按經典G729持續語音frame10ms10bytes，20ms包含兩個frame20bytes；同樣RTP/UDP/IPv4頭40bytes，總60bytes，50包/s，IP位率60×50×8＝24000bit/s。媒體20×50×8＝8000。由於payload小，頭的16kbit/s比媒體本身還大，不能按8k去設整條鏈容量。",
-        "若40ms四frame40bytes，IP80×25×8＝16000bit/s，媒體仍8k。效率改善的代價是更多packetization等待與一包遺失40ms。再看G722時鐘：即使輸入16000Hz，RTP20ms增量按其profile8000×.02＝160；Opus按48000×.02＝960。編碼位率、採樣與時鐘三者不要混算。",
-        "這些是規則明確的數值模型，不實現G729算法、不聲稱實際產品有該codec。真實需覈對具體模式、附加SID幀、安全／擴展標頭與協商參數。複製某個固定包大小到生產parser前，先證明條件一致，否則靜音或不同幀組合會被誤拒。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "VAD、DTX、CN與PLC：少包不總是壞事",
-      "paragraphs": [
-        "VAD判別語音活動，DTX選擇靜音期減少發送，CN或SID描述背景噪聲以供接收者生成舒適噪聲，PLC在媒體缺口時儘量隱藏丟失。它們的功能不同：少發送是策略，替代噪聲或估計聲音是接收處理，不等於原音頻真實到達。正常安靜可能不保持每20ms一包。",
-        "RTP序號通常按發包推進，timestamp隨媒體時間推進；靜音後下一發包可能seq只加1而timestamp跳較大，這提供媒體停送時段線索。若seq跳多且timestamp也跳，需要考慮遺失；若只看固定包率，會把正常DTX誤報故障。仍需協商和實際配置證據，不因跳時鐘自動宣稱VAD。",
-        "VAD也可能誤將輕聲或話頭當靜音，導致首字被裁。PTT按下到獲準發送之間還有權限與緩衝時序，不能把所有首音丟失都歸codec。查輸入樣本、VAD判斷、媒體建立與實際發送起點，纔可選合適門檻或預緩衝，不能盲目關閉全部處理。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "FEC、冗餘與轉碼：恢復能力有帶寬和處理代價",
-      "paragraphs": [
-        "冗餘可在後續包中攜帶較早媒體，FEC提供部分修復資料；PLC則以已有內容估計缺失，機制不同。某些codec有in-band FEC，具體可恢復哪些損失與何時需要等後包依規則。它們不把網絡變成可靠無損，也可能增加位率、等待或CPU，應結合業務期限和突發模式。",
-        "轉碼先解原格式再編碼另一格式，支持不同終端互通但會帶來處理、時鐘／幀轉換與可能品質損失。媒體服務器有包出入不證明轉碼正確，需要兩邊各自協商與payload格式及處理日誌。多次壓縮也可能進一步損聲音，網絡零丟失不會消除這類後果。",
-        "變更codec、ptime、FEC與緩衝是不同變因，不建議一次全改然後只做一次電話聽測。先寫預期，例如保持媒體64k但降低頭開銷，或提高可恢復缺口；量對應指標、資源與體驗。理論知識服務設計取捨，現場參數需正式支持範圍。"
-      ]
-    },
-    {
-      "kind": "code-reading",
-      "heading": "C#模型如何把媒體預算推到輸出",
-      "paragraphs": [
-        "獨立Program.cs循環ptime10/20/40，pcmu=rate×ptime/1000得到80/160/320，packets=1000/ptime得到100/50/25，ipBits=(pcmu+12+8+20)×packets×8。常量rate8000與mono PCMU一byte樣本是前提，不是泛用codec引擎。這個算式能逐項解釋輸出96/80/72k。",
-        "整數除法適合這三個整除值；若隨意設ptime7，1000/7會取142而真實平均約142.857，應改double並考慮協議允許的幀單位。輸入驗證也是維護責任：能接受的ptime應符合codec frame、部署規則與容量。示範不應該把任何正整數當合法協商值。",
-        "程序另生成PCM16bit WAV，所以20ms320PCMbytes和PCMU160bytes同時存在。用不同變量與明確格式註記可防止把WAV bytes直接放進PCMU負載。項目只算PCMU預算，沒有執行PCMU/G729/Opus編碼，教材必須把驗證範圍說清楚。"
-      ],
-      "code": {
-        "title": "取自已編譯的獨立計算模型",
-        "text": "foreach (int ptime in new[] { 10, 20, 40 })\n{\n    int pcmu = rate * ptime / 1000;\n    int packets = 1000 / ptime;\n    int ipBits = (pcmu + 12 + 8 + 20) * packets * 8;\n    Console.WriteLine($\"payload={pcmu}, packets/s={packets}, IPv4bit/s={ipBits}\");\n}"
-      }
-    },
-    {
-      "kind": "lab",
-      "heading": "實作：用三個封包化對照檢驗取捨",
-      "paragraphs": [
-        "先手算PCMU三個ptime與G72920/40ms，再運行項目覈對PCMU輸出。保存一張表，列條件、媒體位率、IP位率、平均累積等待模型與單包媒體損失長度。不能只抄輸出數字，要解釋爲何媒體64k未變而頭比例下降。",
-        "變因一把IPv4頭20換成40的IPv6基本頭重新算20ms：160+12+8+40＝220，220×50×8＝88000bit/s，不含擴展。變因二額外安全開銷每包10bytes，20ms增加10×50×8＝4000bit/s。變因三改變相容codec能力，推是否能協商，不能運行未實現codec卻說編譯成功。",
-        "驗收每項數字單位清楚，head開銷與有效媒體分開，ptime等待與網絡延遲分開。恢復原代碼再跑Check；若查實際PCAP，按SDP與PT查payload長度與timestamp，靜音期不套連續語音公式。實際codec實現、授權SDK和真人品質不在該項目自動驗證範圍。"
+        "對固定 bitrate R=64 kbit/s、ptime=20ms：payload 每包 64,000×0.020/8=160 bytes；每秒 50 包。IPv4/UDP/RTP 合計的固定頭部是 40 bytes/包，因此頭部流量 40×50×8=16,000 bit/s=16 kbit/s；IP 層近似總量為 64+16=80 kbit/s。固定 40-byte header 對 80-byte payload 佔 50%，對 320-byte payload 則只佔 12.5%。",
+        "對 Opus 或其他可變 bitrate codec，R 會隨內容和設定變動，不能用一個固定數字代替每包實際大小；可以對 pcap 或 SDK 統計取時間窗口平均與峰值，再分開計 payload bytes、RTP/UDP/IP bytes。單位要標清楚：bytes/s×8 才是 bit/s。",
+        "雙向通話通常是兩條獨立媒體流，粗略容量至少要把兩方向的封包流量都算入，並加上 RTCP 和其他媒體/控制流；NAT/relay 也可能多占介面或轉送資源。上行和下行不對稱時，平均總流量會掩蓋其中一方向超限。"
       ]
     },
     {
       "kind": "diagnostic-case",
-      "heading": "有媒體卻亂碼或首字缺失：編碼與門控兩組候選",
+      "heading": "封包數增加但聽感改善：先核對造成的代價",
       "paragraphs": [
-        "亂碼候選是PCMU/PCMA混配、動態PT舊map、PCM直接送、payload損壞或加密未處理。先查當前有效SDP與實際PT及解碼配置。追加數據如果兩邊PT0卻接收使用PCMA規則，優先修映射；若payload是320-byte PCM而聲稱160-byte PCMU，查編碼階段是否跳過。",
-        "首字缺失候選是VAD過敏、PTT許可前樣本丟棄、編碼累計等待、媒體晚建立或接收late drop。補按鍵、輸入非零、VAD、發包、許可與播放時間，不只增大RTP緩衝。若首字在發送前就被VAD丟，接收等更久無法恢復。",
-        "有限修正後分別迴歸靜音／輕聲／連續語音、不同協商格式與快重撥，記錄CPU、位率、時限和播放。沒有真實聲音就不能宣稱某codec品質較好；本章完整機制和算式建立判斷能力，真實產品評價仍需授權測試。"
+        "合成維護案例：原設為 40ms packetization，單包遺失時涉及較長一段音訊；調到 20ms 後丟失恢復感覺改善，但網路介面上的 packet/s 約翻倍。不能只看「改善」就永久調低 ptime；需確認封包等待、RTCP/媒體 loss、CPU 和網路容量。",
+        "若每包時間減半，固定標頭造成的相對成本上升，聲音等待可能下降；如果故障實際是 buffer underrun 或時鐘漂移，改 ptime 可能只暫時改變症狀。比較同一 codec、同一路徑和可比負載窗口，觀察 packet rate、payload bytes、late discard、loss concealment、CPU、首音和延遲。",
+        "有限驗收至少包含正常網路、預期高負載與可控丟失三個情況；記錄語音品質觀察和新增頻寬成本。若只在丟包測試變好、在擁塞時變差，需回到根因與容量，不可只留一個 user setting 結論。"
+      ]
+    },
+    {
+      "kind": "maintenance",
+      "heading": "在程式中追 Codec 選擇到實際 RTP 封包",
+      "paragraphs": [
+        "依序找 codec capability/config 如何被填入 offer、answer 如何選格式、PT mapping 存在哪個呼叫物件、encoder 的 frame time/輸出 bytes 如何交給 packetizer、packetizer 如何決定 ptime，以及 decoder 依哪個 mapping 解析收到 payload。查實際 SDK 版本和 callback contract；此模型沒有假造任何廠商 API。",
+        "把協商結果和線上資料對照：SDP mapping 是預期；RTP PT 是實際標記；payload length/pps 反映實際封包化；RTCP/應用統計提供接收摘要。三者不同時先確認抓包腿、重新協商和中繼 PT rewriting，再找第一個與預期不符的程式邊界。",
+        "本篇僅計一般 RTP 封裝開銷和 PCMU 比較，不定義公司 QoS 門檻或主觀音質驗收值。為 Opus bitrate、FEC、DTX、G.729 等特定格式設定，應依相應 IETF/RFC 或實際產品文件；不得只按 codec 名稱推算支援功能。"
       ]
     }
   ],
   "exercises": [
     {
       "level": "foundation",
-      "question": "採樣率、codec位率與ptime各在數什麼？",
+      "question": "PCMU 64 kbit/s、ptime 20ms，一包有多少 payload bytes、每秒幾包？",
       "answer": [
-        "採樣率是每秒媒體時刻，位率是編碼輸出bit量，ptime是每包媒體時長。",
-        "分別查格式、算法與打包，不能將8000Hz當8000bit/s。",
-        "預算先算媒體，再加每包標頭與包數，實際特殊時鐘另查profile。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "爲什麼PCMU/PCMA長度相同也可能互相解錯？",
-      "answer": [
-        "兩種壓擴映射不同，8bit碼的解釋規則不相同。",
-        "有效協商與實際PT／解碼映射需一致，長度只驗證結構。",
-        "迴歸雙方格式與PCM輸出，不能因160bytes正常就排除codec。"
+        "20ms=0.020s；64,000 bit/s ×0.020s=1,280 bit。",
+        "1,280/8=160 payload bytes。",
+        "每秒封包數=1/0.020=50。這不含 RTP/UDP/IP header。"
       ]
     },
     {
       "level": "application",
-      "question": "新資料：固定媒體32000bit/s、每包20ms、頭40bytes。payload與IP位率？",
+      "question": "新需求改為同一固定率 PCMU 的 10ms 封包，沿用本章 40-byte IPv4/UDP/RTP 頭部。算 payload 與 IP 層近似速率，並說一項代價。",
       "answer": [
-        "媒體每包32000×.02/8＝80bytes。",
-        "50包/s，每包120，120×50×8＝48000bit/s。",
-        "媒體32k與IP48k都正確，註明層級，不含Ethernet或安全頭。"
+        "每包 payload=64,000×0.010/8=80 bytes；pps=100。",
+        "(80+40)×100×8=96,000 bit/s=96 kbit/s，仍未含 L2、RTCP 等。",
+        "包化等待較短，固定頭部流量變多；需同時驗證容量、延遲和丟包時的實際品質。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：同32k媒體改40ms、頭40，算包數、位率與一包媒體長度。",
+      "level": "reasoning",
+      "question": "另一條 codec 流 payload 平均只有 24 kbit/s，20ms 封包；忽略變動，仍套 40-byte IPv4/UDP/RTP header。它的 IP 層近似速率是多少？為什麼仍不是 wire rate？",
       "answer": [
-        "payload32000×.04/8＝160bytes，每秒25包。",
-        "IP200×25×8＝40000bit/s，媒體仍32k。",
-        "一包含40ms，等待與遺失後果增；省帶寬不是壓縮品質提高。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：Opus媒體20ms，RTP clock48000、payload70bytes。timestamp該增多少，payload需改960嗎？",
-      "answer": [
-        "clock×.02＝960時鐘單位。",
-        "壓縮payload70並不矛盾，不需硬改960bytes；時間和byte量是不同維度。",
-        "覈對Opus實際幀與參數，不能從clock推編碼長度。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：媒體seq80到81，timestamp從20000到24000、clock8000，期間靜音DTX啓用。可立即判49包丟失嗎？",
-      "answer": [
-        "timestamp差4000/8000＝.5秒，但seq只加1，可符合靜音期未發常規媒體。",
-        "不能按20ms固定包率把所有間隔當遺失，需VAD/DTX與格式證據。",
-        "看有聲恢復、CN與實際發送，再區分策略和網絡缺口。"
+        "payload per packet=24,000×0.020/8=60 bytes，50 pps。",
+        "(60+40)×50×8=40,000 bit/s=40 kbit/s。",
+        "這不含 L2/VLAN、RTCP、SRTP/隧道、IPv6 變化與重傳等，所以只是本模型的 IP 層近似值。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "20ms PCMU預算64k用於鏈路上限，實際IP80k而隊列增長。怎樣修計算？",
+      "question": "SDP 顯示 PT 111=Opus/48000/2；RTP PT 111 到達，但 decoder 記錄按 PT 111 選 PCMU。第一個查驗點在哪裡？",
       "answer": [
-        "64k只是媒體，頭40×50×8＝16k，所以IP80k，鏈路更高。",
-        "重新列所有封裝、方向、峯值與其他流量，按相容策略測試容量。",
-        "驗收隊列穩定與時限，不能只把計數單位改名隱藏壓力。"
+        "先確認 RTP 和 SDP 屬於同一對話／媒體腿及當前有效協商版本，排除中繼 PT 改寫。",
+        "如果 mapping 確認為 Opus，追 decoder lookup 是否錯用全域或過期 PT 表，並檢查格式初始化參數。",
+        "回歸兩個同時使用不同 dynamic PT mapping 的呼叫，確認更新及清理不互相影響。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "用戶說首音被切，發送PCAP第一個RTP已不含話頭但輸入PCM有。接收加buffer有用嗎？",
+      "level": "application",
+      "question": "pt=20ms 由40ms改成20ms後，pps約翻倍而平均 payload bitrate相同。用何種分組證據驗證這項變更有價值？",
       "answer": [
-        "若資料在發送前已丟，接收等待無法恢復未發送內容。",
-        "查輸入到VAD／許可／編碼／發包的時間與門控，有限修正對應階段。",
-        "迴歸輕聲和PTT快操作，既保首音也驗證不未經許可發送；依據正式產品語義。"
+        "分別記錄 RTP/IP bytes與pps、late/discard/loss/PLC、首音與端到端延遲、CPU/網路負載。",
+        "在同一路徑/負載下比較正常、延遲抖動和丟失條件，確認改善不是其他變因造成。",
+        "如果主要故障指標未改善但流量增加，就回退並追真正瓶頸；保留可重現的對照資料。"
       ]
     }
   ],
   "recap": [
-    "能區分採樣率、編碼位率、codec frame、ptime與網絡位率。",
-    "能手算不同封包化的payload、包數、標頭成本與等待代價。",
-    "能根據協商、實際PT及編碼能力定位不相容和靜音症狀。"
+    "Codec 定義媒體 payload 表示，PT 是本次 RTP 協商中的映射，packetization 決定一包承載多少媒體時間。",
+    "固定-rate 範例可由 bit/s、ptime 和每包固定 header 推出大致網路速率；完整線速還需考慮其他封裝。",
+    "較短 ptime 減少封包化等待但增加固定頭部開銷；必須以同條件數據平衡，而不是只看 codec bitrate。"
   ],
   "sources": [
     {
-      "label": "IETF RFC3551：音頻RTP profile與格式",
+      "label": "IETF RFC 3551：RTP/AVP 的 PCMU/PCMA 靜態格式與 profile",
       "url": "https://www.rfc-editor.org/rfc/rfc3551.html"
     },
     {
-      "label": "IETF RFC7587：Opus RTP映射",
+      "label": "IETF RFC 3264：協商 payload type 與格式映射的 Offer/Answer 規則",
+      "url": "https://www.rfc-editor.org/rfc/rfc3264.html"
+    },
+    {
+      "label": "IETF RFC 7587：Opus RTP payload、timestamp clock 與封包化規則",
       "url": "https://www.rfc-editor.org/rfc/rfc7587.html"
-    },
-    {
-      "label": "IETF RFC3389：靜音抑制與Comfort Noise",
-      "url": "https://www.rfc-editor.org/rfc/rfc3389.html"
-    },
-    {
-      "label": "IETF RFC2198：RTP冗餘音頻負載",
-      "url": "https://www.rfc-editor.org/rfc/rfc2198.html"
-    },
-    {
-      "label": "Microsoft：WAVEFORMATEX的取樣率、聲道、對齊與位率",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex"
     }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/voip-maintenance-lab.zip",
-      "label": "VoIP獨立計算與WAV示範（.NET10）",
-      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    }
-  ],
-  "studyTime": {
-    "reading": [
-      12,
-      19
-    ],
-    "practice": [
-      35,
-      55
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

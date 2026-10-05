@@ -2,10 +2,16 @@ using System.Threading.Channels;
 
 // Fictional maintenance model. Logical ticks are not measured device latency.
 string mode = args.FirstOrDefault() ?? "all";
+int longHandlerCost = 50;
+if (mode == "async" && args.Length > 1 &&
+    (!int.TryParse(args[1], out longHandlerCost) || longHandlerCost < 0)) {
+    Console.Error.WriteLine("async cost must be a non-negative integer");
+    return 2;
+}
 var cases = new Dictionary<string, Action> {
     ["deadline"] = Deadline, ["retry"] = Retry, ["health"] = Health,
     ["queue"] = QueueModel, ["ordering"] = Ordering, ["race"] = Race,
-    ["async"] = AsyncModel, ["evidence"] = Evidence
+    ["async"] = () => AsyncModel(longHandlerCost), ["evidence"] = Evidence
 };
 if (mode == "all") foreach (var pair in cases) { Console.WriteLine($"\n[{pair.Key}]"); pair.Value(); }
 else if (cases.TryGetValue(mode, out var run)) run();
@@ -25,7 +31,7 @@ static void Deadline() {
         if (attempt < 3) now = Math.Min(deadline, now + 30);
     }
     Check(now == deadline, "overall deadline");
-    Console.WriteLine("local waiting expired at 250; remote outcome is not inferred.");
+    Console.WriteLine($"local waiting expired at {deadline}; remote outcome is not inferred.");
 }
 static void Retry() {
     var remote = new LabIdempotentService();
@@ -99,15 +105,16 @@ static void Race() {
     // No actual deadlock is started: the wait graph is inspected instead.
     Console.WriteLine("wait graph: A holds X -> waits Y; B holds Y -> waits X (cycle)");
 }
-static void AsyncModel() {
+static void AsyncModel(int longHandlerCost) {
     // A logical single-thread dispatcher: ready jobs run in order.
     int availableAt = 0;
-    foreach (var job in new (string Name, int Ready, int Cost)[] { ("long-handler", 0, 500), ("status-callback", 20, 2), ("heartbeat", 100, 1) }) {
+    foreach (var job in new (string Name, int Ready, int Cost)[] { ("long-handler", 0, longHandlerCost), ("status-callback", 20, 2), ("heartbeat", 100, 1) }) {
         int starts = Math.Max(availableAt, job.Ready);
         Console.WriteLine($"{job.Name}: ready={job.Ready} starts={starts} queueWait={starts-job.Ready}");
         availableAt = starts + job.Cost;
     }
-    Check(availableAt == 503, "logical dispatcher ordering");
+    int expectedAvailableAt = Math.Max(Math.Max(longHandlerCost, 20) + 2, 100) + 1;
+    Check(availableAt == expectedAvailableAt, "logical dispatcher ordering");
     Console.WriteLine("logical UI model only: .NET Console has no WPF Dispatcher.");
 }
 static void Evidence() {

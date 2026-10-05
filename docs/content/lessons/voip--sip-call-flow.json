@@ -1,259 +1,181 @@
 {
-  "contentVersion": 2,
-  "intro": "一通SIP電話不是只有INVITE和200兩個標籤，它是一組請求、響應、交易與對話狀態。要維護程序，需要知道哪些事件能改變哪種狀態、取消與結束爲何不同、重傳和遲到怎樣處理。本章逐步讀完整正常流程與取消競態，用明確關聯避免把別通或舊交易的回應套到當前畫面。",
+  "contentVersion": 3,
+  "intro": "收到 INVITE 不代表已接通；200 OK 不代表聲音已通；CANCEL 的 200 也不代表原邀請已取消。要維護呼叫狀態，必須把請求、其回應、持續中的 dialog 和程式物件分開追蹤。本章從合成的完整往返建立狀態關係，再處理重傳、分叉、取消競態與 callback 遲到。",
   "prerequisites": [
-    "理解本主題前章的 SIP 身分、登記與 Contact；登記成功和建立通話是不同事情。",
-    "知道請求與回應的關係；本章會區分交易、對話、取消與結束。"
+    "可直接閱讀。若尚不熟註冊角色，補看前篇「SIP 角色與註冊」中 UA、Registrar 和 Proxy 的責任。",
+    "SDP 協商會在下一篇展開；本篇只在呼叫消息中指出 offer/answer 所在，不假設 ACK 等於媒體成功。"
   ],
   "goals": [
-    "能用請求／響應、transaction／dialog與CSeq解釋正常建立及結束。",
-    "能區分臨時響應、最終響應、ACK、CANCEL和BYE的生命週期。",
-    "能追蹤重複、分叉與取消競態並設計不泄漏資源的驗證。"
+    "能區分 SIP request/response、transaction 和 dialog，並用欄位關聯同一請求。",
+    "能推導 INVITE 正常建立、取消、BYE 結束和 re-INVITE 修改各自的狀態效果。",
+    "能判斷重複 200、遲到事件與取消競態時，程式必須保留哪些狀態與清理路徑。"
   ],
   "sections": [
     {
       "kind": "concept",
-      "heading": "請求、響應、交易、對話：四種尺度",
+      "heading": "一次消息往返與一段 dialog 是不同尺度",
       "paragraphs": [
-        "請求是一次SIP動作，響應回答它；Transaction涵蓋該請求及相關響應和重傳處理；Dialog是雙方間可持續多個請求的會話關係，通常由Call-ID及兩邊tag區分。使用者一通電話是產品概念，經過B2BUA可有不同dialog與交易。尺度不同，不能用一條UDP對話或一個status碼代替用戶體驗。",
-        "INVITE常開始一個會話，臨時1xx表示進行中，成功2xx表示邀請接受；隨後ACK處理對應INVITE最終回應。之後可用re-INVITE修改會話，BYE終止已建立會話。REGISTER或OPTIONS也有請求與響應，但並非每個transaction都創建電話dialog。維護代碼先辨認當前方法與階段，不把所有請求統一套同一完成規則。",
-        "Call-ID相同仍可能有不同To tag，尤其呼叫分叉到多個終端時。CSeq同時含數字和方法，Via branch輔助匹配交易；正確關聯需要這些字段與路由上下文。手機UI狀態名稱與協議狀態可能不同，譬如Ringing來自180事件，InCall可能來自SDK更高層完成事件，需查具體契約。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "起始請求的路由、回應的關聯與狀態碼",
-      "paragraphs": [
-        "Request-URI指出請求的目標，Via記錄回覆路由與交易，From/To表達邏輯雙方，Contact與Route相關字段影響後續請求去哪裏。初始INVITE經過Proxy時，各跳可能加入自己的Via；實際IP源目的與邏輯身份並不一一相同。抓一個點只看見該腿，不自動看到Proxy以後全部路徑。",
-        "100 Trying通常說明處理開始，180 Ringing說明響鈴階段，183可涉及早期媒體條件，200 INVITE表示成功最終回應。4xx/5xx等最終失敗需按方法與場景解釋，例如486 Busy Here和488 Not Acceptable Here表示不同原因範圍；僅靠文字並不能定位所有產品內部邏輯。",
-        "初始消息可攜帶SDP offer，200攜帶answer；也有其他offer/answer時序，所以不能把「200一定有SDP」當普遍規則。本文先以常見初始INVITE帶offer建立可計算基準。遇到延遲offer、可靠臨時響應等擴展時，應依協商與規範補完整狀態，別硬用四筆模板套全部SIP。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "ACK爲何特別：成功與失敗INVITE不能完全套同一規則",
-      "paragraphs": [
-        "INVITE的最終回應需要ACK，但2xx的ACK按對話路由處理，非2xx的ACK屬於相應INVITE交易處理；兩者匹配與重傳機制不同。這個差別影響「200一直重發卻沒有ACK」的診斷：要看客戶端是否收到200、ACK是否用正確目標／Route、以及當前抓包有沒有涵蓋那條路徑。",
-        "收到同一個200的重複傳輸，不一定是服務器執行多通；可能因爲對應確認未被看到。客戶端需要按規範處理每個有效2xx與ACK，避免僅第一次成功就銷燬必要狀態。非INVITE請求如BYE不按INVITE方式加一個ACK，不能自造ACK回應REGISTER200。",
-        "ACK也不是RTP確認。控制完成後媒體可以仍失敗，媒體甚至可在臨時響應階段出現。維護時分別記錄對話狀態與媒體狀態，讓取消、已建立和播放條件各自更新。一個布林Success既要代表邀請接受又要代表音訊可用，會使失敗定位無法維持。"
+        "收到 SIP 回應時，INVITE 或 BYE 這類 request 會有零個或多個暫時回應，通常接著收到一個最終回應；但 INVITE 經代理分叉時，呼叫端可能收到不同分支的多個回應，包含多個 2xx 成功結果；也可能因計時器逾時或傳輸失敗，在沒有收到最終回應時結束。遠端送來的 SIP 408 是一個回應，應用程式或 SDK 回報本地 timeout 則不是；讀程式和抓包時要確認錯誤值來自哪一層。這組交換稱為 transaction。Dialog 則是 UA 之間可持續的會話關係；INVITE 的帶標籤回應可先建立 early dialog，成功的 2xx 再將相應分支確認，之後可有 re-INVITE 和 BYE。使用者介面叫它「一通電話」，協定則有多組交易與一條或多條 dialog，不能只用畫面的一個狀態覆蓋它們。",
+        "常用關聯資料各有工作：Call-ID 指出呼叫識別；From-tag 與 To-tag 組成 dialog 識別的一部分；CSeq 數字與方法關聯 dialog 內請求順序；Via branch 常用於交易匹配。只用 Call-ID 不總夠，因為同一 INVITE 可分叉到不同目的端而建立不同 To-tag 的 dialog。",
+        "Proxy 轉送時可增加 Via；B2BUA 可能分成兩條獨立 SIP 腿並改用新的 Call-ID。於是捕獲點 A、B 看到的欄位未必完全相同。跨邊界相關時要使用產品提供的關聯 ID、時間線與映射紀錄，不能預設 end-to-end 所有標頭不變。"
       ]
     },
     {
       "kind": "worked-example",
-      "heading": "例題一：從完整輸入還原建立、修改與結束",
+      "heading": "讀一條正常呼叫：誰在什麼時候確認哪個動作",
+      "code": {
+        "title": "合成 SIP 摘錄；以 INVITE 帶 offer 為例",
+        "text": "A -> B  INVITE, Call-ID=c1, CSeq=10 INVITE, From-tag=a\nB -> A  100 Trying\nB -> A  180 Ringing, To-tag=b\nB -> A  200 OK, To-tag=b, CSeq=10 INVITE, SDP answer\nA -> B  ACK, Call-ID=c1, tags a/b, CSeq=10 ACK\nA -> B  BYE, Call-ID=c1, tags a/b, CSeq=11 BYE\nB -> A  200 OK, CSeq=11 BYE"
+      },
       "paragraphs": [
-        "給定Call-ID c-a、From tag a1，A發送CSeq20 INVITE帶offer；B回180並加To tag b1，然後200同CSeq20 INVITE帶answer，A發CSeq20 ACK。這是一條dialog(c-a,a1,b1)的建立基準。t0 INVITE、t.030 180、t.080 200、t.090 ACK，邀請到最終成功80ms、到確認90ms，是該觀察腿的時序。",
-        "稍後A發CSeq21 INVITE在同dialog修改媒體，B200 CSeq21 INVITE，A21 ACK；它不是另一通初始呼叫，而是同dialog的re-INVITE。再A發CSeq22 BYE，B200 CSeq22 BYE，結束這條會話。Call-ID相同不是把全部200混成一個成功；CSeq方法與tag讓各次動作明確。",
-        "若UI只處理CSeq20的初次狀態，媒體Port在21時已改變卻沒更新，後續可能有無聲。若把22 BYE的200當接通，又會把已結束畫面拉回InCall。維護需要按動作更新正確狀態，關閉之後取消訂閱、停止媒體與釋放本地資源；最後SIP響應只是資源清理所需條件之一。"
+        "100 Trying 是暫時回應，告訴 A 請求正在處理；180 Ringing 表示對端呼叫過程進入響鈴狀態。這個 180 帶有 To-tag=b，因此已建立一條 early dialog（早期對話）；後續 200 OK 帶相同 To-tag，將這條分支確認為 confirmed dialog。Dialog 身分由 Call-ID、From-tag 和 To-tag 組成，不是只看 To-tag。若代理分叉，不同 To-tag 代表要分開追蹤的分支；失敗的最終回應會終結相應 early dialog。200 OK 是這個 INVITE 的成功最終回應。A 發 ACK 確認 INVITE 的成功回應；之後 BYE 是新的請求，200 OK(BYE) 才是對 BYE 的回應。",
+        "本例的 ACK CSeq 使用 10 ACK，仍對應原 INVITE 的序號；BYE 在同 dialog 使用更高的 CSeq 11。這些欄位是合成值，實際消息會有更多路由、branch、Contact 和 SDP 細節。不要依消息在 GUI 的排列位置判斷相屬，直接用 Call-ID、tag、CSeq method 和 transaction 條件比對。",
+        "成功 ACK 與 BYE 的 200 都是 SIP 控制證據，不是媒體測試。呼叫程序至少須分開保存「邀請接受」「dialog 已建立」「媒體預期已更新」「dialog 已結束」等狀態。實際 SDK 可能自己執行 ACK、重傳和交易匹配；修改前先查 SDK 契約與目前使用版本，別自行補送協定消息。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "ACK 為什麼要分成功與失敗邀請的情境",
+      "paragraphs": [
+        "INVITE 的最終回應有 2xx 和非 2xx 等情況，ACK 的交易處理不完全相同。非 2xx 最終回應的 ACK 屬於 INVITE transaction 的規則；2xx 的 ACK 由 UAC 按已建立 dialog 路由。這個區分會影響可靠傳遞與匹配，也解釋為什麼不能把每個 ACK 都當成同一個方法 callback。",
+        "同一個 2xx 若未被對方認為已確認，可能再次出現。看見重複 200 時先核對是否同一 dialog、同一 CSeq INVITE、同一 To-tag 及 ACK 路徑；若 To-tag 不同，可能是分叉的另一個 dialog，不可直接刪除為重傳。",
+        "SIP 經 UDP 時，交易層有其重傳與計時；經 TCP 或 TLS 時，傳輸本身會處理連線內傳送可靠性，但 SIP 交易和呼叫狀態仍存在。TCP ACK 只確認該傳輸連線收到 bytes，不代表被呼叫者接受 INVITE。TLS 可能使一般抓包看不到 SIP 明文，需以授權日誌或安全解密條件補證。"
+      ]
+    },
+    {
+      "kind": "mechanism",
+      "heading": "CANCEL 撤回仍在處理的邀請；BYE 結束已建立的 dialog",
+      "paragraphs": [
+        "CANCEL 是針對正在處理中的請求提出取消要求，最常用於尚未完成的 INVITE。CANCEL 本身也有回應，但 CANCEL 的 200 僅回覆取消請求；原 INVITE 仍會得到自己的最終結果。若 INVITE 之後收到 487 Request Terminated，這是另一條回應關係。把 CANCEL 的 200 當作原 INVITE 已完成，會過早刪除呼叫狀態。",
+        "若遠端已在取消到達前接受 INVITE，成功 2xx 仍可能到達。UA 必須按 SIP 規則處理這個成功結果並完成必要確認，再依呼叫意圖清理已建立 dialog；產品 UI 可以呈現「使用者已取消」，但內部狀態仍需處理對端已接受的協定事實。這是非同步到達順序和遠端決策順序不同造成的競態。",
+        "BYE 針對已建立 dialog 的終止；它不是取消尚未完成邀請的替代品。程式要保留終止意圖、dialog 狀態、遲到回應處理與資源清理條件，重複的 stop/dispose 也需對同一呼叫具冪等性。"
       ],
       "table": {
-        "caption": "同dialog的多次操作與狀態",
+        "caption": "三種看似相似但責任不同的結束訊息",
         "headers": [
-          "CSeq方法",
-          "對應結果",
-          "應用應檢查"
+          "動作",
+          "適用階段",
+          "回應能證明"
         ],
         "rows": [
           [
-            "20 INVITE +20 ACK",
-            "建立接受",
-            "初始協商與媒體啓動"
+            "CANCEL",
+            "原請求仍處理中，常見為 INVITE",
+            "取消請求被處理；仍要看原 INVITE 結果"
           ],
           [
-            "21 INVITE +21 ACK",
-            "會話修改",
-            "有效媒體條件更新"
+            "BYE",
+            "已建立 dialog",
+            "BYE 的 SIP 交易完成；本機資源清理另驗"
           ],
           [
-            "22 BYE +200 BYE",
-            "終止確認",
-            "媒體停止與資源清理"
+            "ACK",
+            "INVITE 最終回應確認流程",
+            "按情境確認 INVITE 最終回應；不是媒體 ACK"
           ]
         ]
       }
     },
     {
-      "kind": "mechanism",
-      "heading": "CANCEL與BYE：取消未完成邀請，結束已建立會話",
-      "paragraphs": [
-        "CANCEL針對仍在進行的邀請交易，請求停止繼續處理；它本身有響應，但CANCEL200只說明取消請求被處理，並不等於原INVITE已經成功或失敗。原INVITE常隨後得到487等最終結果並按規則ACK。原邀請結果和取消結果是兩個需要關聯的事件，程序不能只見CANCEL200就丟掉INVITE狀態。",
-        "BYE則用於已建立會話的終止。如果取消發出同時對方已經接受，成功INVITE2xx可能仍到達；這時需要處理成功、ACK，然後依產品意圖終止已建立對話，不能假設CANCEL總能撤回遠端接受。網絡與線程時序讓這種競態在真實系統可見。",
-        "錯誤策略可能產生殭屍媒體或畫面錯誤：UI已Cancelled卻後來遲到200觸發InCall；或者不ACK成功回應導致對方重發與資源未釋放。正確規則需由協議和SDK契約實現；教材先讓你認識競態來源與狀態分離，維護時查實際事件處理與cleanup路徑。"
-      ]
-    },
-    {
-      "kind": "worked-example",
-      "heading": "例題二：取消競態要怎樣保留完整狀態",
-      "paragraphs": [
-        "案例輸入：t.000 INVITE CSeq40，t.050用戶取消，A送CANCEL；t.060 B已發200 INVITE，t.070 A收到200 CANCEL，t.080 A才收到200 INVITE。到達順序不等於遠端決策順序。取消200不能推定邀請未接受，因爲B在.060已成功回應原邀請。",
-        "程序應按同INVITE的成功規則處理2xx與ACK，再以用戶取消意圖結束已建立dialog，例如適用時發BYE並收最終結果；具體API查SDK，不把這些協議動作當自制SDK方法。產品UI可以維持取消意圖，但內部仍需要經歷接受／清理，以免遺留媒體或dialog。",
-        "驗證給兩種對照：早取消時INVITE以487結束；晚取消時成功2xx後完成終止。兩者用戶意圖相同而協議路徑不同。每條檢查最終無活動媒體、無遺留訂閱、同世代事件不會把UI改回InCall。只在正常接通後按掛斷測試，會漏掉這個競態。"
-      ],
-      "code": {
-        "title": "教學狀態模型：意圖與協議狀態分開保存",
-        "text": "record LabCallState(bool UserCancelled, bool InviteAccepted, bool CleanupComplete);\n// late 2xx 仍需協議處理，UserCancelled不能讓程序跳過必要ACK。\n// 對真實SDK查事件契約，LabCallState不是廠商API。"
-      }
-    },
-    {
-      "kind": "mechanism",
-      "heading": "重傳、分叉、遲到與連接世代：同名字不等於同事件",
-      "paragraphs": [
-        "SIP/UDP可能重傳同交易消息；同Call-ID/CSeq/Via關係可幫助去重，與TCP同序號範圍的重傳不同。分叉時多個終端返回不同To tag，可能出現多個早期或成功dialog。遇到不同tag，應按有效對話處理，不把第二條200誤稱重複異常；是否保留其中一條需產品與規範策略。",
-        "重連後舊call對象callback可能遲到；若處理器只看號碼而不看call實例或世代，可把舊結束套到新呼叫，或舊成功覆蓋新失敗。綁定事件的生命週期、取消訂閱與狀態來源需要一起維護。協議關聯字段幫你查線上的哪條dialog，程序對象記錄幫助查本地哪一代對象。",
-        "牆鐘不同也會製造錯序。先在同抓包腿分析消息順序，跨主機log校準offset與誤差，再推因果。只有畫面消息列表不能證明線程處理順序；如果需查競態，補callback入口、狀態寫入與cleanup記錄，測試確定的順序變化。",
-        "運輸協議還影響重傳觀察。SIP經TCP時，TCP負責同連接bytes的確認和補洞，SIP交易仍負責業務響應及超時；看到TCP ACK不代表INVITE接受。SIP經UDP時可看到SIP自身同交易重發，報文的CSeq、branch與方法幫助關聯。TLS還可讓抓包無法直接讀明文標頭，需要授權日誌或解密條件。不要將三種場景的「重複」全按一種工具標籤解釋。"
-      ]
-    },
-    {
-      "kind": "lab",
-      "heading": "紙上和抓包實作：關聯完整流程而非只數200",
-      "paragraphs": [
-        "用mixed的lab-a四筆作最小基準，在SIP Flow Sequence確認方向後抄Call-ID、CSeq與tag。接着用本章CSeq20/21/22文字資料擴充建立、修改、結束表，寫每條響應最多改變哪些狀態。無需真實賬號，Wireshark只是讀取合成檔，缺GUI可直接按給定字段完成表。",
-        "變因一把200 CSeq21改成CSeq21 OPTIONS，驗證它不配re-INVITE；變因二把To tag換b2，辨識不同分支；變因三用取消競態兩種到達順序，保持用戶意圖。每次先預測狀態再覈對規則，不能只把Info字樣複製到結果列。",
-        "驗收包含每請求最終結果、ACK應關聯哪筆、CANCEL200爲什麼不是INVITE結論、遲到成功如何進入清理。交付一段完整因果說明與迴歸清單，而不是只給事件表。項目計算PASS不驗證SIP狀態機；真實SDK代碼、擴展與設備仍未執行，章節明確區分協議模型。"
-      ]
-    },
-    {
       "kind": "diagnostic-case",
-      "heading": "服務器一直重發200：應用問題還是ACK路徑問題",
+      "heading": "取消與接受幾乎同時發生：依事件而不是 UI 預期處理",
+      "code": {
+        "title": "合成到達時間線",
+        "text": "t=0 ms    A sends INVITE (CSeq 40)\nt=95 ms   user presses Cancel; A sends CANCEL\nt=110 ms  B sends 200 OK for INVITE\nt=125 ms  A receives 200 OK for CANCEL\nt=145 ms  A receives 200 OK for INVITE\nt=...     A processes accepted dialog, then terminates it per user intent"
+      },
       "paragraphs": [
-        "症狀給定同INVITE200重複、用戶UI已InCall。候選包括客戶端未收到200、收到未發ACK、ACK目標／Route錯誤、路徑丟失或觀察點不包含ACK。先覈對同dialog與CSeq，不把別請求的200混入。觀察客戶端抓包與日誌，在收到位置找對應ACK發送。",
-        "新增證據版本一：客戶端看到200但callback拋錯，無ACK出向；優先處理事件異常與SDK正確流程。版本二：客戶端發ACK到錯誤Contact，而對端正確路徑無ACK；優先覈對路由與正式dialog目標。版本三：服務端其實收到ACK，只有旁觀抓包沒見；那是取證問題，不能修程序。",
-        "迴歸用正常、重傳、ACK遲到與斷線清理場景，確認不重複建立業務動作且不泄漏資源。只因UI顯示InCall就忽略重複200，會讓服務器狀態與程序狀態分歧；只因包重複就重新撥號，也可能把一個問題變多條dialog。"
+        "讀時間線時，CANCEL 的回應和 INVITE 的回應各自對應不同請求。A 在 125 ms 收到 CANCEL 的 200，並不能消除 145 ms 才到達的 INVITE 200。遠端已接受的 dialog 需要正常處理；否則 B 可能保留呼叫，或反覆重送成功回應，而 A 端 UI 已顯示取消。",
+        "這裡的修正不是在應用層硬編一個萬用「忽略晚到事件」條件。事件必須按 SIP dialog/transaction 與本機 call-generation 關聯；若收到有效 2xx，就按 SDK/協定契約完成處理，再執行結束意圖，最後確認媒體停止、event handler 解除和物件釋放。協定操作應由 SDK 負責的部分不可重複實作。",
+        "回歸案例至少要測：取消早於遠端回應、取消與 2xx 交錯、取消後收到失敗結果、重複點擊取消，以及呼叫物件已結束時 callback 才抵達。每一個測試都檢查最終 dialog、媒體和本機狀態，而不只檢查 UI 文案。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "將 SIP 回應關聯到正確的本機呼叫世代",
+      "code": {
+        "title": "教學判斷模型；不是 SIP parser 或 SDK API",
+        "text": "#nullable enable\nrecord CallKey(string CallId, string FromTag, string ToTag);\nrecord PendingInvite(string CallId, string FromTag, uint InviteCSeq,\n                     long Generation, bool CancelRequested, CallKey? Dialog);\nrecord SipResponse(uint CSeq, string CSeqMethod, string CallId,\n                   string FromTag, string? ToTag, string? ViaBranch);\n\nstatic class SipResponseMatcher\n{\n    public static bool IsSameInvite(PendingInvite p, SipResponse r) =>\n        r.CSeqMethod == \"INVITE\" && r.CSeq == p.InviteCSeq &&\n        r.CallId == p.CallId && r.FromTag == p.FromTag;\n}\n\n// CSeqMethod 是從 response 的 CSeq 標頭解析；response 起始列沒有 method。\n// 此簡化模型仍未實作完整 SIP transaction/dialog matching。\n// Generation 用來避免舊物件 callback 覆蓋新 UI 狀態。"
+      },
+      "paragraphs": [
+        "簡化模型在送出 INVITE 時就保存 Call-ID、From-tag 和 CSeq；此時對端 To-tag 尚未建立，不能只靠 Dialog 識別。response 的 CSeq 標頭同時帶數字與原 request method，示例中的 CSeqMethod 由該欄位解析，不是 response 起始列上的 method。正式 SIP 匹配還需要 transaction branch、方向、tags 和 RFC 規則；這段程式只示範一小部分關聯條件，不能直接用來處理封包。",
+        "讀既有程式時追每次撥號如何建立呼叫 ID 或 generation、事件 handler 何時綁定、掛斷或取消後如何解除，以及 callback 更新 UI 前有沒有檢查物件仍是目前那一代。電話號碼或一個共享欄位不是足夠的呼叫識別。若 UI 使用全域 CurrentCall，快速連續撥打尤其容易讓舊事件更新新呼叫。",
+        "適用的 SDK 可能會封裝 dialog ID、事件重試和 transaction 追蹤。先閱讀該版本文件或日誌欄位，再決定哪些識別要由應用保存；不要從本模型臆造 SDK API。"
       ]
     },
     {
       "kind": "maintenance",
-      "heading": "讀實際程序：事件、狀態寫入與資源邊界",
+      "heading": "測試一條呼叫路徑時，同時驗證結束與重複事件",
       "paragraphs": [
-        "找發起入口、創建call對象、註冊事件、成功／失敗／結束處理器，以及媒體啓動與關閉位置。用同call鍵記錄事件來源、線程、state前後和世代，才能追遲到覆蓋。SDK可能自動做協議ACK與重傳，應用不得未查契約就自己發另一份；這正是標準流程理解和產品實現不能混寫的原因。",
-        "正常與異常路徑的最終狀態都要驗收：失敗邀請不應殘留媒體，取消競態最終無活動dialog，重複結束事件不應釋放別個call對象，再協商更新僅影響對應會話。一個「通話已結束」標籤無法代替檢查資源生命週期，但它給你查證位置。",
-        "基礎觀念是把控制動作、回應、對話、媒體與用戶意圖分成可關聯狀態。能自己解釋爲什麼遲到200仍需處理、爲什麼BYE200不接通、爲什麼不同tag是不同分支，就不再依賴背四條箭頭；新產品的SDK事件也能按機制閱讀與驗證。"
+        "正向驗證：初始 INVITE 成功，ACK 關聯正確，應用進入通話狀態；BYE 的 200 對應 BYE，接著媒體停止，事件訂閱解除，記錄只標記該呼叫已結束。故障驗證：INVITE 拒絕或超時，不能留下活動媒體；取消競態回傳晚到 2xx，也不能留下遠端 dialog 或讓 UI 回到 InCall。",
+        "對每種路徑保存關鍵事件：呼叫世代、方法、Call-ID、CSeq、tags、SIP response code、事件時間、當前狀態前後值及 cleanup 結果。敏感 URI、認證資訊和公司拓撲要按授權政策遮罩。單純寫 `response=200` 不足以讓另一人判斷它是 REGISTER、INVITE、BYE 還是 OPTIONS。",
+        "訊息缺失還可能是抓包範圍、TLS 加密、Proxy/B2BUA 分腿或時鐘偏差，不等於程序一定沒有執行。先標出觀察點，再判斷是沒有收到、沒有處理、處理失敗或只是不在該份證據中。此篇只教 SIP 控制狀態；SDP/RTP 是否通仍需後續媒體章節。"
       ]
     }
   ],
   "exercises": [
     {
       "level": "foundation",
-      "question": "BYE的200需要像INVITE的200再發ACK嗎？",
+      "question": "新消息：同一 Call-ID 下先收到 200 OK (INVITE)，稍後收到 200 OK (BYE)。它們是否能合併成一次「成功回應」？請指出至少兩個關聯欄位。",
       "answer": [
-        "非INVITE的BYE交易不套INVITE的ACK規則。",
-        "先按CSeq方法關聯；INVITE最終回應與BYE回應有不同處理。",
-        "實際SDK可能自動管理，查契約不要自造協議動作。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "CANCEL200是否就是原邀請取消完成？",
-      "answer": [
-        "它回應取消請求，不直接作爲原INVITE最終結果。",
-        "繼續看INVITE最終響應與對應處理；競態可能已經接受。",
-        "維護分開用戶取消意圖、邀請狀態和清理狀態。"
+        "不能。前者表示 INVITE 成功接受，後者回答之後發出的 BYE；業務含義相反。",
+        "比對 CSeq 數字與方法、From/To tags、Call-ID 及 transaction 欄位。",
+        "在狀態機中分別更新 dialog 建立和終止，不讓 BYE 200 把呼叫重新標為已接通。"
       ]
     },
     {
       "level": "application",
-      "question": "新資料：Call-ID z、From a、To b的200和To c的200，均CSeq9 INVITE。能去重成一條嗎？",
+      "question": "合成順序：INVITE 送出、CANCEL 送出、收到 200(CANCEL)、收到 487(INVITE)。本機下一步要核對什麼？",
       "answer": [
-        "不同To tag表示可能不同dialog分支，不只是同條重傳。",
-        "分別關聯各成功會話與ACK，查分叉和產品策略。",
-        "不可只按Call-ID/CSeq去重導致一條分支未處理；迴歸分叉資源清理。"
+        "確認 200 的 CSeq/method 對應 CANCEL，487 對應原 INVITE；它們是兩個 transaction 結果。",
+        "依適用 SIP 規則處理 INVITE 非 2xx 結果的確認，再檢查原 dialog 未建立及媒體資源已清理。",
+        "回歸重複取消與事件重送，確保清理一次以上仍安全且 UI 保持取消/失敗的正確結果。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：INVITE t0、180 t40ms、200 t120ms、ACK t135ms。三個間隔各怎樣解釋？",
+      "level": "reasoning",
+      "question": "新資料：相同 Call-ID、From-tag、CSeq INVITE 的兩個 200 回應，To-tag 分別是 b1 和 b2。你應先視為重傳還是兩個分支？",
       "answer": [
-        "初始到響鈴40ms，到最終成功120ms，到ACK135ms。",
-        "這是該信令觀察腿，不含所有按鍵和媒體播放時間。",
-        "確認同CSeq與dialog、窗口完整；不能用120ms宣稱人耳開始聽到。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：re-INVITE CSeq51之後收到200 CSeq50 INVITE。畫面用此回覆更新新媒體合理嗎？",
-      "answer": [
-        "不合理，回應屬於舊請求，不能填51的協商結果。",
-        "查51的最終回應與生效SDP，保留舊結果用於它所屬階段。",
-        "修正關聯後測試遲到與重複，確認舊Port不覆蓋新Port。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：用戶取消先到本機，之後遲到2xx接受；應用直接銷燬對象不處理。有什麼風險？",
-      "answer": [
-        "對方可能已建立dialog且繼續重發成功／媒體，本機跳過必要協議處理。",
-        "按SDK契約處理成功與清理，分離取消意圖與接收事件。",
-        "測試早取消失敗路徑和晚取消成功後結束，最終無殘留媒體／訂閱。"
+        "不同 To-tag 可能代表分叉造成的兩條 dialog，不能僅以 Call-ID/CSeq 去重成一條。",
+        "先確認各自的完整 Via/branch、消息方向、路由和時間，再依對話標識追蹤各分支 ACK 與清理。",
+        "產品最後保留哪一條依呼叫策略；測試需確認其他成功分支也被正確終止，避免殘留。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "服務器重發200，但客戶端捕捉有正確ACK，服務器沒見。下一步查什麼？",
+      "question": "B 持續重發同一 200(INVITE)。客戶端程式 log 有 200 callback，但抓包沒有 ACK。優先要查什麼？",
       "answer": [
-        "候選是ACK路徑／路由、服務端觀測遺漏或兩檔關聯錯誤。",
-        "覈對dialog目標、同ID/CSeq和雙點窗口及capture條件，沿路徑補觀測。",
-        "若服務端應用已處理ACK則修取證，不盲改客戶端；迴歸同路徑確認。"
+        "可能 callback 到達後處理拋錯、ACK 由不同連線/觀察點送出、TLS 抓不到明文或 log 與抓包不是同一 dialog。",
+        "先用 Call-ID/CSeq/tags、端點、時窗與 SDK 日誌確認是否匹配，再找該版本文件確認 ACK 是否由 SDK 自動管理及送出結果。",
+        "若確認 SDK 應自動 ACK 而未送，提供最小可重現與錯誤證據；若只是觀察缺口，修正取證方式。不要先手動補送 ACK。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "舊call結束callback讓新callUI變Idle，如何取證與有限修正？",
+      "level": "application",
+      "question": "測試時舊呼叫 callback 在新呼叫已開始後抵達，將 UI 改回 Idle。給出程式側的兩項修正方向與兩個回歸場景。",
       "answer": [
-        "記錄call實例／世代、handler綁定及state寫入，確認舊事件跨到新狀態。",
-        "按具體對象關聯並管理取消訂閱／過期過濾，不只用電話號碼。",
-        "迴歸快撥、斷線重連、遲到成功與重複結束，確認不忽略新call有效事件。"
+        "讓 callback 綁定不可變呼叫實例／generation；更新 UI 前驗證它仍是目前呼叫。",
+        "確保呼叫結束或替換時解除 handler，清理使用 cancellation token 或明確生命週期；不要只靠電話號碼比對。",
+        "回歸快速連續撥號後舊呼叫成功／結束 callback 遲到，以及取消後晚到事件；確認舊世代不覆蓋新狀態且資源都釋放。"
       ]
     }
   ],
   "recap": [
-    "能用請求／響應、transaction／dialog與CSeq解釋正常建立及結束。",
-    "能區分臨時響應、最終響應、ACK、CANCEL和BYE的生命週期。",
-    "能追蹤重複、分叉與取消競態並設計不泄漏資源的驗證。"
+    "SIP transaction 是一組請求及其回應；dialog 是可延續多個 transaction 的會話關係。",
+    "INVITE ACK、CANCEL、BYE 對應不同階段與交易；回應碼必須依方法和識別欄位解讀。",
+    "競態與遲到 callback 需要同時維護協定識別和本機呼叫世代，並驗證清理。"
   ],
   "sources": [
     {
-      "label": "IETF RFC3261：SIP的角色與消息",
-      "url": "https://www.rfc-editor.org/rfc/rfc3261.html"
+      "label": "IETF RFC 3261：SIP transaction、dialog、ACK、CANCEL、INVITE 分叉與多個 2xx（§13.2.2.4）",
+      "url": "https://www.rfc-editor.org/rfc/rfc3261.html#section-13.2.2.4"
     },
     {
-      "label": "Wireshark 官方：VoIP Calls 與 SIP Flow Sequence",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelVoipCalls.html"
+      "label": "IETF RFC 6026：INVITE transaction state machine 的修正",
+      "url": "https://www.rfc-editor.org/rfc/rfc6026.html"
     },
     {
-      "label": "Wireshark 官方：SIP 欄位名稱及適用版本",
-      "url": "https://www.wireshark.org/docs/dfref/s/sip.html"
-    },
-    {
-      "label": "IETF RFC3264：媒體Offer/Answer",
+      "label": "IETF RFC 3264：呼叫消息中 SDP offer/answer 的時序與規則",
       "url": "https://www.rfc-editor.org/rfc/rfc3264.html"
     }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/voip-maintenance-lab.zip",
-      "label": "VoIP獨立計算與WAV示範（.NET10）",
-      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
-    }
-  ],
-  "studyTime": {
-    "reading": [
-      12,
-      20
-    ],
-    "practice": [
-      30,
-      50
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

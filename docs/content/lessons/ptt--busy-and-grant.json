@@ -1,241 +1,129 @@
 {
-  "contentVersion": 2,
-  "intro": "不能發話不一定是程式壞了：它可能正在遵守共享通道與發話權的規則。本章先解釋資源、忙碌觀測及仲裁，再推導等待、拒絕、獲授、撤銷與取消的差別，讓維護者能讀懂准入條件，而不是遇到拒絕就移除保護。",
+  "contentVersion": 3,
+  "intro": "按鍵通過本地控制器後，流程可能先被忙碌條件擋下，也可能需要向仲裁者申請發話權；兩者不是同一訊號。本篇從一筆正常准入判斷開始，教你讀 Busy 的來源、Grant 的歸屬，以及 Denied、Pending、逾時各自能支持的結論。不是所有電台或 PTT 都有遠端 Grant。",
   "prerequisites": [
-    "理解按下意圖、控制要求與音訊准入；狀態機章提供事件／條件讀法。",
-    "本章自行解釋仲裁、權威與請求身份，無需熟悉特定數位電台協定。"
+    "接續〈Ready、Busy、TX、RX 狀態〉：本篇聚焦准入原因，不重講事件身份的完整推導。",
+    "實際准入規則、忙碌訊號定義及權限模型都需以設備與服務版本文件核實。"
   ],
-  "studyTime": {
-    "reading": [
-      12,
-      21
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      45
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 grant、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
-  },
   "goals": [
-    "區分通道活動、忙碌鎖定與發話權仲裁，不把三者當同一訊號。",
-    "能按資源、請求身份與生命週期推導Grant是否仍有效。",
-    "能用拒絕原因、等待狀態及控制回饋定位無TX，並保持正常准入規則。"
+    "區分忙碌觀測、由忙碌驅動的本地政策、遠端發話許可。",
+    "從同一次請求辨認 Busy、Denied、Pending、Granted 和無回覆。",
+    "知道哪種原因需要核對狀態對映、權限或遠端請求契約。"
   ],
   "sections": [
     {
-      "heading": "共享資源：為何按下不能保證立即說話",
-      "kind": "concept",
-      "paragraphs": [
-        "共享資源指多個使用者都想用、但同一時刻可用容量有限的東西。可能是同一個射頻通道、特定群組的發話資格、排程端的一條送話路由或一個介面盒發射端。PTT提出使用意圖，系統必須避免不允許的重疊。即使網路能同時承載很多封包，最後的發話資源仍可能一次只准一人。",
-        "先區分物理可用與政策允許：電台硬體可切成發射，不表示使用者目前具有發話權；某群組沒有持有人，不表示RF路徑一定就緒。程式通常把這兩類條件放在不同層。維護者移除Busy檢查，可能短暫讓燈亮，卻破壞資源規則；真正修復應找出條件為何錯誤，或它其實正確拒絕。",
-        "資源識別不可省略。「通道忙」要說哪一個頻道或資源、哪個觀測時刻與來源；「已Grant」要說給誰、哪次請求、範圍與有效期。同一使用者換群組後仍沿用舊Grant，就像拿A房間的鑰匙去開B房間。相同bool名稱不能消除不同資源的邊界。"
-      ]
-    },
-    {
-      "heading": "通道活動與忙碌鎖定：觀測加上規則才會拒絕",
       "kind": "mechanism",
+      "heading": "正常准入分成「本地檢查」和「可選的遠端許可」",
       "paragraphs": [
-        "通道活動是接收端觀察到某種訊號，例如載波或經特定靜噪條件判定的活動。Busy Channel Lockout則是一項發射準入政策：在滿足某些忙碌條件時拒絕新PTT。活動不等於有人有效說話，可能有雜訊、無關使用者或錯誤模式；鎖定條件亦可能依載波、選呼碼或配置不同。",
-        "原始輸入經解碼、極性對映、去抖或門檻處理後，才成程式Busy欄位。低有效腳若被反向解讀，安靜通道也可能一直Busy；若觀測只在連線前更新過，當前Busy可能是舊值。維護時把「原始值→解讀→新鮮度→准入規則」拆開，便能分出真忙與錯誤忙。",
-        "本Lab只用一個手動設定Busy，規則是Busy阻擋新的Press，沒有定義Tx期間Busy變真是否撤銷。這個刻意簡化避免把開始條件自動當成持續條件。真實需求可能立即停、保持本次或等待仲裁；要找原廠及公司程式的明確規則，而不是看到Busy變真就隨意關一切。"
+        "先把責任畫清楚：控制器收到按下 → 檢查本地條件（例如忙碌鎖定）→ 如果此系統有共享資源仲裁，再送請求並等待結果 → 只有當前請求獲授才繼續到設備控制。某些直接控制設備不會有遠端許可步驟；教材不可把它硬加進所有系統。",
+        "Busy 是一筆狀態資料；Busy Lockout 是用它拒絕新按鍵的規則。Grant 則是權威來源對某項資源、某份請求所給的暫時許可。它們都可能讓按鍵不發射，但發生於不同責任邊界。",
+        "本 Lab 的 Busy 是手動設定欄位，只阻止新的 Press；RequireGrant 模式另設等待 Grant 路徑。Lab 不做遠端申請、不解析實際 Busy 輸入，也不處理帳號授權。"
+      ],
+      "flow": [
+        "按下",
+        "本地 Busy／政策檢查",
+        "可選：遠端權利請求",
+        "獲授後控制設備"
       ]
     },
     {
-      "heading": "發話權仲裁：請求、等待、獲授不是同一狀態",
-      "kind": "mechanism",
-      "paragraphs": [
-        "發話權是一個管理者授予的暫時資格。請求已接受可只代表進入待處理，Pending表示尚未決定，Granted表示已獲授，Denied表示本次不準，Revoked表示先前資格被收回，Released表示持有人主動交還。發話權協定可以採不同名稱，但這幾個階段的因果關係要分清。",
-        "RFC8855的BFCP可作「資源仲裁獨立於媒體準備」的正式例子，但不代表公司電台或介面使用BFCP。本教材的Request／Grant只是原創Lab語意，不是BFCP封包或OzekiAPI。某些常規電台直接PTT，某些叢集或網路PTT具有仲裁，不能把後者必須存在的流程硬加到每臺電台。",
-        "Grant也不保證音訊已有可用路徑。政策許可之後還可能要切裝置、等電台Ready、附著音訊，再開始有效樣本。本Lab的RequireGrant=true使Press先WaitingGrant；Grant只把Ptt要求開啟進Keying；Ready才Tx開音訊。分成兩道門使兩種故障可被分別定位：沒權利與有權利但裝置未就緒。"
-      ]
-    },
-    {
-      "heading": "誰是權威：本地Mutex不能取得遠端發話權",
       "kind": "concept",
+      "heading": "先問 Busy 是誰觀察、怎樣更新、誰用來拒絕",
       "paragraphs": [
-        "單一程式中的鎖可避免同一物件同時被兩個執行緒改寫，但它不能讓遠端使用者知道本地決定，也不能保證所有端同時同意唯一持有人。遠端權利需按系統協定向權威申請或遵守分散式規則。將lock保護一個Granted=true變數只保護記憶，不會創造合法授權。",
-        "一份許可的內容至少要能對應資源、受許可者、請求與當前會話。若支援優先權或搶佔，還需撤銷機制；權利被收回時，音訊准入與控制不能仍信任原先true。過期時間也需定義由哪個時鐘計算，續期失敗是否停止。這些欄位是規則需要，不是為了讓結構看起來複雜。",
-        "公平與優先權是不同政策：先來先服務可避免部分飢餓，緊急優先則可能插隊或搶佔，一律FIFO未必符合需求。例外行為必須由具體系統規定，不在一般練習中自創「忙時強制發射」捷徑。維護先讀拒絕原因與權利生命週期，通常比增加重試頻率有用。"
+        "看到 Busy=true，先找它從哪裡來：設備輸入、伺服器狀態、定期查詢，還是本地計算。再追解讀是否受模式或來源會話影響，以及哪個 guard 在什麼狀態讀它。這條資料路徑比搜尋一個叫 Busy 的欄位更能解釋誤拒絕。",
+        "無新狀態不等於目前空閒。最後一筆忙碌回報可能來自已斷線的舊連線；反過來，短暫活動也可能在查詢間隙消失。拒絕或允許都應有來源和新鮮度依據。訊號方向留到介面盒篇。",
+        "Zetron Model 6 手冊提供一個明確產品例子：常規模式可依 COR 判斷通道忙，不同叢集設定則使用 channel-grant 訊號。這只佐證同一設備的模式會改變狀態意義，不能泛化成所有電台的定義。"
       ]
     },
     {
-      "heading": "例題一：真忙與錯誤極性可以有相同拒絕",
       "kind": "worked-example",
+      "heading": "請求已送出、等待中和取得權利是不同結果",
       "paragraphs": [
-        "紙上模型有低有效Busy輸入，原始High=false表示活動，High=true表示不活動。資料甲：原始false，正確公式Busy=!High得Busy=true，Press被拒。資料乙：原始true，但程式寫Busy=High，也得到true，Press同樣被拒。相同PressDenied不能區分來源。",
-        "逐步看乙：觀測點原始true→正確低有效解讀應為false→現碼卻儲存true→新Press guard返回false。追加資料足以指向解讀層，而不是仲裁未Grant。有限修正是恢復指定極性對映，不能刪掉Busy guard；刪guard會使甲真忙時也准入。",
-        "回歸用High=true的安靜情境准入，再用High=false真活動拒絕，並確認配置所指定的極性。紙上bool只是邏輯條件，沒有任意電壓值或針腳；真實電氣觀測必須依該裝置介面規格才有意義。"
+        "ETSI TS 24.380 提供特定 MCPTT 的 floor-control 流程：請求、授予、拒絕及釋放是不同控制事件。可遷移的是「請求成功交付不等於已取得許可」及「許可有持有者與生命週期」；其訊息、計時器和狀態不能直接映射到一般電台或公司的 SDK。",
+        "實際程式可把一次操作分成 RequestStarted、Pending、Granted、Denied。看到請求方法正常返回，仍要查回傳值是已排入、已接受還是已授權。逾時只表示本地期限內沒看到結果，不自動等於遠端拒絕；遠端可能已處理，但回覆未到。",
+        "授權還要綁定資源和請求身份。只留一個全域 Granted=true，群組切換或新按鍵就可能借用舊資格。身份匹配已在狀態篇完整推導；本篇聚焦查看 API 結果是否含 request/resource/session 對應。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "追一筆 Busy 拒絕和一筆合法 Grant",
+      "paragraphs": [
+        "Lab 範例先展示本地 Busy：Busy 存在時 Press 回傳 false。接著新控制器設定 RequireGrant=true；舊 Epoch 的 Grant 不使第二按進 Keying，當前 Epoch 的 Grant 才允許控制要求，但仍不會自行打開語音。",
+        "逐行找回傳值、狀態和 Ptt。Console.WriteLine 只顯示模型結果；Lab 的 Grant 是測試直接注入，不是實際網路回覆。"
       ],
       "code": {
-        "title": "自製 Lab 型別；逐步讀碼",
-        "text": "var map=new LabPinMap(activeLow:true);\nbool rawHigh=true;\nbool busy=map.Decode(rawHigh); // false：正確低有效\nvar c=new LabPttController { Busy=busy };\nConsole.WriteLine(c.Press(0)); // True\nvar blocked=new LabPttController { Busy=map.Decode(false) };\nConsole.WriteLine(blocked.Press(0)); // False"
+        "title": "練習包的 grant 情境",
+        "text": "var busy = new LabPttController { Busy = true };\nbool accepted = busy.Press(0); // false：本地 Busy 擋住\n\nvar c = new LabPttController { RequireGrant = true };\nc.Press(10);\nint old = c.Epoch;\nc.Release(20); c.Press(30);\nc.Grant(old, 40);          // 舊請求，不使本次 Keying\nc.Grant(c.Epoch, 50);      // 本次請求，進入 Keying\n// Ready 仍是另一項設備狀態條件"
       }
     },
     {
-      "heading": "取消等待與釋放權利：結束可以發生在獲授之前",
-      "kind": "mechanism",
-      "paragraphs": [
-        "按下尚未獲授時鬆開，應撤銷未完成意圖，可能還要向管理者取消請求；若已獲授，則交還權利並解除控制。兩者中文都可叫Release，但網路交換與狀態效果不同。若只處理Tx時Release，WaitingGrant中的鬆開會遺漏，晚到Grant就可能自動啟動已不想說的話。",
-        "本地取消等待只代表本地不再繼續，遠端仲裁可能尚未收到取消，仍傳回Grant。應在收到時核對當前Held、狀態與請求身份，必要時依協定回收遠端權利。CancellationToken通知也不保證遠端撤銷，不能拿一個取消Task的動作代替完整權利管理。",
-        "若排隊策略允許鬆開後保留請求、稍後以提示要求重新確認，也須明確說明，不能暗中以舊按鍵開麥克風。對維護者而言，關鍵是把「還有申請」「人仍想說」「目前有權利」「裝置已準備」四件事分別追到程式碼與來源。"
-      ]
-    },
-    {
-      "heading": "例題二：舊Grant晚到，為何第二按也不能借用",
-      "kind": "worked-example",
-      "paragraphs": [
-        "RequireGrant=true，Press0建立Epoch1，10ms鬆開改Epoch2，20ms第二按改Epoch3並WaitingGrant。30msGrant1不匹配，Ptt維持false；40msGrant3匹配，Keying但AudioOpen仍false。50msReady3才Tx，60msRelease恢復Idle、Epoch4。每一步都按身份與狀態核對，時間先後只是輔助。",
-        "若把Grant是否匹配簡化成Held，30ms時第二按仍Held=true，第一按許可會被借用。這是權利錯配，不是網路太慢；增加等待時間只改發生機率，不能修身份錯誤。驗證要保留新Grant可用，同時舊Grant不可用，以及舊Ready也不可續開。",
-        "本Lab無遠端管理者所以只忽略舊Grant，不會示範真協定的交還訊息。公司實際實作可能需釋放由已取消請求得到的資格；若不處理，其他人可能一直以為資源被佔。對本地無續發和遠端無殘留佔用各設證據與驗收，才是完整結束。"
-      ],
-      "code": {
-        "title": "自製 Lab 型別；逐步讀碼",
-        "text": "var c=new LabPttController { RequireGrant=true };\nc.Press(0); int old=c.Epoch; c.Release(10); c.Press(20);\nc.Grant(old,30); // WaitingGrant、Ptt=false\nc.Grant(c.Epoch,40); // Keying、Ptt=true、AudioOpen=false\nc.Ready(c.Epoch,50); c.Release(60); // Idle"
-      }
-    },
-    {
-      "heading": "忙碌資料也有生命週期：缺少活動不等於目前閒置",
-      "kind": "concept",
-      "paragraphs": [
-        "如果Busy只有「活動開始」與「活動結束」兩種事件，遺失其中一個就會長期保持錯誤值。快照查詢可以校正，但查詢與事件交錯時，舊快照可能覆蓋較新的活動。應核對來源會話、版本或事件序列，並定義新鮮度；不是看到程式bool存在就把它當現在的通道。",
-        "准入面對來源失效要有政策，例如暫停新發話並顯示狀態未確認，或由獨立裝置端判定。沒有Busy訊息不能自然當Busy=false。反過來，來源恢復且有當前可靠資料後也不能永遠拒絕，應有明確恢復條件，否則避免風險的保護會變成長期不可用。",
-        "例：A會話最後Busy=true後斷線，B會話查詢Busy=false。只有確認B資料屬於當前資源與當前狀態，才可用它取代A舊值；A晚到Busy=true則應拒絕。這與舊Grant問題相關但不相同：前者修觀測新鮮度，後者修許可歸屬，兩條路徑都需各自驗證。"
-      ]
-    },
-    {
-      "heading": "拒絕、未知、逾時與重試的工程後果",
-      "kind": "maintenance",
-      "paragraphs": [
-        "明確Denied是已知拒絕，Pending是尚未決定，沒有回覆是本地未知，三者不應共用「忙」訊息。拒絕原因可能為資源正在使用、無權限、裝置離線、模式不適用或錯誤請求；是否應重試取決原因。對無權限反覆重試不會增加合法性，還可能增加負載與誤導使用者。",
-        "等待逾時僅表示本地期限內未觀測結果，可能遠端已授權但回覆丟失。直接用新的身份重新申請可能留下兩份流程，需按協定查詢、同ID重送或取消補償。不要把可靠網路傳輸誤當每份業務申請只生效一次，也不要從一次抓包推論遠端狀態。",
-        "公司程式若層層都重試，一次按鍵可擴成多個Request。先找權利操作的唯一owner與共同期限，將意圖ID和每次嘗試分別記錄。使用者鬆開後重試迴圈應停止，且晚到結果仍不能准入；停止排程和事件guard需要同時成立。"
-      ]
-    },
-    {
-      "heading": "追碼操作：忙碌、舊許可與合法許可各一案",
-      "kind": "lab",
-      "paragraphs": [
-        "在臨時副本執行dotnet run -- grant，預期真Busy拒新Press、舊Grant不能啟動第二按、當前Grant仍不是RadioReady。停在Press與Grant的return，解釋每個條件保障哪件事。全部時間是注入的毫秒，沒有實際等待或遠端仲裁。",
-        "先新增Busy=false對照成功，再將Grant的世代檢查移除，保留第二按WaitingGrant與Held真，預期old_grant_cannot_key_new_press失敗。復原後另移除Busy guard，預期busy_denies_new_press失敗。兩項錯誤看似都讓更容易TX，卻各破壞不同准入條件。",
-        "最後恢復all並整理拒絕資料卡：資源、意圖、來源會話、原始忙碌值、對映、拒絕階段、原因與後續驗證。回到公司程式碼確認本次拒絕發生在本地guard還是遠端response，不要只用一個提示字串推論。"
-      ]
-    },
-    {
-      "heading": "故障鑑別：每次按下都顯示「忙」，而通道安靜",
       "kind": "diagnostic-case",
+      "heading": "相同的「顯示忙」可能是不同失敗",
       "paragraphs": [
-        "候選一真有不可聽活動，候選二極性或模式把安靜解讀Busy，候選三斷線舊Busy未更新，候選四其實是權限Denied卻共用提示。首先收原始來源、更新時刻、配置與拒絕層；只聽不到聲音不能排除不可聽活動，先不要關閉鎖定。",
-        "追加資料：裝置原始輸入表示安靜，更新持續正常，適配層正確Busy=false，但UI提示由遠端DeniedNotAuthorized轉成「忙」。此案應修原因對映與使用者權限配置判讀，不改電氣極性，也不重試。若原始資料與適配相反，才回到前面的極性推導。",
-        "驗收授權使用者正常獲授、未授權者清楚拒絕、真忙仍按政策處理、鬆開取消不續發。報告交代問題在哪個判斷邊界，避免僅說「PTT修好了」讓下一位維護者誤以為所有發話失敗都屬同因。"
+        "案例 A：本地 Busy 值為 true，來源與更新時間有效，准入規則按政策拒絕。案例 B：原始回報已是 false，適配層對映後卻成 true。案例 C：Busy=false，但服務明確回 DeniedNotAuthorized。畫面都可能只顯示「忙」，下一項要查的資料不同。",
+        "先找拒絕發生於本地判斷還是遠端結果，保留原始結果、對映結果、來源和 request ID。若沒有明確拒絕、只等到本地期限，狀態應標成未確認而不是忙。",
+        "回歸要同時檢查：真忙仍拒絕、安靜且合法仍可按、未授權仍拒絕且原因正確、等待中鬆開後舊結果不再准入。單純讓所有按鍵能進 TX 不是合格修正。"
       ]
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "Busy、Busy Channel Lockout、Grant各是什麼？",
-      "answer": [
-        "Busy是某來源觀測或計算的活動／佔用資料；Lockout是使用它判斷是否可新發射的政策。兩者不是同一實體。",
-        "Grant是對某份請求與資源授予的資格，不是原始載波訊號。",
-        "維護需追資料來源、對映與准入規則，再核對權利範圍，不能因三者都影響TX就混為一談。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "為何拿到Grant後仍可能無聲？",
-      "answer": [
-        "Grant回答權利問題，不保證裝置Ready、採集有樣本或路由正確。",
-        "本Lab在Grant後為Keying且AudioOpen=false，Ready才Tx。",
-        "驗證各階段證據；沒有Ready查準備邊界，有Ready但輸入零查採集，不以重申請代替音訊查證。"
-      ]
-    },
-    {
       "level": "application",
-      "question": "新資料：低有效Busy原始High=true，現碼Busy=High。Press被拒後應如何修？",
+      "question": "Busy=false、請求方法返回成功，但控制器仍在 Pending。能開啟設備 PTT 嗎？",
       "answer": [
-        "低有效公式Busy=!High，原始true應解成false，當前true是對映錯。",
-        "恢復指定極性而保留准入guard；刪guard會放過原始false真忙的案例。",
-        "回歸true安靜准入與false活動拒絕，核對該配置確實低有效，不擅改裝置規格。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：Request8尚Pending，人已Release；收到Grant8時新的Request9還在等。Held真能接收嗎？",
-      "answer": [
-        "Held真只說第二按仍有意圖，不能賦予第一按Grant歸屬。",
-        "匹配Request／Epoch及資源，拒絕8對9准入；協定若需交還8則另行處理。",
-        "驗新Grant9可用與舊8不續開，同時查遠端沒有殘留佔用。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：按下等待200ms未回覆，畫面說資源忙。這句結論有何問題？",
-      "answer": [
-        "未回覆只證明本地期限內沒觀測結果，沒有明確Busy或Denied證據。",
-        "應顯示結果未確認並按契約查詢／取消，追遠端可能已獲授的情境。",
-        "不能用新ID無限重試；回歸延遲Grant與鬆開取消，避免未知狀態產生新操作。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：本Lab已Tx，再把Busy=true但沒有其他呼叫，會立即停止嗎？",
-      "answer": [
-        "不會，Busy只在新Press的guard被讀取，改值本身沒有狀態轉換。",
-        "仍需明確Revoke、Tick或Release等事件才改本模型輸出。",
-        "這是模型政策；真實系統需查發話期間Busy或搶佔規則，不能把Lab結果當電台規定。"
+        "不能只依方法名稱或成功返回推論已獲授。Pending 表示按該契約仍等待結果。",
+        "查看 API 回傳定義、後續狀態事件和請求識別；Grant 是否有效要與本次資源和請求匹配。",
+        "驗證 Pending 不誤開、當前 Grant 可前進、拒絕和超時走不同結果；不要替沒有 Grant 的直接模式人工製造 Grant。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "UI每次顯示忙，適配Busy=false，遠端回DeniedNotAuthorized。下一個修正是什麼？",
+      "question": "本地 guard 拒絕每次 Press；原始狀態顯示空閒，但應用 Busy=true。先改 guard 嗎？",
       "answer": [
-        "已知拒絕在遠端權限階段，不是本地Busy對映。先保留正常lockout。",
-        "修錯誤原因提示，核對帳號與資源授權配置；不以高頻重試尋求許可。",
-        "驗合法授權、未授權拒絕、真忙與取消各路徑，確認沒有把不同失敗又合成一個字。"
+        "先不改。最早缺口在原始觀測到應用 Busy 欄位的解讀／新鮮度邊界，不必然是政策本身。",
+        "核對原始值語意、設備模式、轉換程式、來源會話和時間戳；確定是否反相或被舊狀態覆蓋。",
+        "修正後做安靜可准入與真正 Busy 應拒兩面回歸；公司設備文件未確認前，不指定真實訊號接線。"
+      ]
+    },
+    {
+      "level": "understanding",
+      "question": "請求逾時後，畫面應該顯示「已拒絕」嗎？",
+      "answer": [
+        "除非收到契約定義的拒絕結果，否則只能說本地期限內沒有可確認結果。",
+        "遠端可能尚未處理，也可能已授權但回覆未到；要查看 API 的查詢、取消和重試契約。",
+        "保持未知時避免建立多個無關新請求；測試延遲回覆、取消後晚到 Grant 及新的正常請求。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "取消Task後舊Grant仍到達，為何不能判定SDK取消失效？",
+      "question": "顯示 Busy，但 Busy=false，同一 request 收到 DeniedNotAuthorized。應查哪段？",
       "answer": [
-        "合作式取消可能只停止本地等待，不保證遠端已停止仲裁或已排隊回覆消失。",
-        "核對實際取消契約與傳送證據，同時在結果入口驗Held、身份與狀態，處理遠端殘留資格。",
-        "以取消前後不同抵達次序回歸，不能以「有回呼」這一件事推論所有取消機制錯誤。"
+        "拒絕在遠端授權結果，不是 Busy 輸入或本地 Busy Lockout。",
+        "查權限與資源對應、拒絕原因如何映射 UI；不要刪除正常 Busy guard 或盲目增加重試。",
+        "驗合法使用者可獲授、未授權者仍被拒、真 Busy 維持既有政策，UI 能區分兩種原因。"
       ]
     }
   ],
   "recap": [
-    "區分通道活動、忙碌鎖定與發話權仲裁，不把三者當同一訊號。",
-    "能按資源、請求身份與生命週期推導Grant是否仍有效。",
-    "能用拒絕原因、等待狀態及控制回饋定位無TX，並保持正常准入規則。"
+    "Busy 是資料，Busy Lockout 是政策，Grant 是資源／請求授權，不能互換。",
+    "BFCP 與 MCPTT 是具體標準案例，不代表一般 PTT 的 API 或流程。",
+    "拒絕、Pending、無回覆和過期資料需要不同證據及處理。"
   ],
   "resources": [
     {
       "path": "./assets/labs/ptt-maintenance-lab.zip",
-      "label": "下載自製 C# PTT 概念與狀態模型完整練習包",
-      "description": ".NET10；純記憶體Lab型別，不連電台、SDK、音效卡、GPIO或RF；README說明各章模式與假設。"
+      "label": "下載 PTT 控制狀態模型練習包",
+      "description": "執行 dotnet run -- grant，比較 Busy 擋下、舊 Grant 和當前 Grant。"
     }
   ],
   "sources": [
     {
-      "label": "RFC 8855：發話資源的仲裁與請求生命週期（作機制對照，不宣稱電台使用 BFCP）",
-      "url": "https://www.rfc-editor.org/rfc/rfc8855"
+      "label": "ETSI / 3GPP TS 24.380 Release 18：特定 MCPTT floor-control 請求與狀態",
+      "url": "https://www.etsi.org/deliver/etsi_ts/124300_124399/124380/18.06.00_60/ts_124380v180600p.pdf"
     },
     {
-      "label": "Microsoft：CancellationTokenSource.Cancel 的合作式通知",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.cancellationtokensource.cancel?view=net-10.0"
-    },
-    {
-      "label": "Zetron Model 6：常規／叢集模式控制介面的語意差異",
+      "label": "Zetron Model 6 手冊：特定機型的 COR 與 channel-grant 模式差異",
       "url": "https://partner.zetron.com/wp-content/uploads/2024/08/025-9157-M6-Station-Prod.pdf"
-    },
-    {
-      "label": "Motorola DTR600／DTR700 使用指南：特定機型 Talk Permit Tone 與說話順序",
-      "url": "https://www.motorolasolutions.com/content/dam/msi/docs/business/_documents/user_guides/mn004869a01-aa_enus_dtr_600_dtr700_limited_keypad_portable_radio_user_guide.pdf"
     }
   ]
 }

@@ -1,245 +1,137 @@
 {
-  "contentVersion": 2,
-  "intro": "一次PTT的結束不是把按鈕改回灰色，而是撤銷意圖、停止新內容、解除控制、回收資源並確認可再使用。本章從正常釋放推導到逾時、斷線和重連，學會把已停止、本地已要求停止與目前不確定分開表示。",
+  "contentVersion": 3,
+  "intro": "鬆開按鍵只是結束的起點。維護程式必須撤銷本次意圖、停止內容、取消等待或釋放資源，最後分辨裝置確實停止與目前無法確認。本篇沿這條結束路徑讀 owner、取消和重連，避免舊操作幹擾下一次發話。",
   "prerequisites": [
-    "理解狀態、Held與Epoch；本章會補取消、清理、結果未知與恢復條件。",
-    "無需實際電台；純記憶體模型只驗證本地，不替代裝置斷線保護。"
+    "已知本地世代可拒絕舊 Grant／Ready；具體 SDK 停止契約與公司恢復政策仍需查證。"
   ],
-  "studyTime": {
-    "reading": [
-      12,
-      21
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      45
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作包含在臨時副本執行 release、斷點預測、變更一項條件及復原；作答包含新時間線／程式判讀與驗收。閱讀由完整正文另行估算，均尚未經讀者計時。"
-  },
   "goals": [
-    "能把取消等待、停止送話、交還權利與裝置解除分成不同完成條件。",
-    "能解釋計時限制、看門機制和合作式取消各防哪種故障。",
-    "能維護異常結束與重連流程，排除舊回呼及殘留輸出而保持合法恢復。"
+    "按等待許可、準備與發話三種狀態追出應清理的資源。",
+    "分清本地取消、外部解除及停止確認。",
+    "檢查晚回呼、舊清理與重連是否可能作用到新操作。"
   ],
   "sections": [
     {
-      "heading": "結束是反向解除一組依賴",
-      "kind": "concept",
-      "paragraphs": [
-        "按下時先建立意圖、取得資格、要求裝置並准入音訊，結束時需要讓這些條件不再支撐新的發話。停止接收新樣本不代表既有佇列空，PTT要求false不代表介面電位已釋放，裝置停止也不代表遠端權利已交還。每一個資源都有自己的owner與解除證據。",
-        "本地控制通常先撤銷Held，使後續Grant／Ready失去資格，再依政策關閉或排空音訊，解除PTT並處理遠端權利。不同裝置對尾音有不同要求，不能把這個順序當所有原廠通用時序；它說明要先讓新工作無法加入，再在有界時間內清理既有工作。若只讓畫面Idle但guard仍接受新樣本，結束邏輯尚未完成。",
-        "完成條件要分明：RequestedStop表示已提出停止，ConfirmedIdle表示當前來源已證實解除，Unknown表示證據不足。把寫false方法返回當ConfirmedIdle，會把斷線寫入失敗隱藏；把Unknown一律當仍TX又可能誤報警。維護報告應提供最後一次有效觀測、停止嘗試及目前不確定邊界。"
-      ]
-    },
-    {
-      "heading": "結束入口不只滑鼠放開",
       "kind": "mechanism",
+      "heading": "把 Release 追到裝置狀態，而不是停在 UI",
       "paragraphs": [
-        "Release可能來自滑鼠Up、觸控取消、視窗失焦、按鍵來源被移除、權利撤銷、逾時與應用關閉。UI收到Down後若使用者把遊標移出視窗，Up是否仍可接收取決框架capture與事件處理；所以不能把安全結束全部寄託在一個Up方法。要在需求層列出失去控制意圖的條件。",
-        "不同入口應匯到同一個有明確契約的結束owner，使音訊、控制、待處理申請與訂閱不會各自只清一半。但原因需保留：正常鬆開、被撤銷與超時可能有不同重新准入條件。共用清理不等於所有原因都顯示成功，也不代表Fault不需使用者確認。",
-        "結束方法通常要能安全重複：Up與超時同時來不該兩次扣資源計數或丟擲後留下輸出；但重複呼叫並不能自動保證遠端只執行一次。將本地狀態歸零可冪等，外部交還資格與裝置命令仍需ID、契約或狀態查詢。先按資源定義重複處理，不用一個catch吞掉所有失敗。"
+        "合成操作 op-7 在發話中收到 Release：控制器撤銷 Held，關閉新內容准入，執行既定尾段政策，向本次裝置控制送停止，必要時釋放發話許可，再核對裝置停止回報。UI 可以先顯示「正在停止」，但不能因本地旗標已清零就宣佈裝置已停止。",
+        "正常鬆開、視窗失焦、許可撤銷、錯誤及關閉程式，都可能要求終止。它們應進入一致的結束責任，不是各寫一份只改 UI 的 handler。此處要核對真正 owner：誰建立許可請求、誰儲存裝置控制、誰收內容，結束就由相應 owner 處理；同一裝置若被多個輸入共用，先按已定義的仲裁政策決定誰仍有權維持發話。",
+        "不必把每個資源串成固定單一順序：例如嚴重故障可能立即撤銷控制，不等尾段；有些系統需先停止內容再釋放許可。必須說清的是本次不再接受新內容、外部資源怎樣解除，以及最後的確認點，不能只有一個名為 Stop 的方法就假設三件事全部成立。"
+      ],
+      "flow": [
+        "終止本次意圖",
+        "停止新內容／處理尾段",
+        "取消或釋放本次許可",
+        "解除本次裝置控制",
+        "確認停止或保留 Unknown"
       ]
     },
     {
-      "heading": "等待中的Release與發射中的Release不同",
       "kind": "mechanism",
+      "heading": "等待中與發話中，要結束的外部工作不同",
       "paragraphs": [
-        "WaitingGrant中沒有本地發射要求，結束重點是撤銷待處理意圖與申請；Tx中還需關音訊、解除控制與交還已獲資格。如果程式碼只在State==Tx執行Release，其餘狀態return，會漏掉等待中的按鍵取消，晚Grant隨後仍被當成合法。",
-        "本Lab的Release從任意狀態立即設定AudioOpen、Ptt、RadioReady、Held假，進Idle並增加Epoch。它沒有外部資源或Drain，所以這是同步本地取消，不證明實體釋放。本地狀態歸零與遠端確認間的間隙在真實實現需要Releasing或Unknown等明確表示。",
-        "取消一個等待Task只結束等待者可能看到的結果，底層裝置操作或仲裁申請仍可完成。取消通知是合作式：被通知者需主動觀察並處理；無法把一條CancellationToken對映成遠端已經停止。無論等待是否取消，晚到回呼仍需當前身份與合法狀態檢查。"
+        "WaitingGrant 時還沒進入裝置發話，Release 要讓本次請求失效並按協定取消正在等待的請求。若取消與 Grant 交錯，晚 Grant 不能啟動已放開的操作，但可能仍需向服務端完成釋放。本地忽略事件不會自行消除遠端已授予的資源。",
+        "RFC 8855 的 BFCP 正式提供一個限定例子：FloorRelease 可取消待處理請求，也可釋放已授予的 floor，並用該請求識別碼對應回覆。這是會議資源控制的規則；公司若使用別的協定，要查它自己的取消、釋放和交錯事件規則。",
+        "Keying 或 Tx 時則另有裝置控制已建立，需撤銷它；Tx 還有內容在途。CancellationTokenSource.Cancel 通知合作式取消要求，只有觀察它的程式會停止相關工作，並不直接切掉外部裝置。等待 Task 取消和確認裝置停止要分別處理。取消造成例外也不能跳過必要清理。"
       ]
     },
     {
-      "heading": "三種時間保護：操作期限、最大持續與看門",
-      "kind": "concept",
+      "kind": "mechanism",
+      "heading": "舊回呼與舊 finally 都要檢查身份",
       "paragraphs": [
-        "操作期限限制某一步等多久，如Ready等待200ms。最大持續時限限制一次發話的總保持時間，用來防止按鍵一直Held或控制持續不放；裝置TOT可能由硬體或韌體計算。看門則監控程式或通訊是否仍在服務，心跳長時間不到時採取保護。三者開始點、更新規則與解除位置都不同。",
-        "裝置TOT不保證軟體也知道已停止，軟體最大時限也不保證寫false能穿過已斷連線；看門若執行在同一條被阻塞UI執行緒，會在最需要時也不執行。有效保護要討論故障範圍：應用鎖住時誰仍能計時、網路失聯時哪端可解除、電源變化時輸出釋放態是什麼。",
-        "本Lab MaxHoldMs從PressAccepted起算，包含等待Grant，並非從實際RF開始。Tick需呼叫才檢查，不是自主硬體計時。Tick觸發Revoke進Fault、輸出關，但Held仍真，必須Release後新Press才能重啟。此政策保留人在按著的事實，避免每到時限立即自動再次發射。"
+        "世代過濾不只放在 Grant／Ready。計時器回呼、停止完成、錯誤 handler 與 finally 清理也可能比預期晚。Microsoft 的 System.Timers.Timer 說明，即使 Stop 或 Dispose，已排隊的 Elapsed 仍可能執行；因此不能只靠停止計時器消除舊事件。",
+        "合成競態：op-7 的停止任務等待中；程式過早允許 op-8 控制同一裝置；op-7 的 finally 後來呼叫全域 SetPtt(false)，就把 op-8 停掉。只檢查 op-7 的 Ready 是否過期擋不住這個問題。可用的設計是裝置 owner 序列化交接，在必要釋放完成前不讓新操作使用它；若介面提供按識別碼釋放，清理則只針對原操作。",
+        "「先比較 ID，再寫全域停止」也不一定安全：比較後到外部寫入之間仍可能換 owner。實際修正要把 owner 交接與控制命令放在一致的序列化責任內，或使用裝置／服務提供的帶身份操作；不能在共享鎖內長時間等待外部 I/O。找不到這類契約時，先禁止過早重用並保留未完成狀態。"
       ]
     },
     {
-      "heading": "例題一：時限截止不是普通鬆開",
-      "kind": "worked-example",
+      "kind": "diagnosis",
+      "heading": "停止命令送出失敗：本地安全狀態與外部 Unknown 分開",
       "paragraphs": [
-        "設MaxHoldMs=100，Press0使Epoch1、Keying，Ready1於10使Tx。Tick99未達100，仍Tx；Tick100滿足now-pressedAt>=100，Revoke關音訊/PTT/Ready、進Fault、Epoch2，Held仍true。Press110因Fault或Held被拒，不能自動重新啟動。",
-        "Release120把Held假、Idle、Epoch3，Press130才能建立Epoch4。這個例題區分「輸出被保護關掉」與「人已經放開」。若Revoke直接Idle且Held=false，即使持續按鍵來源自動重複發Press，就可能不斷再啟；是否允許需要明確政策，不能因為方便就繞過限時意圖。",
-        "若RequireGrant=true且100ms仍WaitingGrant，同樣Tick會Fault，本政策連等待也計入。公司實際TOT可能只從TX開始，應按明確起點調整實現與顯示，不能抄MaxHoldMs名字就說與裝置等同。邊界測試要包括99/100/101ms與未獲得權利等待。"
+        "合成資料：Release 已將本地 AudioOpen=false，停止命令寫入遇到斷線，最後一次裝置回報仍是先前的 Tx。已知新內容不再由本地准入；未知裝置是否收到了停止、是否已自行停止。正確保留 StopUnconfirmed／Unknown 與最後觀測時間，而不是把舊回報當成仍在發射，也不是把本地 Idle 當成已停止。",
+        "恢復連線先確認裝置身份與新會話，依契約查詢或執行重新同步，再決定是否可接受新意圖。舊會話事件即使裝置名稱相同也可能過期；要在回呼入口分辨來源會話與操作。不得僅因使用者仍按住就自動重放舊發話要求，除非產品明定這項政策並已有狀態核對。",
+        "重試也要受外部契約限制：重送同一停止值是否冪等、是否會影響新 owner，需具體確認。可靠性主題深入重試、取消與超時；PTT 這裡只保留「結束是哪個操作、裝置目前是否已核對」的控制判斷。"
+      ]
+    },
+    {
+      "kind": "code-reading",
+      "heading": "Lab 的最大持續時間只是本地保護模型",
+      "paragraphs": [
+        "Lab 以 Press 起算 MaxHoldMs，只有呼叫 Tick 才檢查，沒有背景 timer、裝置斷電或真正停止確認。下例 100ms 到達期限後把本地輸出旗標關閉並進入 Fault；Held 保留 true，防止按鍵仍按住時重新啟動。先 Release 再新的 Press 才可重啟。",
+        "這個模型用於辨認期限邊界與重新武裝條件；公司裝置的發射計時可能從真正 Tx 才開始，必須查裝置文件。模型的 Release 直接回 Idle，不代表真實裝置可略過 Stopping／Unknown。"
       ],
       "code": {
-        "title": "自製 Lab 型別；逐步讀碼",
-        "text": "var c=new LabPttController { MaxHoldMs=100 };\nc.Press(0); c.Ready(c.Epoch,10);\nc.Tick(99); Console.WriteLine(c.State); // Tx\nc.Tick(100); Console.WriteLine(c.State); // Fault\nConsole.WriteLine(c.Press(110)); // False\nc.Release(120); Console.WriteLine(c.Press(130)); // True"
+        "title": "練習包 release：虛擬時間與本地旗標",
+        "text": "var c = new LabPttController { MaxHoldMs = 100 };\nc.Press(0);\nc.Ready(c.Epoch, 10);\nc.Tick(100);                       // Fault，Ptt/AudioOpen=false\nConsole.WriteLine(c.Press(110));    // False：Held 仍是 true\nc.Release(120);\nConsole.WriteLine(c.Press(130));    // True：新意圖可接受"
       }
     },
     {
-      "heading": "計時回呼停止後仍可能到，不能靠Stop代替身份",
-      "kind": "mechanism",
+      "kind": "diagnosis",
+      "heading": "驗收必須涵蓋下一次發話",
       "paragraphs": [
-        "一般計時器會把回呼排到某執行環境，Stop取消後續排程卻不必然撤回已排隊的工作。Microsoft Timer.Elapsed檔案明確指出停止後的競態，因此事件處理需自行判斷當前流程。舊發話的超時回呼若在新發話到來後執行，不能直接把新發話撤銷。",
-        "計時任務應捕獲對應的Epoch／RequestId，真正套用時再檢查與當前相同以及仍在被保護狀態。檢查入列時合法、執行時已變更的情況特別重要。多個入口併發時，身份檢查與狀態改變還需共同一致性邊界，否則檢查後Release／新Press插入，仍會誤作用。",
-        "單調時間間隔也需定義：Stopwatch適合同一程式的耗時，不用可校時的牆鍾判斷持有超時。若收到now倒退，本Lab不會主動拒絕，可能延遲保護；它假設呼叫者提供單調時間。真實實現應建立同一時基與範圍校驗，而不是讓各入口各算DateTime.Now。"
-      ]
-    },
-    {
-      "heading": "斷線後：本地可撤銷，實體結果可能未知",
-      "kind": "concept",
-      "paragraphs": [
-        "失去介面連線時，可以立即撤銷本地Held與音訊准入，防止新內容繼續加入，但未必能送出解除命令。儲存的PTT=false是本地期望，不是線纜另一端的電氣狀態；最後TX=false如果來自很久前也不證明現在。應標記來源已失效、實際結果未知，並依系統安全策略處理。",
-        "裝置端的釋放態、硬體watchdog、最長發射時限或獨立停發機制可以縮小風險，但具體行為必須來自裝置檔案。程式收到網路斷線不意味著介面會自動釋放，更不能擅設所有盒子預設low或high。要求的關鍵是：通訊消失時哪端負責解除、多久、有什麼獨立反饋。",
-        "程式重啟也不會天然撤銷遠端控制。恢復過程需讀取實際當前狀態、清理舊會話資源，並確認新的所有者可合法控制；不能讀取本地預設Idle就宣佈恢復。若操作結果未知，先協調和查證，而不是在啟動指令碼裡立即再發Press試試看。"
-      ]
-    },
-    {
-      "heading": "例題二：重連後的舊Ready不能證明新裝置就緒",
-      "kind": "worked-example",
-      "paragraphs": [
-        "紙上介面卡會話A中Press建立請求7，裝置準備中斷線，本地撤銷意圖並將會話標無效；重連B後還未按鍵。舊Ready(A,7)從佇列到達，必須拒絕，不能因連線又變true就套用。之後B建立請求8，僅Ready(B,8)才可改變新流程。",
-        "如果程式只檢查Connected=true，A舊通知在B已連上時會透過，這是來源身份錯配。需要會話與意圖一起驗證；不同來源的sequence不能跨會話直接比較。即使新裝置查詢說Idle，也需確認該響應屬於B且沒有更晚的有效事件已覆蓋。",
-        "本Lab沒有網路會話，只以Release使Epoch變化示範相同歸屬原則：第一按e=1，Release使2，新Press使3，Ready1不能開，Ready3才開。該結果驗證本地舊通知隔離，不證明重連、實體釋放或裝置快照讀取實際成功。"
-      ],
-      "code": {
-        "title": "自製 Lab 型別；逐步讀碼",
-        "text": "var c=new LabPttController(); c.Press(0); int old=c.Epoch;\nc.Release(10); // 模擬本地撤銷，非證明遠端停止\nc.Press(20); c.Ready(old,30);\nConsole.WriteLine(c.AudioOpen); // False\nc.Ready(c.Epoch,40); Console.WriteLine(c.AudioOpen); // True"
-      }
-    },
-    {
-      "heading": "恢復需滿足條件，不是把Fault改名Ready",
-      "kind": "maintenance",
-      "paragraphs": [
-        "Fault的原因可能已消失，也可能只是不再觀察。恢復應驗證控制通道有效、裝置當前狀態可用、舊工作已隔離、資源歸屬明確並符合重新發話條件。重置顯示文字不解決任何一項；在未知輸出狀態時允許新Press也可能疊加舊操作。",
-        "本Lab規定正常Release後新Press，真實系統可能需要顯式Ack、重新訂閱或裝置復位，但不可自創原廠不存在的ResetAPI。讀公司程式碼時把恢復入口列成狀態轉換，追每個條件是否確實被驗證，哪些只是本地標記。特別檢查異常處理finally是否清本地資源，也檢查清理失敗是否被記下而未被吞掉。",
-        "驗收以完整生命週期為單位：第一次正常結束、異常中斷、長按逾時、重連、第二次正常發話，並處理舊回呼晚到。單獨測試某個Close方法成功不代表整個系統不會繼續；相反地，為避免繼續而永遠Fault也不符合維護目標。需要安全邊界與恢復可用性同時成立。"
-      ]
-    },
-    {
-      "heading": "追碼操作：保護邊界與重新啟動條件",
-      "kind": "lab",
-      "paragraphs": [
-        "執行dotnet run -- release，預期超時關模型輸出、持續Held不能自動重啟、Release後新Press成功。補Tick99與WaitingGrant超時對照，先寫狀態、Epoch、旗標，再用斷點看Revoke和Press返回條件。沒有裝置TOT或自主定時器參與。",
-        "故障變因把Revoke改成Idle且Held=false，原held_timeout_cannot_auto_rearm應失敗；恢復後刪Release的Epoch遞增並保留新Press，設計舊Ready與新Keying匹配的情境，確認身份邊界。第二項需注意Press也會加Epoch，所以僅刪Release遞增未必復現；應先逐行算實際身份，不能看到PASS就誇修復。",
-        "復原all，寫一張結束路徑表，列入口、取消意圖、停止新音訊、解除控制、外部確認、異常與重新准入。已知Lab行為填明，實體回饋未模擬處明說。回公司程式碼逐個對照，不透過呼叫未知裝置來驗證教學假設。"
-      ]
-    },
-    {
-      "heading": "故障鑑別：放開後畫面與電台仍像在TX",
-      "kind": "diagnostic-case",
-      "paragraphs": [
-        "候選甲UI舊值、乙軟體沒執行Release、丙停止寫入失敗、丁裝置已收到釋放但有檔案定義的尾時或故障。先查Release入口、當前期望PTT、實際寫入結果與裝置反饋，確定同一會話和時基。沒有這些資料時不能斷言只是畫面。",
-        "追加資料：Up已收到、Held假、Ptt假，停止命令寫入丟擲Disconnected，最新裝置回饋仍來自斷線前。證據指向解除未確認，既不能證明仍在TX也不能證明已停。有限修正是保留Unknown並禁止盲目再發話，恢復後查詢實體狀態與執行定義好的解除，不只把UI置Idle。",
-        "驗收斷線時本地不再准入、錯誤可見、恢復後以當前反饋確認停止、舊結果不覆蓋、新發話仍正常。實體持續時限和斷線釋放策略需在受授權測試中按裝置規格驗證，本Lab的輸出歸零只能覆蓋本地規則。"
+        "修正結束路徑後，不只測正常鬆開。重現等待中鬆開、Ready 後鬆開、取消與 Grant 交錯、停止回覆晚於新操作、控制斷線及新會話恢復。每項都要看本地新內容准入、外部命令的操作身份及最後可確認狀態。",
+        "舊操作不能啟動新發話，也不能誤停新發話；有未知停止結果時不能無聲地當成正常完成。若只能在模型測到旗標與身份規則，就寫明裝置停止契約未驗證。這些限制是驗收結論的一部分，不用增加硬體設計內容來填補。"
       ]
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "RequestedStop、ConfirmedIdle、Unknown為何要分開？",
-      "answer": [
-        "RequestedStop是本地發出結束意圖；ConfirmedIdle是當前可靠來源證實解除；Unknown是證據不足。",
-        "斷線後本地標記false不能成為ConfirmedIdle，舊TX回報也不能證明仍發射。",
-        "介面與報告保留來源、更新時間與停止錯誤，下一位維護者才知道哪裡需查證。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "最大保持時間、Ready等待期限與看門有何不同？",
-      "answer": [
-        "保持時限約束一次意圖持續多久；Ready期限約束某步驟等多久；看門檢測服務／通訊是否仍活躍。",
-        "三者起點、執行位置與動作不同。應用執行緒鎖住時，同執行緒計時不能獨立保護。",
-        "依故障範圍驗證，而不是把任一個Timeout當所有層停止的證明。"
-      ]
-    },
-    {
+      "question": "等待 Grant 時鬆開，之後晚 Grant 到達。為何只忽略回呼還可能不夠？",
       "level": "application",
-      "question": "新資料：Lab MaxHoldMs=120，Press30、Ready50、Tick149及150。兩時刻狀態？",
       "answer": [
-        "計時從Press30，149-30=119<120，因此仍Tx；150-30=120觸發Revoke。",
-        "後者Fault、Ptt/Ready/AudioOpen假，Held仍真且Epoch增加。",
-        "此起點不是RF50，若實際需求從RF開始應另定義並驗證，不擅改口頭說明。"
+        "忽略回呼能避免本地開啟已取消的操作；服務端可能已授予資源，仍需依協定取消／釋放該請求。",
+        "要保留原請求身份，按官方協定處理交錯與回覆；本地 Epoch 不是遠端釋放證明。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：Timeout回呼帶Epoch4已排隊；新Press當前Epoch6且正在Tx。回呼應撤銷嗎？",
-      "answer": [
-        "不應撤銷當前6。它屬於舊流程4，停止定時器也未保證佇列裡的回呼消失。",
-        "執行時核對身份、狀態並以一致邊界更新，舊回呼只記錄忽略。",
-        "同時測當前6的真實超時仍有效，避免把所有保護事件都拒絕。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：Release發生於WaitingGrant，之後Grant同舊請求到達。只停止音訊夠嗎？",
-      "answer": [
-        "不夠，還需撤銷Held／待處理意圖並隔離舊結果；這時可能根本沒有音訊可停。",
-        "遲到Grant不得把已結束意圖轉成Keying，協定需交還遠端資格時另處理。",
-        "驗等待取消、已授權釋放、舊Grant晚到及新按鍵可用。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：停止寫入拋錯，但finally把Ptt=false。能報告電台已停止嗎？",
-      "answer": [
-        "不能，finally只把本地期望歸零，外部寫失敗意味實體結果未確認。",
-        "報告停止嘗試失敗、來源失效與最後觀測，恢復後查詢當前狀態。",
-        "驗錯誤可見與不繼續准入，並在實際裝置允許的場景驗證解除，不以綠色畫面驗收。"
-      ]
-    },
-    {
+      "question": "已呼叫 Cancel、AudioOpen=false，但停止命令斷線失敗，能否顯示裝置已停止？下一步如何分辨？",
       "level": "diagnosis",
-      "question": "移除Release的Epoch遞增，現有all仍PASS，是否證明該動作無用？",
       "answer": [
-        "不能單從有限情境PASS證明；Press也遞增，現有舊Ready測試還可能被Held／State擋住。",
-        "逐行計算身份並設計能區分該動作的邊界，或重新說明該遞增的冗餘防護目的。",
-        "避免為了FAIL同時亂刪多個guard；規範是否需要更細粒度失效仍由完整生命週期決定。"
+        "不能。已知的是取消要求發出及本地不再准入新內容，裝置狀態仍 Unknown。Cancel 不會直接控制外部裝置。",
+        "重連後核對裝置與新會話，取得具新鮮度的狀態或依契約重新同步；在確認前保留未完成停止狀態。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "重連B後Connected=true，舊A的Ready覆蓋新狀態。應在哪裡修？",
+      "question": "op-7 finally 呼叫全域停止時，op-8 已使用同一裝置。只在 Ready 事件加 Epoch 檢查能解決嗎？",
+      "level": "application",
       "answer": [
-        "修事件來源會話與意圖身份驗證，不是僅再設Connected或延遲UI。",
-        "在真正套用回呼時確認B、當前請求與合法狀態，清理A訂閱只能作輔助。",
-        "驗舊A無效、新B有效、重連查詢不覆蓋較新狀態，並確認實體釋放邊界另有證據。"
+        "不能，這是舊清理影響新 owner，並非舊 Ready 啟動問題。",
+        "應序列化裝置所有權交接與停止責任，或用裝置支援的按操作身份釋放；不得在比對身份後容許 owner 於寫入前改變。"
+      ]
+    },
+    {
+      "question": "Lab 中 Press(0)、Ready(10)、MaxHoldMs=100。沒有 Tick 的情況，100ms 會自主停止嗎？Tick(100) 後為何 Press(110) 仍拒絕？",
+      "level": "understanding",
+      "answer": [
+        "不會，Lab 沒有背景計時，必須呼叫 Tick 才檢查期限。Tick(100) 使本地進 Fault，但 Held 保留 true。",
+        "保留 Held 可避免同一個仍按住的輸入再次武裝；Release 後再 Press 是新意圖。這不證明實際裝置的自主保護。"
       ]
     }
   ],
   "recap": [
-    "能把取消等待、停止送話、交還權利與裝置解除分成不同完成條件。",
-    "能解釋計時限制、看門機制和合作式取消各防哪種故障。",
-    "能維護異常結束與重連流程，排除舊回呼及殘留輸出而保持合法恢復。"
+    "停止新內容、解除外部控制與確認停止是相接但不同的責任。",
+    "世代檢查須涵蓋所有晚事件與清理，裝置 owner 交接也要一致。",
+    "斷線停止保留 Unknown；恢復後核對新會話，不自動重放舊意圖。"
+  ],
+  "sources": [
+    {
+      "label": "RFC 8855 §10.2：會議發話資源的取消與釋放；不是通用電台協定",
+      "url": "https://www.rfc-editor.org/rfc/rfc8855#section-10.2"
+    },
+    {
+      "label": "Microsoft .NET 10：CancellationTokenSource.Cancel 是取消要求",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.cancellationtokensource.cancel?view=net-10.0"
+    },
+    {
+      "label": "Microsoft .NET 10：Timer.Elapsed 停止後仍可能有已排隊回呼",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.timers.timer.elapsed?view=net-10.0"
+    }
   ],
   "resources": [
     {
       "path": "./assets/labs/ptt-maintenance-lab.zip",
       "label": "下載自製 C# PTT 概念與狀態模型完整練習包",
       "description": ".NET10；純記憶體Lab型別，不連電台、SDK、音效卡、GPIO或RF；README說明各章模式與假設。"
-    }
-  ],
-  "sources": [
-    {
-      "label": "Microsoft：Timer.Elapsed 已排隊回呼與停止後競態",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.timers.timer.elapsed?view=net-10.0"
-    },
-    {
-      "label": "Microsoft：CancellationTokenSource.Cancel 的合作式通知",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.threading.cancellationtokensource.cancel?view=net-10.0"
-    },
-    {
-      "label": "Microsoft：Stopwatch 的區間時間量測",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch?view=net-10.0"
-    },
-    {
-      "label": "Motorola T4512 指南：該機型 Time-out Timer 行為（不作通用引數）",
-      "url": "https://www.motorolasolutions.com/content/dam/msi/docs/business/products/two-way_radios_-_unlicensed/_documents/legacy/_static_files/t4512_manual_eu.pdf"
-    },
-    {
-      "label": "Microsoft：WPF Dispatcher 與事件處理執行環境",
-      "url": "https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/threading-model"
     }
   ]
 }

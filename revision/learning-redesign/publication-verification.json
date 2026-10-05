@@ -1,5 +1,7 @@
 {
   "checked_at_utc": "2026-10-03T16:08:50.063831+00:00",
+  "record_kind": "historical_snapshot",
+  "notice": "This file verifies the earlier 2026-10-03 pilot commit 1cddfda5579344987d1186fe0f659fac61824927, which had 3 refreshed lessons and 123 legacy lessons. It does not verify the current six-series revision. That revision is prepared in the local repository; GitHub main was still 97911ebf28c59d50bfa504f8924a2ab2f910f522 when checked, and publication is pending because this environment has no GitHub write credential.",
   "published_content_commit": "1cddfda5579344987d1186fe0f659fac61824927",
   "base_url": "https://jason033.github.io/ICS_learning/",
   "checked_files": 288,

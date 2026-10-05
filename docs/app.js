@@ -2,6 +2,7 @@ const app = document.querySelector('#main');
 let catalog = null;
 let routeVersion = 0;
 const completedKey = 'learning-site-completed-v1';
+const coreTopicOrder = ['ozeki', 'ptt', 'voip', 'radio', 'integration', 'reliability'];
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -9,31 +10,42 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function formatText(value) {
+  const codeBlocks = [];
+  let text = escapeHtml(value).replace(/`([^`]+)`/g, (_, code) => {
+    const placeholder = `\uE000${codeBlocks.length}\uE001`;
+    codeBlocks.push(`<code>${code}</code>`);
+    return placeholder;
+  });
+  text = text.replace(/#\/lesson\/([a-z0-9-]+)\/([a-z0-9-]+)/gi, (route, topicId, chapterId) => {
+    const topic = catalog?.topics.find((item) => item.id === topicId);
+    const chapter = topic?.chapters.find((item) => item.id === chapterId && item.status === 'ready');
+    return chapter
+      ? `<a class="inline-lesson-link" href="${escapeHtml(lessonHref(topic, chapter))}">${route}</a>`
+      : route;
+  });
+  return text.replace(/\uE000(\d+)\uE001/g, (_, index) => codeBlocks[Number(index)]);
+}
+
 function safeAsset(value) {
   return /^\.\/assets\/[A-Za-z0-9/-]+\.(?:pcap|pcapng|svg|png|py|cs|json|csv|zip|txt|md)$/.test(value || '') ? value : '#';
 }
 
-function timeRange(range) {
-  return Array.isArray(range) && range.length === 2 ? `${range[0]}–${range[1]} 分` : '尚待估計';
-}
-
 function chapterTimeLabel(chapter) {
   if (chapter.contentVersion >= 3) return '新版循序教材';
-  return chapter.studyTime
-    ? `閱讀 ${timeRange(chapter.studyTime.reading)} · 操作 ${timeRange(chapter.studyTime.practice)} · 作答 ${timeRange(chapter.studyTime.exercises)}`
-    : '教材重編中';
+  return '舊版參考資料';
 }
 
 function renderAnswer(exercise) {
   const paragraphs = Array.isArray(exercise.answer) ? exercise.answer : String(exercise.answer || '').split(/\n\s*\n/);
-  return paragraphs.map((text) => `<p>${escapeHtml(text)}</p>`).join('')
-    + (exercise.answerSteps ? `<ol class="step-list">${exercise.answerSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>` : '')
+  return paragraphs.map((text) => `<p>${formatText(text)}</p>`).join('')
+    + (exercise.answerSteps ? `<ol class="step-list">${exercise.answerSteps.map((step) => `<li>${formatText(step)}</li>`).join('')}</ol>` : '')
     + (exercise.answerCode ? `<figure class="code-example"><figcaption>${escapeHtml(exercise.answerCode.title || '解答程式')}</figcaption><pre><code>${escapeHtml(exercise.answerCode.text)}</code></pre></figure>` : '');
 }
 
 function sectionLinks(lesson) {
   return (lesson.sections || []).map((section, index) => `<a class="toc-link" href="#section-${index + 1}">${escapeHtml(section.heading)}</a>`).join('')
-    + '<a class="toc-link" href="#practice">練習與解答</a><a class="toc-link" href="#recap">重點複習</a>';
+    + '<a class="toc-link" href="#practice">練習與解答</a><a class="toc-link" href="#recap">本章結論</a>';
 }
 
 function safeLink(value) {
@@ -96,7 +108,7 @@ function topicCard(topic, index, completed) {
   const ready = readyChapters(topic);
   const done = ready.filter((chapter) => completed.has(lessonKey(topic.id, chapter.id))).length;
   return `<a class="topic-card tone-${index % 6}" href="${topicHref(topic)}">
-    <span class="topic-card-top"><span class="topic-icon" aria-hidden="true">${escapeHtml(topic.icon)}</span>${previewChapters(topic).length ? '<span class="status-badge is-ready">新版試讀</span>' : ready.length ? '<span class="status-badge is-reference">舊版參考</span>' : statusBadge('planned')}</span>
+    <span class="topic-card-top"><span class="topic-icon" aria-hidden="true">${escapeHtml(topic.icon)}</span>${previewChapters(topic).length ? '<span class="status-badge is-ready">新版教材</span>' : ready.length ? '<span class="status-badge is-reference">舊版參考</span>' : statusBadge('planned')}</span>
     <span class="topic-card-title">${escapeHtml(topic.title)}</span>
     <span class="topic-card-summary">${escapeHtml(topic.summary)}</span>
     <span class="topic-card-foot">${ready.length ? `${done} / ${ready.length} 篇已讀` : '章節規劃中'}<span aria-hidden="true">↗</span></span>
@@ -108,14 +120,15 @@ function previewChapters(topic) {
 }
 
 function renderPreview() {
-  const topic = catalog.topics.find(item => previewChapters(item).length);
-  if (!topic) return '';
-  const chapters = previewChapters(topic);
+  const topics = coreTopicOrder
+    .map(id => catalog.topics.find(topic => topic.id === id))
+    .filter(topic => topic && previewChapters(topic).length);
+  if (!topics.length) return '';
   return `<section class="learning-preview" aria-labelledby="preview-title">
-    <p class="eyebrow">新版連續教材</p><h2 id="preview-title">先從兩個程式的對話，慢慢走進網路</h2>
-    <p>沿著同一次狀態查詢，先理解為什麼交換訊息，再認識資料表示，最後跟著資料走過兩台電腦。三篇接續閱讀，逐步增加新的角色與概念。</p>
-    <ol>${chapters.map(chapter => `<li><a href="${lessonHref(topic, chapter)}"><strong>${escapeHtml(chapter.title)}</strong><span>${escapeHtml(chapter.summary)}</span></a></li>`).join('')}</ol>
-    <p class="preview-status">目前先提供這組新版試讀，其餘內容按新的教學方式重編中。舊版資料仍可查閱。</p>
+    <p class="eyebrow">新版核心系列</p><h2 id="preview-title">六個獨立主題，依工作需要選讀</h2>
+    <p>每個系列都有自己的正常流程、程式責任和除錯證據；六個主題各自獨立，可依工作需要選讀。網路、Wireshark、Socket 與 RS-232 新版內容保留作為可選參照。</p>
+    <ol>${topics.map(topic => `<li><a href="${topicHref(topic)}"><strong>${escapeHtml(topic.title)}</strong><span>${previewChapters(topic).length} 篇新版 · ${escapeHtml(topic.summary)}</span></a></li>`).join('')}</ol>
+    <p class="preview-status">其他 48 篇尚未改版的主題保留舊版入口；目錄會與新版教材分開標示。</p>
   </section>`;
 }
 
@@ -139,7 +152,7 @@ function renderHome() {
     </section>
     ${renderPreview()}
     <section class="catalog-section" id="topics" aria-labelledby="topics-title">
-      <div class="section-heading"><div><p class="eyebrow">EXPLORE TOPICS</p><h2 id="topics-title">選一個主題，開始學</h2><p>各主題有自己的章節順序。${hasPlanned ? '標示「規劃中」的內容，會在後續逐步補上。' : '新版教材逐步重編中；其餘舊版資料仍可閱讀與查閱。'}</p></div><div class="catalog-count">${catalog.topics.length}<small>個主題 · ${readyCount} 篇可閱讀</small></div></div>
+      <div class="section-heading"><div><p class="eyebrow">EXPLORE TOPICS</p><h2 id="topics-title">選一個主題，開始學</h2><p>各主題獨立安排，可按工作情境選讀。${hasPlanned ? '標示「規劃中」的內容會在後續逐步補上。' : '新版教材與尚未改版的參考資料分開標示。'}</p></div><div class="catalog-count">${catalog.topics.length}<small>個主題 · ${readyCount} 篇可閱讀</small></div></div>
       <label class="search-box"><span aria-hidden="true">⌕</span><span class="sr-only">搜尋主題</span><input id="topic-search" type="search" placeholder="搜尋主題，例如 Wireshark、PTT、RS-232" autocomplete="off"></label>
       <div id="topic-grid" class="topic-grid">${catalog.topics.map((topic, index) => topicCard(topic, index, completed)).join('')}</div>
       <p id="empty-search" class="empty-search" hidden>找不到符合的主題，試試其他關鍵字。</p>
@@ -165,13 +178,14 @@ function renderHome() {
 function renderTopic(topic) {
   const completed = getCompleted();
   const ready = readyChapters(topic);
+  const hasLegacy = ready.some(chapter => chapter.contentVersion < 3);
   const done = ready.filter((chapter) => completed.has(lessonKey(topic.id, chapter.id))).length;
   document.title = `${topic.title}｜${catalog.siteTitle}`;
   app.innerHTML = `<div class="shell page-topic">
     ${breadcrumb([{ label: '主題總覽', href: '#/' }, { label: topic.title }])}
     <header class="topic-hero"><div><p class="eyebrow">INDEPENDENT TOPIC · 獨立主題</p><div class="topic-hero-title"><span class="topic-hero-icon" aria-hidden="true">${escapeHtml(topic.icon)}</span><h1>${escapeHtml(topic.title)}</h1></div><p>${escapeHtml(topic.summary)}</p></div><div class="progress-panel"><strong>${done}<span> / ${ready.length}</span></strong><small>可閱讀章節已讀</small><div class="progress-track"><span style="width:${ready.length ? Math.round(done / ready.length * 100) : 0}%"></span></div></div></header>
-    <div class="topic-body"><div class="topic-intro"><p class="eyebrow">CHAPTERS</p><h2>章節目錄</h2><p>新版教材依自己的順序接續閱讀；舊版資料另供參考，正在重編。</p></div>
-    ${[{label:'新版循序教材',chapters:topic.chapters.filter(c => c.contentVersion >= 3)}, {label:'舊版參考資料 · 待重編',chapters:topic.chapters.filter(c => !(c.contentVersion >= 3))}].filter(group => group.chapters.length).map(group => `<h3 class="chapter-group-title">${group.label}</h3><ol class="chapter-list">${group.chapters.map((chapter, index) => {
+    <div class="topic-body"><div class="topic-intro"><p class="eyebrow">CHAPTERS</p><h2>章節目錄</h2><p>章節依推薦順序排列，也可按問題跳讀。${hasLegacy ? '舊版參考資料保留原有網址，並與新版內容分開標示。' : ''}</p></div>
+    ${[{label:'新版教材',chapters:topic.chapters.filter(c => c.contentVersion >= 3)}, {label:'舊版參考資料 · 尚未納入本輪改寫',chapters:topic.chapters.filter(c => !(c.contentVersion >= 3))}].filter(group => group.chapters.length).map(group => `<h3 class="chapter-group-title">${group.label}</h3><ol class="chapter-list">${group.chapters.map((chapter, index) => {
       const isReady = chapter.status === 'ready';
       const isDone = completed.has(lessonKey(topic.id, chapter.id));
       const inner = `<span class="chapter-number">${String(index + 1).padStart(2, '0')}</span><span class="chapter-copy"><strong>${escapeHtml(chapter.title)}</strong><small>${escapeHtml(chapter.summary)}</small></span><span class="chapter-state">${isDone ? '✓ 已讀 · ' : ''}${isReady ? chapterTimeLabel(chapter) : '規劃中'}</span><span class="chapter-arrow" aria-hidden="true">${isReady ? '↗' : '·'}</span>`;
@@ -183,15 +197,15 @@ function renderTopic(topic) {
 
 function renderSection(section, index, modern = false) {
   return `<section class="lesson-section" id="section-${index + 1}"><div class="section-index">${String(index + 1).padStart(2, '0')}</div><div class="section-content"><h2>${escapeHtml(section.heading)}</h2>${section.kind && !modern ? `<p class="section-kind">${escapeHtml(({concept:"建立概念",mechanism:"機制推導","worked-example":"完整例題","code-reading":"程式追讀",lab:"維護實作","diagnostic-case":"故障鑑別",maintenance:"維護與取捨"})[section.kind] || "工程練習")}</p>` : ''}
-    ${(section.paragraphs || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('')}
+    ${(section.paragraphs || []).map((paragraph) => `<p>${formatText(paragraph)}</p>`).join('')}
     ${section.flow ? `<div class="flow-box" role="img" aria-label="流程：${escapeHtml(section.flow.join('，接著'))}"><div class="flow-title">流程圖 · 教學示意</div><div class="flow-steps">${section.flow.map((step) => `<span>${escapeHtml(step)}</span>`).join('<b aria-hidden="true">→</b>')}</div></div>` : ''}
-    ${section.bullets ? `<ul class="content-list">${section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join('')}</ul>` : ''}
-    ${section.steps ? `<ol class="step-list">${section.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>` : ''}
-    ${section.table ? `<div class="data-table-wrap" role="region" tabindex="0" aria-label="可左右捲動的表格：${escapeHtml(section.table.caption || section.heading)}"><span class="table-scroll-hint">表格可左右滑動</span><table class="lesson-table"><caption>${escapeHtml(section.table.caption || section.heading)}</caption><thead><tr>${section.table.headers.map((header) => `<th scope="col">${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+    ${section.bullets ? `<ul class="content-list">${section.bullets.map((bullet) => `<li>${formatText(bullet)}</li>`).join('')}</ul>` : ''}
+    ${section.steps ? `<ol class="step-list">${section.steps.map((step) => `<li>${formatText(step)}</li>`).join('')}</ol>` : ''}
+    ${section.table ? `<div class="data-table-wrap" role="region" tabindex="0" aria-label="可左右捲動的表格：${escapeHtml(section.table.caption || section.heading)}"><span class="table-scroll-hint">表格可左右滑動</span><table class="lesson-table"><caption>${formatText(section.table.caption || section.heading)}</caption><thead><tr>${section.table.headers.map((header) => `<th scope="col">${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${formatText(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
     ${section.image ? `<figure class="lesson-image"><img src="${escapeHtml(safeAsset(section.image.src))}" alt="${escapeHtml(section.image.alt || '')}" loading="lazy"><figcaption>${escapeHtml(section.image.caption || '教學示意圖')} <a class="diagram-link" href="${escapeHtml(safeAsset(section.image.src))}" target="_blank" rel="noopener">開啟大圖 ↗</a></figcaption></figure>` : ''}
     ${section.code ? `<figure class="code-example"><figcaption>${escapeHtml(section.code.title || '教學範例')}</figcaption><pre><code>${escapeHtml(section.code.text)}</code></pre></figure>` : ''}
-    ${section.check ? `<aside class="concept-check"><p class="check-label">停一下，確認你跟上了</p><p>${escapeHtml(section.check.question)}</p><details><summary>看看解釋</summary>${renderAnswer(section.check)}</details></aside>` : ''}
-    ${section.note ? `<aside class="note-box"><strong>留意這一點</strong><p>${escapeHtml(section.note)}</p></aside>` : ''}
+    ${section.check ? `<aside class="concept-check"><p class="check-label">核對這項推論</p><p>${formatText(section.check.question)}</p><details><summary>查看判斷依據</summary>${renderAnswer(section.check)}</details></aside>` : ''}
+    ${section.note ? `<aside class="note-box"><strong>留意這一點</strong><p>${formatText(section.note)}</p></aside>` : ''}
   </div></section>`;
 }
 
@@ -206,20 +220,19 @@ function renderLesson(topic, chapter, lesson) {
   document.title = `${chapter.title}｜${catalog.siteTitle}`;
   app.innerHTML = `<div class="shell page-lesson">
     ${breadcrumb([{ label: '主題總覽', href: '#/' }, { label: topic.title, href: topicHref(topic) }, { label: chapter.title }])}
-    ${modern ? '' : '<p class="legacy-notice">這是舊版參考資料，正在按新的教學方式重編。<a href="#/">查看新版連續教材</a></p>'}
+    ${modern ? '' : `<p class="legacy-notice">這是舊版參考資料，尚未按新版教學方式重編。${topic.chapters.some(item => item.contentVersion >= 3) ? ` <a href="${lessonHref(topic, topic.chapters.find(item => item.contentVersion >= 3))}">查看本主題新版教材</a>` : ' 新版核心系列請從主題總覽選擇。'}</p>`}
     <div class="lesson-layout"><aside class="lesson-aside" aria-label="本主題章節目錄"><div class="aside-sticky"><a class="aside-topic" href="${topicHref(topic)}"><span aria-hidden="true">${escapeHtml(topic.icon)}</span>${escapeHtml(topic.title)} <b aria-hidden="true">↗</b></a><p class="aside-label">${modern ? '新版連續教材' : '舊版參考資料'}</p><ol>${readingGroup.map((item) => `<li>${item.status === 'ready' ? `<a href="${lessonHref(topic, item)}" ${item.id === chapter.id ? 'aria-current="page"' : ''}>${escapeHtml(item.title)}</a>` : `<span class="aside-planned">${escapeHtml(item.title)} <small>規劃中</small></span>`}</li>`).join('')}</ol></div></aside>
-    <article class="lesson-article ${modern ? 'is-teaching-preview' : ''}"><header class="lesson-header"><p class="eyebrow">${escapeHtml(topic.title)} · ${String(currentIndex + 1).padStart(2, '0')} / ${String(readingGroup.length).padStart(2, '0')} · ${modern ? '新版教材' : '舊版參考'}</p><h1>${escapeHtml(chapter.title)}</h1><div class="lesson-meta"><span>${escapeHtml(chapterTimeLabel(chapter))}</span><span>${modern ? '理解角色 · 逐步推導' : '原理 · 讀碼 · 除錯'}</span></div><p class="lesson-intro">${escapeHtml(lesson.intro)}</p></header>
+    <article class="lesson-article ${modern ? 'is-teaching-preview' : ''}"><header class="lesson-header"><p class="eyebrow">${escapeHtml(topic.title)} · ${String(currentIndex + 1).padStart(2, '0')} / ${String(readingGroup.length).padStart(2, '0')} · ${modern ? '新版教材' : '舊版參考'}</p><h1>${escapeHtml(chapter.title)}</h1><div class="lesson-meta"><span>${escapeHtml(chapterTimeLabel(chapter))}</span><span>${modern ? '端到端機制 · 證據判讀' : '原理 · 讀碼 · 除錯'}</span></div><p class="lesson-intro">${formatText(lesson.intro)}</p></header>
     <details class="mobile-lesson-toc"><summary>本章內容與練習</summary><nav aria-label="本章內容">${sectionLinks(lesson)}</nav></details>
-    <section class="goal-box" aria-labelledby="goal-title"><div class="goal-icon" aria-hidden="true">✳</div><div><h2 id="goal-title">學完這章，你能…</h2><ul>${(lesson.goals || []).map((goal) => `<li>${escapeHtml(goal)}</li>`).join('')}</ul></div></section>
+    <section class="goal-box" aria-labelledby="goal-title"><div class="goal-icon" aria-hidden="true">✳</div><div><h2 id="goal-title">本章學習結果</h2><ul>${(lesson.goals || []).map((goal) => `<li>${formatText(goal)}</li>`).join('')}</ul></div></section>
     ${(lesson.resources || []).length ? `<section class="lesson-resources" aria-labelledby="resources-title"><h2 id="resources-title">本章練習檔</h2><ul>${lesson.resources.map((resource) => `<li><a href="${escapeHtml(safeAsset(resource.path))}" download>${escapeHtml(resource.label)} <span aria-hidden="true">↓</span></a><p>${escapeHtml(resource.description || '')}</p></li>`).join('')}</ul></section>` : ''}
-    ${lesson.prerequisites?.length ? `<section class="prerequisite-box"><h2>${modern ? '這章接在哪裡' : '本章會補足的前置概念'}</h2><ul>${lesson.prerequisites.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
-    ${lesson.studyTime ? `<section class="lesson-plan" aria-labelledby="plan-title"><h2 id="plan-title">閱讀與動手時間分開估計</h2><ol><li><span>閱讀、推導與追程式</span><strong>${timeRange(lesson.studyTime.reading)}</strong></li><li><span>操作、比較與修正</span><strong>${timeRange(lesson.studyTime.practice)}</strong></li><li><span>獨立作答與核對</span><strong>${timeRange(lesson.studyTime.exercises)}</strong></li></ol><p class="time-basis">各項都是預估範圍，尚未經個人計時校準；初次安裝工具另計。</p><details class="estimate-details"><summary>查看時間估計依據</summary><p>${escapeHtml(lesson.studyTime.basis)}</p></details></section>` : ''}
+    ${lesson.prerequisites?.length ? `<section class="prerequisite-box"><h2>${modern ? '這章接在哪裡' : '本章會補足的前置概念'}</h2><ul>${lesson.prerequisites.map((item) => `<li>${formatText(item)}</li>`).join('')}</ul></section>` : ''}
     ${(lesson.sections || []).map((section, index) => renderSection(section, index, modern)).join('')}
-    <section class="exercise-block" id="practice"><p class="eyebrow">PRACTICE</p><h2>想一想，再看解答</h2><p class="exercise-lead">${modern ? '用自己的話回想本章，再用新的小情境檢查理解。先想一想，再比較解釋。' : '依序檢查基本觀念、應用推導與故障判斷。先自己回答，再核對解答中的規則、中間步驟與結論。'}</p>${(lesson.exercises || []).map((exercise, index) => `<div class="exercise-card"><div class="exercise-question"><span>練習 ${String(index + 1).padStart(2, '0')} · ${escapeHtml(({foundation:"基礎理解",application:"應用推導",understanding:"流程理解",reasoning:"條件推理",diagnosis:"故障判斷"})[exercise.level] || "理解練習")}</span><p>${escapeHtml(exercise.question)}</p></div><details><summary>查看解答與判斷過程 <span aria-hidden="true">↓</span></summary>${renderAnswer(exercise)}</details></div>`).join('')}</section>
-    <section class="recap-block" id="recap"><p class="eyebrow">KEY TAKEAWAYS</p><h2>帶走這幾件事</h2><ul>${(lesson.recap || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
+    <section class="exercise-block" id="practice"><p class="eyebrow">PRACTICE</p><h2>練習與解答</h2><p class="exercise-lead">${modern ? '題目會改變資料或流程條件，要求你說明結果及其證據；解答列出推理所依據的機制。' : '依序檢查基本觀念、應用推導與故障判斷。先自行作答，再核對解答中的規則、中間步驟與結論。'}</p>${(lesson.exercises || []).map((exercise, index) => `<div class="exercise-card"><div class="exercise-question"><span>練習 ${String(index + 1).padStart(2, '0')} · ${escapeHtml(({foundation:"基礎理解",application:"應用推導",understanding:"流程理解",reasoning:"條件推理",diagnosis:"故障判斷"})[exercise.level] || "理解練習")}</span><p>${formatText(exercise.question)}</p></div><details><summary>查看解答與判斷過程 <span aria-hidden="true">↓</span></summary>${renderAnswer(exercise)}</details></div>`).join('')}</section>
+    <section class="recap-block" id="recap"><p class="eyebrow">KEY TAKEAWAYS</p><h2>本章結論</h2><ul>${(lesson.recap || []).map((item) => `<li>${formatText(item)}</li>`).join('')}</ul></section>
     ${(lesson.sources || []).length ? `<section class="sources"><h2>延伸閱讀與依據</h2><ul>${lesson.sources.map((source) => `<li><a href="${escapeHtml(safeLink(source.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.label)} <span aria-hidden="true">↗</span></a></li>`).join('')}</ul></section>` : ''}
     <div class="lesson-actions"><div><strong>讀完這章了嗎？</strong><p>閱讀紀錄只保存在目前這個瀏覽器。</p></div><button type="button" id="complete-button" class="complete-button ${completed.has(key) ? 'is-complete' : ''}" aria-pressed="${completed.has(key)}">${completed.has(key) ? '✓ 已標記讀完' : '標記為已讀'}</button></div>
-    <nav class="lesson-next" aria-label="章節導覽">${previous ? `<a href="${lessonHref(topic, previous)}"><small>← 上一篇</small><strong>${escapeHtml(previous.title)}</strong></a>` : '<span></span>'}${next ? `<a href="${lessonHref(topic, next)}"><small>下一篇 →</small><strong>${escapeHtml(next.title)}</strong></a>` : `<a href="${topicHref(topic)}"><small>${modern ? '本組新版試讀到此 · 返回 →' : '返回 →'}</small><strong>${escapeHtml(topic.title)}目錄</strong></a>`}</nav>
+    <nav class="lesson-next" aria-label="章節導覽">${previous ? `<a href="${lessonHref(topic, previous)}"><small>← 上一篇</small><strong>${escapeHtml(previous.title)}</strong></a>` : '<span></span>'}${next ? `<a href="${lessonHref(topic, next)}"><small>下一篇 →</small><strong>${escapeHtml(next.title)}</strong></a>` : `<a href="${topicHref(topic)}"><small>返回主題目錄 →</small><strong>${escapeHtml(topic.title)}目錄</strong></a>`}</nav>
     </article><aside class="lesson-toc" aria-label="本章段落"><div class="aside-sticky"><p class="aside-label">本章內容</p><a href="#section-1" class="toc-link">從第一段開始</a>${sectionLinks(lesson)}</div></aside></div>
   </div>`;
   document.querySelector('#complete-button').addEventListener('click', (event) => {
@@ -242,7 +255,7 @@ function renderLesson(topic, chapter, lesson) {
 
 function renderAbout() {
   document.title = `使用說明｜${catalog.siteTitle}`;
-  app.innerHTML = `<div class="shell page-about">${breadcrumb([{ label: '主題總覽', href: '#/' }, { label: '使用說明' }])}<div class="about-card"><p class="eyebrow">HOW TO USE</p><h1>從理解開始，沿著教材往下學。</h1><p>新版教材從目前的起點逐步增加概念，先理解原理與正常流程，再往程式閱讀、除錯與修改前進。各主題獨立安排；遇到相關知識缺口時，再補讀共同基礎或其他主題。</p><div class="about-grid"><section><span>01</span><h2>從新版開始</h2><p>首頁目前提供三篇連續網路入門。其餘標示「舊版參考」的資料仍可查閱，正在重新編排成循序教材；可選共同基礎尚在規劃。</p></section><section><span>02</span><h2>練習與核對</h2><p>閱讀途中有小問題幫助確認理解，章末也有練習。先試著用自己的話解釋，再展開答案比較思路；看不懂時，回到對應段落。</p></section><section><span>03</span><h2>記下進度</h2><p>讀完可以標記已讀。它是閱讀紀錄，並不表示已掌握能力；紀錄存在目前的瀏覽器，不會自動同步到其他裝置。</p></section></div><div class="about-note"><strong>關於工作中的實際系統</strong><p>教材中的圖與案例會說明假設。公司設備與程式的具體做法，應以取得授權的文件、程式碼及實際觀察為準。</p></div><a class="primary-button" href="#/">前往主題總覽 <span aria-hidden="true">↗</span></a></div></div>`;
+  app.innerHTML = `<div class="shell page-about">${breadcrumb([{ label: '主題總覽', href: '#/' }, { label: '使用說明' }])}<div class="about-card"><p class="eyebrow">HOW TO USE</p><h1>從理解開始，沿著教材往下學。</h1><p>新版教材從熟悉的概念出發，先接起正常流程，再連到既有程式、故障證據與修改驗收。各主題獨立安排；遇到相關知識缺口時，再補讀可選參照，不必先修一整套共同基礎。</p><div class="about-grid"><section><span>01</span><h2>選擇核心系列</h2><p>Ozeki 本機音訊、PTT、VoIP、無線電、廠商 API 與可靠性是目前六個新版核心系列。網路、Wireshark、Socket 與 RS-232 可作為按需補讀的參照。</p></section><section><span>02</span><h2>練習與核對</h2><p>章節依內容安排流程推演、讀碼或除錯練習。先自行判斷，再展開答案比對依據；仍有疑問時，回到相關交接和證據段落。</p></section><section><span>03</span><h2>記下進度</h2><p>讀完可以標記已讀。它是閱讀紀錄，不表示已掌握能力；紀錄存在目前的瀏覽器，不會自動同步到其他裝置。</p></section></div><div class="about-note"><strong>關於工作中的實際系統</strong><p>教材中的圖與案例會說明假設。公司設備與程式的具體做法，應以取得授權的文件、程式碼及實際觀察為準。</p></div><a class="primary-button" href="#/">前往主題總覽 <span aria-hidden="true">↗</span></a></div></div>`;
 }
 
 function renderMissing(message) {

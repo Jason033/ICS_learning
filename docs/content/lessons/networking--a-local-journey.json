@@ -1,181 +1,266 @@
 {
   "contentVersion": 3,
-  "intro": "第一篇裡，小安在A電腦按下查詢，A的狀態查詢程式問STATUS?，B的狀態提供程式回READY。第二篇主要跟著READY這份回覆，理解文字如何表示成bytes。這篇接續同一次查詢，先回到STATUS?的去程，再走READY的回程：資料怎麼離開一端的程式，經過兩台電腦之間的連接，最後交到另一端的程式？",
+  "intro": "前兩篇已把一次HTTP查詢串成端到端路徑，並說明如何從TCP bytes辨認完整HTTP訊息。本篇把這條路徑用於讀碼與除錯：同一筆查詢一直等不到結果時，怎麼從socket紀錄、TCP封包、HTTP解析、服務處理及呼叫端紀錄判斷資料停在哪個交接點，並選擇下一個能區分原因的觀測。",
   "prerequisites": [
-    "已讀第一篇的程式角色與正常請求、回覆：A發起查詢，B讀已有狀態並回答。",
-    "已讀資料表示篇：知道byte、ASCII與十六進位寫法，能理解READY文字與五個bytes的對照。"
+    "沿用前兩篇的GET /devices/42/status與HTTP/1.1 over TCP；已知道TCP ACK與HTTP本文完整是不同條件。",
+    "本篇不重講IP、Port與編碼定義。C#片段只用來辨認收送量及await後的完成位置，不要求先熟悉.NET。"
   ],
   "goals": [
-    "解釋程式、作業系統與網卡各自為什麼參與資料交付。",
-    "沿一次本地查詢，重述請求與回覆在兩台電腦之間的正常路徑。",
-    "分清幫忙交付資料和理解訊息內容，指出查詢何時才完成。"
+    "將同一條連線的封包、兩端程式紀錄與一次應用操作對上，避免把不同方向或不同請求的成功拼在一起。",
+    "說明Send返回、TCP ACK、Receive取得bytes、HTTP解析完成、handler完成和畫面套用各能證明到哪一步。",
+    "根據已確認的交接點選擇下一項觀測，區分未讀取、未完成訊息、處理等待及本地結果套用問題。"
   ],
   "sections": [
     {
-      "kind": "concept",
-      "heading": "兩個程式在對話，兩台電腦在幫忙交付",
+      "kind": "mechanism",
+      "heading": "先固定正在追的連線與操作，再比較紀錄",
       "paragraphs": [
-        "先回想第一篇的角色。小安想知道B保存的狀態，A的狀態查詢程式負責問，B的狀態提供程式負責回答。『STATUS?是詢問狀態』『READY表示已準備好』是這兩個程式之間的約定。這是從工作的意思看通訊：誰需要資訊，誰能提供，雙方怎樣理解訊息。",
-        "但這兩個程式分別在A和B電腦上執行。A產生一份資料，不會讓它自動出現在B的程式裡。兩台電腦之間還需要實際連接；電腦內也要有能把程式的資料交出去、把收到的資料交回程式的協助。『A問B』說清了工作目的，還沒有說清交付過程。",
-        "第二篇從回覆READY看資料表示，五個ASCII bytes用十六進位寫成52 45 41 44 59。同一次查詢中的請求STATUS?，按相同編碼表示則是53 54 41 54 55 53 3F，共七個bytes。本篇保留這兩份內容，都不加換行。接下來先跟著請求移動，看A電腦內部，再走到電腦外面；回覆稍後會沿路送回。"
+        "沿用StatusClient查詢http://status.example.test:8080/devices/42/status。呼叫端C是192.0.2.17:51734，服務端S是203.0.113.20:8080。本例直接連到S，沒有代理、NAT、TLS、壓縮或Transfer-Encoding；同一條已建立的TCP連線只追一筆尚未完成的HTTP請求，回覆以有效的Content-Length定界。這些限制讓兩端地址、明文HTTP與本文範圍可以直接對照，不代表公司程式採同樣架構。",
+        "下文的PCAP（封包擷取檔）摘要與log都是自行設計的資料，不是實機量測。C、S各有一個擷取點；時間t以毫秒表示，已對齊到同一條相對時間軸，所以本例可比較不同位置的先後。實際工作若未確認兩台主機時鐘偏移，不能把server與client的原始時間戳直接相減，更不能把表中的數字當正常網路應有的延遲。",
+        "追去程時用C:51734→S:8080，追回程時方向反過來。端點相同也要確認屬於這一次連線建立：程式重啟後可能重用Port。程式內把本次操作標為Q42，紀錄連線及/devices/42/status；Q42是教學log的關聯標記，並未加到線上的HTTP標頭。因本例只有一筆在途請求，可把這組HTTP bytes對回Q42；真實多筆請求則需查實際函式庫、請求順序或應用識別方式。",
+        "這次要追的不是「資料到伺服器了嗎」一個開關，而是一串有不同責任的交接：呼叫端建立要求→本地socket接受bytes→對端TCP確認→服務程式讀取→HTTP parser辨認完整要求→handler處理→回覆以相同方式送回→呼叫端解析與完成→結果套用。只要說清某條證據量的是其中哪一步，就不必把全部異常先歸為網路問題。"
       ]
     },
     {
-      "kind": "concept",
-      "heading": "程式先請作業系統幫忙",
+      "kind": "worked-example",
+      "heading": "正常去程：ACK涵蓋了93 bytes，handler仍有自己的開始點",
       "paragraphs": [
-        "A的查詢程式知道要問什麼，也能準備那七個bytes。可是，讓電腦上的網路裝置送資料，是另一件工作。若每個程式都自行處理裝置的操作方式，寫一個查詢功能就得同時處理許多和查詢意思無關的事情。",
-        "電腦有一套負責管理執行中的程式和裝置使用的基本軟體，叫作作業系統。Windows就是一種作業系統。在這次查詢中，A的程式使用作業系統提供的網路功能，交出待送資料和目的資訊，請它協助交付。程式決定『我要問STATUS?』，作業系統依網路規則及設定安排這份資料怎麼送出去。",
-        "這樣分工，查詢程式不必直接操作網路線上的訊號，也不必替每一種網路裝置重寫全部操作。同一台電腦通常還在執行瀏覽器或其他程式，它們也能使用作業系統的網路功能；本例只是先把注意力放在小安的查詢。不是A電腦只能執行這一個程式。",
-        "本篇先假定目的資訊和交付所需的基本設定已經正確。你現在只需要知道：『送什麼』和『送給誰』不是同一件事，作業系統不能只憑STATUS?這段文字猜出目的地。目的資訊有哪些、如何填寫，會在後面的地址篇逐步教。"
-      ]
-    },
-    {
-      "kind": "concept",
-      "heading": "網卡把電腦裡的資料接到網路線",
-      "paragraphs": [
-        "作業系統仍是軟體。要和另一台電腦實際連接，還需要電腦上的網路裝置。這種裝置叫網卡，也常稱網路介面卡。它是電腦參與網路收送的硬體；可以整合在電腦內，本例不需要把它想成一定能拔下來的一張板子。",
-        "這次使用網路線連接。網卡配合作業系統送出資料，讓資料以網路線能傳遞的訊號形式離開電腦。線上傳的是訊號，不是畫面上印出的S或53。另一端的網路裝置再接收訊號，取得可繼續處理的數位資料。第二篇教的bit和byte描述數字如何表示；網卡與線路則讓這份數位資料有實際的傳遞途徑。",
-        "網卡不需要懂『查詢狀態』的意思。這一次送的是STATUS?，下一次可以是其他內容；網卡依網路收送規則工作，訊息的用途仍由程式決定。下面先只畫A的三個角色：程式準備內容，作業系統安排交付，網卡接上實際連接。",
-        "接收時這三個角色也會合作，只是資料走向反過來：網卡先收到資料，作業系統處理網路交付，再讓應該接收它的程式取得內容。稍後我們會在B電腦上看到這個方向。"
+        "本例完整要求就是第一篇的三行與結束空行：GET /devices/42/status HTTP/1.1、Host: status.example.test:8080、Accept: application/json，每行以CRLF結束，最後再加一組CRLF。沒有額外空白或本文，按ASCII相容的UTF-8表示共93 bytes。這裡不重新推導編碼，而是把同一份93-byte資料放進兩端紀錄。",
+        "假設握手已完成，這93 bytes的第一個TCP資料序號是1001。資料範圍為1001到1093，對端確認到它們後的累積ACK為1094，即1001+93。ACK值是下一個預期序號，不是最後一個收到的序號；本段沒有SYN、FIN或序號迴繞，避免把控制旗標占的序號混進計算。",
+        "讀表時，t9的ACK不需要等到t10的Receive或t20的handler完成才成立。TCP可以先接收並確認，資料留在接收緩衝區，應用程式稍後才取出。因此「要求已被ACK，但沒有回覆」仍可能是服務沒有讀、parser沒有交出訊息或handler仍在等待；ACK只排除了相應bytes尚未被這個TCP端點確認的說法。",
+        "反過來，HandlerEnd這個名稱也不能靠猜。表中已定義它記在查詢方法取得state之後、形成HTTP回覆之前；若公司程式的End記在入隊之後，能支持的結論就不同。讀log之前先找寫log的程式位置，以及紀錄的是哪一份要求。"
       ],
-      "image": {
-        "src": "./assets/diagrams/networking-intro-journey-a.svg",
-        "alt": "A電腦內由狀態查詢程式把待送資料交給作業系統，再經網卡送到網路線。",
-        "caption": "先看A內部的分工。三個框是不同角色，不是三台電腦；箭頭表示這次送資料的方向。"
+      "code": {
+        "title": "本例93-byte要求的可見表示；\\r\\n代表CRLF",
+        "text": "GET /devices/42/status HTTP/1.1\\r\\nHost: status.example.test:8080\\r\\nAccept: application/json\\r\\n\\r\\n"
       },
-      "check": {
-        "question": "如果要把請求內容從STATUS?改成另一種查詢，是哪個角色決定新的文字？為什麼不是網卡？",
-        "answer": [
-          "是查詢程式依雙方的訊息約定決定內容。它知道要詢問的工作是什麼。",
-          "網卡協助資料進出實際連接，並不負責決定應用程式要問哪個問題。新的查詢仍需要對方程式理解，不能只換文字就假定對方會回答。"
+      "table": {
+        "caption": "正常去程的合成證據。兩端時間已對齊；每筆都屬同一條C:51734→S:8080連線及Q42。",
+        "headers": [
+          "t（ms）／位置",
+          "觀察",
+          "可以支持的流程位置"
+        ],
+        "rows": [
+          [
+            "2／C程式",
+            "socket Send返回93",
+            "這次API已接受93 bytes供本地傳送；未證明對端收到"
+          ],
+          [
+            "3／C擷取點",
+            "C→S Seq1001、Len93",
+            "這93 bytes出現在此擷取點；不是應用完成證據"
+          ],
+          [
+            "8、9／S擷取點",
+            "看到同範圍資料，S→C Ack1094",
+            "在本例端點與序號核對成立時，S的TCP確認收到相應bytes"
+          ],
+          [
+            "10／S程式",
+            "同一已連線socket兩次讀取30、63；累積93",
+            "bytes已交進服務程式；讀取次數不等封包數"
+          ],
+          [
+            "11、12／S程式",
+            "RequestComplete Q42；HandlerStart Q42",
+            "HTTP要求已按規則完整解析，並交進本例查詢handler"
+          ],
+          [
+            "20／S程式",
+            "HandlerEnd Q42 state=ready",
+            "本例handler已取得準備回覆的狀態；尚未證明回覆送回C"
+          ]
         ]
       }
     },
     {
-      "kind": "concept",
-      "heading": "兩條線和一台交換器，接成這次的小網路",
+      "kind": "worked-example",
+      "heading": "正常回程：本文完整、解析成功與畫面套用分開",
       "paragraphs": [
-        "現在把視線從A移到桌上的連接。本例中，A和B各使用一個網路連接：A的網卡用一條網路線接到中間的裝置，B的網卡用另一條線也接到它。這個能連接多個網路裝置、協助把收到的資料轉交出去的裝置，叫作交換器。",
-        "有了交換器，A送出的資料可以先沿第一條線到交換器，再由交換器轉交到通往B的第二條線。本例把A和B接在同一個網路，交付設定也已準備好；例如辦公室內這樣一組連接，稱為本地網路。它們彼此交換資料，不必為了這項查詢先繞到網際網路。這裡說的不只是兩台電腦在地理上靠近，還包含已建立的網路連接與相應設定。",
-        "交換器怎麼知道要轉交哪裡？收送時，除了程式要交換的內容，還有供網路交付使用的資訊。交換器依這類資訊處理轉交，不是讀到STATUS?就知道誰保存狀態。本次先假定交換器已有把資料轉往B所需的資訊；稍後學地址時，再打開這個選擇過程。",
-        "因此，第二篇算出的七個bytes是請求內容的長度，不是宣稱網路線上所有傳送資料加起來只有七個bytes。網路交付還有自己的資訊與規則。本篇先追那七個bytes所承載的請求，不要求你現在就認出其餘資訊的欄位。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "請求走到B，還要交進狀態提供程式",
-      "paragraphs": [
-        "開始這一次正常查詢。A的狀態查詢程式與B的狀態提供程式都已在執行，B保存的狀態是READY；兩台電腦的連接及基本交付設定也已準備好。本例假定請求與回覆都能正確交到相應程式，我們先專心看完成工作需要的步驟。",
-        "小安按下查詢，A的程式建立STATUS?，依ASCII準備七個bytes。它請A的作業系統把這份資料交給B那邊的狀態提供程式。作業系統安排網路交付，A的網卡配合送出，資料經第一條網路線到交換器。交換器依交付資訊轉交，資料再沿第二條線到B的網卡。",
-        "走到這裡，請求只是到了B的網路接收裝置，還沒有完成『詢問狀態』。B的網卡接收資料後，B的作業系統處理網路接收，依已設定好的交付關係，讓狀態提供程式取得這七個bytes。這一步很重要：硬體收到資料，和負責回答的程式取得資料，是先後不同的工作。",
-        "現在才輪到B的狀態提供程式理解內容。它按ASCII把這七個bytes讀回STATUS?，依第一篇的約定認出這是在詢問狀態，再讀自己已保存的狀態READY。交換器和網卡把請求帶來，B的程式才是實際讀狀態、決定回答內容的角色。"
+        "S產生第一篇的HTTP/1.1 200 OK回覆：Content-Type: application/json、Content-Length: 17，加上標頭結束空行及{\"state\":\"ready\"}。這份特定表示的標頭連同空行有71 bytes，本文17 bytes，整則回覆88 bytes；沒有其他標頭或結尾換行。假設回程第一個資料序號5001，收到全部88 bytes後的ACK是5089，即5001+88。",
+        "下表故意讓C第一次Receive只取得81 bytes，第二次才取得7 bytes。即使擷取點看見一段88-byte資料，應用讀取仍可能分批；本例用已確認的71-byte標頭起點，將第一次81 bytes拆成標頭71與本文10，不把81誤作已收齊本文。",
+        "CallerComplete的成功條件在本例是收到合法HTTP回覆、200、成功讀出state，再回傳呼叫者。它沒有保證UI更新工作已執行。UiQueued和UiApplied是本例自己寫的log，並非.NET自帶事件；前者記在排入更新後，後者記在更新方法執行且目標核對完成後。若症狀是畫面仍顯示舊值，這兩個位置比再看ACK更有鑑別力。",
+        "HTTP 200與ready也不能合成「所有下游設備已驗證」。200是HTTP結果，ready是這個服務所回報的資料。若維護目標還包含設備即時狀態，要繼續查handler讀的來源與時效；本篇以查詢與套用結果為範圍，不替未知公司增加硬體完成條件。"
       ],
-      "image": {
-        "src": "./assets/diagrams/networking-intro-journey-roundtrip.svg",
-        "alt": "完整路徑由A的查詢程式、A作業系統、A網卡、交換器、B網卡、B作業系統，到B的提供程式。請求往下走，回覆往上走，兩端程式理解訊息，中間角色協助交付。",
-        "caption": "圖中往下跟請求、往上跟回覆。兩台電腦內的箭頭是軟體與裝置合作；交換器兩旁才是本例的兩段網路線。先讀完請求，再沿同一張圖走回覆。"
-      }
-    },
-    {
-      "kind": "mechanism",
-      "heading": "回覆走回A，小安才看到結果",
-      "paragraphs": [
-        "B的程式讀到保存的狀態後，依約定建立回覆READY。它按ASCII準備五個bytes：52 45 41 44 59，再請B的作業系統協助送回A的查詢程式。這是B根據請求產生的一份回覆，不是交換器把STATUS?變成READY，也不是把原請求倒著送回去。",
-        "接著，B的作業系統安排交付，B的網卡把回覆送上通往交換器的那條線。交換器這次依交付資訊把資料轉往A，A的網卡接收後，A的作業系統處理接收，讓狀態查詢程式取得回覆。和請求方向一樣，線路搬運、電腦接收與程式取得內容是相連的幾段工作。",
-        "A的程式按ASCII將五個bytes讀回READY，再依雙方的約定理解為『已準備好』，更新畫面讓小安看到結果。直到這裡，這次『按查詢並看到狀態』的工作才完成。光是A準備了請求、交換器轉交了資料，或B的網卡收到了訊號，都還不等於小安已經取得答案。",
-        "雖然回覆時B在送資料、A在收資料，第一篇的角色沒有交換。A仍是發起這次查詢的用戶端，B仍是提供答案的伺服器端。這兩個名稱描述它們在工作中的角色，不是說用戶端永遠只能送、伺服器端永遠只能收。"
-      ],
-      "check": {
-        "question": "READY的五個bytes由誰建立？A的網卡收到它們後，小安是不是就一定已經看到『已準備好』？",
-        "answer": [
-          "由B的狀態提供程式讀取已有狀態後建立。網路中間的角色協助交付，不決定這個答案。",
-          "還沒有走完整個工作。A的作業系統要讓查詢程式取得回覆，程式再讀回文字、理解READY並更新畫面，小安才看到結果。"
+      "table": {
+        "caption": "正常回程。S:8080→C:51734的資料序號與去程不同；ACK是C回給S。",
+        "headers": [
+          "t（ms）／位置",
+          "觀察",
+          "交接判斷"
+        ],
+        "rows": [
+          [
+            "21、22／S程式",
+            "SerializeResponse bytes=88；socket累積Send返回88",
+            "回覆已形成，且全部bytes交入本地傳送；尚未證明C讀到"
+          ],
+          [
+            "23、28／S、C擷取點",
+            "回程Seq5001、Len88在兩點出現",
+            "指定回覆bytes已跨過這兩個擷取點"
+          ],
+          [
+            "29／C擷取點",
+            "C→S Ack5089",
+            "C的TCP確認到回覆資料終點；不是JSON或畫面確認"
+          ],
+          [
+            "30、31／C程式",
+            "讀81後body=10/17；再讀7後body=17/17",
+            "第二次之後才滿足本例HTTP本文長度"
+          ],
+          [
+            "32／C程式",
+            "ResponseComplete；JsonParsed state=ready；CallerComplete Q42",
+            "HTTP及JSON處理完成，本例查詢方法已回傳狀態"
+          ],
+          [
+            "33、35／C程式",
+            "UiQueued Q42；UiApplied Q42/device42",
+            "33只排入本地更新；35在本例UI更新方法實際套用"
+          ]
         ]
+      },
+      "code": {
+        "title": "同一操作的完成位置；箭頭是資料／結果交接，不是封包邊界",
+        "text": "S handler取得state → HTTP回覆bytes → S socket → TCP回程\n    → C socket bytes → HTTP本文完整 → JSON state → caller返回\n    → UI更新排入佇列 → 對應操作的UI更新實際執行"
       }
     },
     {
-      "kind": "concept",
-      "heading": "把兩種看法放在一起，就能重述完整流程",
+      "kind": "code-reading",
+      "heading": "讀C#時，找的是哪個完成點，而不是看見await就說收完",
       "paragraphs": [
-        "如果問題是『B為什麼回READY？』，我們看兩個程式的工作：A問狀態，B讀已有狀態，再建立答案。用這個角度，STATUS?與READY的意思很重要。如果問題是『這份回覆如何回到A？』，我們看交付過程：B的程式請作業系統送出，經網卡、線路與交換器，抵達A，再交給A的程式。",
-        "這兩種看法描述同一次查詢。前者讓你知道交付的資料為什麼有用，後者讓你知道資料怎麼跨過兩台電腦。只畫兩個程式的對話，會省略實際交付；只畫線路和裝置，則看不出誰會讀狀態、誰會顯示答案。完整理解需要把程式要完成的工作，放回協助它收送資料的路徑。",
-        "你可以不背一長串裝置名，而是從每一步說出『誰拿到什麼，接著做什麼』：A程式拿到查詢操作，建立請求；各個收送角色協助交付；B程式拿到請求，讀狀態並建立回覆；各個收送角色協助送回；A程式拿到回覆，理解並顯示。現在圖上的每個角色，都能放進這句正常流程裡。"
+        "沿既有程式找呼叫開始、每次await之後及回傳前的位置。await表示等待這個方法所回傳的工作完成，然後繼續下一行；等待的是哪件工作，取決於方法和選項，不能看到await就推論已完成整筆業務。下方用HttpClient展示應用層交接，它不是上一張表的原始socket解析器，也不保證底層Receive次數。",
+        "GetAsync指定ResponseHeadersRead，因此第一個await完成時，已取得回覆與標頭，本文可能還沒讀完。EnsureSuccessStatusCode在非2xx狀態時拋出例外，本例200會繼續。ReadAsStringAsync再讀本文並提供文字；JsonDocument.Parse判斷JSON格式，GetProperty讀本例必須存在的state。此例契約要求state是非null字串，GetString取值後用??拒絕JSON null；??在左側是null時才執行右側，這裡會丟出JsonException。using var表示在這個作用範圍結束時釋放相應物件；它不代表設備狀態復原。Log是為此片段提供的應用紀錄方法，不是網路API。",
+        "若停在HeadersRead而沒有BodyRead，先查本文讀取、取消/例外與HTTP完整條件；若有BodyRead卻沒有JsonParsed，就查內容及JSON解析例外；若已return，查詢方法的工作已完成，再沿呼叫它的程式找UI更新。每個紀錄都帶操作標記，並在例外路徑記錯誤類別，否則最後一行log可能只是觀測缺口。",
+        "此片段以支援這些API的現代.NET為例，cancel是呼叫者提供的CancellationToken。尤其ResponseHeadersRead下，HttpClient.Timeout主要限制取得標頭前的階段，後續本文需自己的取消或期限規則。把Timeout調大之前，要先確認逾時包住哪個await；單改HTTP選項不會讓UI排隊期限也自動改變。"
+      ],
+      "code": {
+        "title": "範例方法：類別另提供client與Log；呼叫端await後取得非null狀態字串",
+        "text": "using System.Threading;\nusing System.Threading.Tasks;\n\nasync Task<string> ReadStateAsync(\n    string url, CancellationToken cancel, string operation)\n{\n    using var response = await client.GetAsync(\n        url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancel);\n    Log(operation, $\"HeadersRead status={(int)response.StatusCode}\");\n    response.EnsureSuccessStatusCode();\n\n    string body = await response.Content.ReadAsStringAsync(cancel);\n    Log(operation, \"BodyRead\");\n    using var json = System.Text.Json.JsonDocument.Parse(body);\n    string state = json.RootElement.GetProperty(\"state\").GetString()\n        ?? throw new System.Text.Json.JsonException(\"state must not be null\");\n    Log(operation, $\"JsonParsed state={state}\");\n    return state; // 呼叫端還需決定是否及如何更新畫面。\n}"
+      }
+    },
+    {
+      "kind": "diagnostic-case",
+      "heading": "同樣沒有結果：用相鄰觀測點區分三個斷點",
+      "paragraphs": [
+        "以下A、B、C是從正常基準各自重新開始的三個獨立故障案例，不會依序發生在同一條連線；時間與序號只在各自案例內比較。案例A：Q42要求被ACK到1094，S的Receive也累積93 bytes，內容核對為完整GET，但沒有RequestComplete或HandlerStart。兩個候選是parser等待了不必要資料，以及parser已成功但交接到handler停住。下一個高資訊觀測是parser的狀態、剩餘需求與呼叫位置，而不是再次確認TCP連線。若紀錄也不完整，先確認這些觀察點有啟用，不能以空白log直接宣判程式未執行。",
+        "補一項程式證據：S的接收迴圈把Receive回傳0當「要求完成」，所以累積93後仍等待下一次讀取；本次HTTP連線保持開啟，C則等S回覆。這份GET沒有Transfer-Encoding或Content-Length，按本例HTTP規則在完整標頭後就是零本文要求，不應等TCP關閉。有限修正是把要求完成交給HTTP parser，再開始handler；驗證完整要求在連線仍開啟時能處理，缺標頭的要求仍等待或依期限失敗。不是用「等一秒就當完整」替代格式。",
+        "案例B：另一筆查詢Q43回中文18-byte本文，標頭仍71 bytes，整則應有89 bytes。S序列化紀錄89，但本例改用非阻塞Socket，一次Send只返回83；程式誤將它記為ResponseSent並未處理剩餘6。S與C擷取點都只有Seq5001起的83 bytes，C回Ack5084，應用本文12/18後等待。這裡是待送buffer沒有全部交入傳送，不是JSON不認中文字，也沒有證據支持回程丟掉已送出的6 bytes。",
+        "查證方式是對比預備長度、每次Send返回量及累積量，再核對S擷取點出現的範圍。有限修正按socket模式處理尚未送出的部分與錯誤/可寫狀態，不把完整HTTP回覆從頭再塞一次。驗證partial-send安排也能累積到89，本文18/18才完成；若完整89已在S擷取點出現而C僅見83，才新增回程或擷取缺口的調查。這些觀察不能單靠一個ResponseSent名稱取代。",
+        "案例C：Q42在t32已解析ready並回傳，t33只有UiQueued，到t180才有UiApplied。同一主機上的排隊到套用是180−33=147ms；若產品要求t100前更新，查詢資料已完成，但本例本地套用超出目標。兩個候選是更新沒有排入正確佇列，以及已排入但佇列未及時執行。用入隊與執行位置的同操作紀錄區分，再查前面的工作占用、調度或目標檢查，不由147ms直接命名成死鎖。",
+        "若切換設備後才收到舊查詢，還要核對結果屬於哪個目標。本例「Q42/device42」不能因最後到達就寫到目前device43的畫面。處理策略由產品規則決定，例如忽略不再適用的結果；改caller/UI關聯即可驗證的問題，不應用網路重試讓更多舊結果排進來。"
       ]
     },
     {
-      "kind": "concept",
-      "heading": "接下來要打開『送給誰』這件事",
+      "kind": "application",
+      "heading": "下一項觀測要能區分原因，修正要停在有證據的責任段",
       "paragraphs": [
-        "本篇先給定了正確的目的資訊和交付設定。你已看出它們必要的原因：STATUS?只描述問題，沒有單靠這個內容就指出該送到哪台電腦；到了B電腦，也還要交給負責回答的程式。B送回READY時，同樣需要讓回覆走向A的查詢程式。",
-        "這些選擇不能永遠留成『系統自然會知道』。後面的地址與交付篇會逐步說明：電腦與網路怎樣用目的資訊選擇去向、到電腦後怎樣區分接收它的程式。讀那些章時，你可以把新的資訊放回本篇相應的步驟，知道它在解決哪個問題。",
-        "也可以先用已學的流程做一個小推演：假如B的網卡已收到請求，但B的狀態提供程式還沒取得內容，交換器不能代替它讀狀態並回答。此時知道『資料到了某個角色』，只能說明走到那一步，不能省略後面尚未完成的工作。這個推理從正常分工而來；要進一步找原因，還需要後續的交付知識。"
+        "先寫出最晚已被確認的交接，以及第一個尚未確認的交接。例如「S TCP已ACK要求，尚未確認服務讀取」適合查同連線Receive；「handler完成，尚未確認回覆交給socket」適合查序列化及Send累積量；「C HTTP及JSON完成，尚未確認更新」適合查caller與UI。這是縮小搜索範圍，不是宣稱每次故障只有一個原因。",
+        "PCAP看不到某段資料，比較前先確認擷取時間、介面、方向和丟包情況。C本機看到待送資料不獨立證明已走完外部鏈路；S擷取點有資料也不等於服務讀取。若有TCP終止代理，ACK來自代理，證據邊界也停在代理的連線；不能拿它當後端已收。HTTPS通常看不到明文HTTP，需用同請求的應用紀錄補交接，不以「工具沒有顯示HTTP」等同沒有應用要求。",
+        "修正記錄應說清觸發、機制、變因與驗收。例如「parser等斷線，完整GET在開啟連線上無法進handler；改按HTTP定界後可處理，半個標頭仍拒絕/等待」。把正常與拒絕情況一起驗證，才能知道不是把錯誤資料也當完成。這種結論讓下一位知道為何改那段程式，比「網路修好」「已收到」更可用。",
+        "本篇的直接HTTP連線只用來建立判斷方法。回到公司程式時，先列實際HTTP函式庫或自訂socket、服務入口、parser/handler、佇列與呼叫者，查紀錄真正寫在哪裡，再把證據放回那條路徑。下一篇的IP與Port會進一步解釋端點選擇；此處已知道端點的用途，不需為了排查程式等待先重新展開所有鏈路細節。"
       ]
     }
   ],
   "exercises": [
     {
-      "level": "foundation",
-      "question": "不用寫技術名詞，先用自己的話說明：A的程式已經準備好STATUS?的bytes，為什麼仍需要作業系統與網卡參與？",
+      "level": "understanding",
+      "question": "陌生連線的要求從Seq2001開始、有60 bytes，對端回Ack2061，但沒有服務程式Receive紀錄。能寫「handler已收到要求」嗎？下一個觀測選哪裡？",
       "answer": [
-        "準備內容和把內容送到另一台電腦是兩件事。A的程式知道要問什麼，但那份資料不會因為準備好就自行出現在B。",
-        "作業系統提供並安排網路交付功能，網卡配合它，把資料接到實際網路連接。兩者讓程式能使用電腦的網路能力，不必直接操作線路訊號。"
+        "Ack2061涵蓋2001到2060的60 bytes；在擷取與TCP端點已核對的條件下，它支持對端TCP確認收到這個範圍，不支持handler已讀或解析。",
+        "先查相同已連線socket的讀取量及parser交接。沒有Receive log還需確認觀察點啟用及錯誤路徑，不能以缺log代替未執行；用讀取實際位置區分TCP已收但應用未讀與觀測缺口。"
       ]
     },
     {
-      "level": "foundation",
-      "question": "請沿本例的連接，從『A程式建立請求』說到『B程式讀到已有狀態』。哪些步驟只是協助交付，哪一步開始理解STATUS?？",
+      "level": "reasoning",
+      "question": "Q9使用C:51734→S:8080，t0開始；t25的200回覆卻在C:51735←S:8080。兩筆路徑都是/devices/42/status。可以把這份200當Q9已完成的證據嗎？",
       "answer": [
-        "A程式準備請求，交A作業系統安排；A網卡送出，經第一條線到交換器，再經第二條線到B網卡。B作業系統處理接收，讓B的狀態提供程式取得內容。",
-        "作業系統、網卡、線路與交換器在這裡協助網路交付。B的程式按ASCII讀回STATUS?，依約定辨認請求，才去讀自己保存的狀態。它們不是全部都在做同一種『讀資料』。"
+        "不可以，暫用Port不同，這是另一條TCP連線。相同主機、服務Port和URL不足以把兩次要求合在一起。",
+        "查Q9自己的連線建立紀錄、回程序號範圍與應用結果，再確認是否有應用層委派到別條連線的明確規則。題目沒有這種對映，不能自行補關係。"
       ]
     },
     {
-      "level": "application",
-      "question": "有人把完整來回寫成『A送STATUS?到交換器，交換器回READY給A』。本例中缺了哪個必要工作？請把回覆的來源與回到A的過程補完整。",
+      "level": "diagnosis",
+      "question": "陌生回覆的HTTP標頭已確認為71 bytes、本文Content-Length 18。S預備89 bytes，但非阻塞Send返回83後就停止；兩端PCAP皆只見這83 bytes，C ACK到9084，第一個資料Seq9001。判斷本文進度與有限修正。",
       "answer": [
-        "缺了B的狀態提供程式取得請求、讀已有狀態並建立回覆。交換器只是協助轉交，沒有替這個程式查狀態。",
-        "READY由B程式建立成五個ASCII bytes，交B作業系統、經B網卡與線路到交換器，再轉往A網卡。A作業系統讓查詢程式取得回覆；A程式讀回READY、理解後顯示給小安。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "A電腦同時執行狀態查詢程式和瀏覽器。依本篇所學，能否說網卡收到的所有內容都應交給查詢程式？需要有什麼選擇？",
-      "answer": [
-        "不能。一台電腦可以同時執行多個使用網路的程式，網卡收到資料不代表所有資料都屬於本次查詢。",
-        "作業系統在網路接收與交付時，需要依對應資訊讓該接收資料的程式取得它。本章先假定這項設定正確；下一組交付章再學它如何區分，不需要現在猜一種尚未教過的欄位。"
+        "83−71=12個本文bytes，還缺18−12=6；9001+83=9084符合已交付範圍。現有資料一致支持少6 bytes尚未送入本地socket，而非接收端已拿到18卻解析錯。",
+        "按本例非阻塞模式保留未送部分與累積量，待可寫時繼續並處理錯誤/期限；不在同一byte stream上重送整則89。驗證89全部送入且本文18/18；若仍少資料，再按實際擷取位置追，不先調JSON或路由。"
       ]
     },
     {
       "level": "application",
-      "question": "本例B回READY，A的網卡也已接收到回覆，但A的查詢程式尚未更新畫面。這是否已完成『小安按查詢並看到狀態』？你還要沿正常流程確認哪些工作？",
+      "question": "程式使用ResponseHeadersRead，紀錄「await GetAsync完成，status=200」，然後呼叫ReadAsStringAsync。t40只見HeadersRead，t140出現本文讀取逾時。是否矛盾？要查哪個完成點？",
       "answer": [
-        "尚未完成。『A網卡已接收』只是交付途中的一步，工作目標還包含查詢程式理解回覆與顯示結果。",
-        "依正常流程，接著確認A的作業系統讓程式取得了回覆、程式按ASCII讀回READY並理解，最後才是更新畫面。這些步驟都還可能需要確認，現有描述不足以判定哪一步沒完成。"
+        "不矛盾。這個選項讓GetAsync在回覆標頭可用時完成，不保證本文已讀完；200也不能替代本文長度與讀取成功。",
+        "查ReadAsStringAsync的本文進度、取消/期限與例外；釐清取得標頭與讀本文各自的時間範圍。此時沒有JSON解析成功證據，也沒有依據把問題直接稱為畫面更新慢。"
+      ]
+    },
+    {
+      "level": "reasoning",
+      "question": "HandlerEnd與本地Send累積88都成立，C在擷取窗口中卻沒有這份回覆。若只能再選一組觀測，選S出口PCAP與C入口PCAP，還是再加一筆HandlerEnd？為什麼？",
+      "answer": [
+        "選兩端同連線、同方向、同序號範圍及足夠時間窗口的PCAP。Send完成只支持本地傳送接受，不保證資料離開或到C；重複HandlerEnd不區分這兩段。",
+        "若S也沒有該範圍，查本地傳送與擷取位置；若S有而C沒有，才聚焦兩點間的交付或擷取缺口。仍要核對丟包/介面，不能單由一份空白擷取宣告封包在網路上被丟。"
+      ]
+    },
+    {
+      "level": "application",
+      "question": "產品規則是查詢並顯示服務回報的state，不要求它一定ready。C收到200、完整合法JSON的state=busy並回傳。這是TCP失敗、HTTP失敗，還是查詢完成但狀態不就緒？",
+      "answer": [
+        "按題目規則，這是查詢完成、回報busy；HTTP與資料處理成功不要求設備一定ready。不能把不喜歡的業務值當成TCP未交付。",
+        "若功能另外要等ready，需要明確的狀態等待/更新契約，而不是重解碼或假定200應強制ready；還需查回報來源與時效，才能進一步討論設備現況。"
+      ]
+    },
+    {
+      "level": "diagnosis",
+      "question": "Q12查device42，在同一client主機t60 CallerComplete、t65 UiQueued、t210 UiApplied；要求t150前更新。若t100使用者已切到device43，哪兩項本地問題需分別驗證？",
+      "answer": [
+        "排隊到套用為210−65=145ms，套用時刻210已超過150；查入隊/執行與前方工作可定位本地時效，不把TCP逾時當現有證據支持的原因。",
+        "另外結果屬device42，不能寫成device43狀態。依產品規則核對操作與目標、忽略不再適用的結果或使用適當狀態管理。驗證正常同目標及切換交錯兩條路徑；時效與結果對映是兩項條件，不能只讓更新更快就宣稱兩者都修好。"
       ]
     }
   ],
   "recap": [
-    "程式建立並理解STATUS?與READY；作業系統、網卡、線路與交換器協助資料在兩端之間交付。",
-    "請求到B網卡之後，仍要交進B程式；回覆到A網卡之後，仍要交進A程式並顯示結果。",
-    "同一台電腦可以有多個程式。目的資訊與接收程式的區分有各自用途，後面再逐步打開。"
+    "先用連線建立、兩端端點、方向與應用操作對上資料，再比較已校正的時間；不能只靠URL或Port相同拼接成功。",
+    "socket Send、TCP ACK、socket Receive、HTTP完整解析、handler結束、caller返回及UI套用各有自己的證據與責任。",
+    "最有用的下一項觀測在已確認與未確認交接之間，能區分目前候選；修正後同時驗合法完成與不完整/不適用資料的處理。"
   ],
   "sources": [
     {
-      "label": "Microsoft：Windows網路架構中的軟體與網卡角色",
-      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/network/windows-network-architecture-and-the-osi-model"
+      "label": "IETF RFC 9293 §3.4、§3.7：累積ACK的序號範圍及TCP傳輸分段",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4"
     },
     {
-      "label": "Microsoft：應用程式使用Windows網路功能的介面",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2"
+      "label": "IETF RFC 9112 §6.3、§8：HTTP要求/回覆本文定界及不完整訊息",
+      "url": "https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3"
     },
     {
-      "label": "Cisco：交換器連接同一網路內的裝置",
-      "url": "https://www.cisco.com/site/us/en/learn/topics/small-business/network-switch-how.html"
+      "label": "Microsoft Socket.Send：返回量、本地緩衝接受與不能保證已交付",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.send?view=net-10.0"
     },
     {
-      "label": "Cisco：交換器按交付資訊轉交的官方說明（進階文件，第18頁）",
-      "url": "https://www.cisco.com/en/US/docs/ios/lanswitch/configuration/guide/lsw_enet_switch_net.pdf"
+      "label": "Microsoft Socket.Receive：實際讀取bytes與TCP正常關閉的返回值",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receive?view=net-10.0"
+    },
+    {
+      "label": "Microsoft HttpCompletionOption：ResponseHeadersRead的完成點及逾時範圍",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpcompletionoption?view=net-10.0"
+    },
+    {
+      "label": "Microsoft HttpResponseMessage.EnsureSuccessStatusCode：非200–299的HTTP狀態會拋例外",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpresponsemessage.ensuresuccessstatuscode?view=net-10.0"
+    },
+    {
+      "label": "Microsoft HttpContent.ReadAsStringAsync：取得完整內容文字的完成條件與取消參數",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpcontent.readasstringasync?view=net-10.0"
+    },
+    {
+      "label": "Microsoft C# async/await：方法工作完成後的繼續位置",
+      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/asynchronous-programming/task-asynchronous-programming-model"
     }
   ],
   "resources": []

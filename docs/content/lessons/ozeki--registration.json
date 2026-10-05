@@ -1,321 +1,126 @@
 {
-  "contentVersion": 2,
-  "intro": "註冊不是建立一條永遠不斷的電話線，而是帳號、目前聯絡位置、有效期限和伺服器認證的一組關係。這章從 SIP 註冊的目的開始，連到 Ozeki 線路物件、事件、包裝與畫面，解釋為什麼401不一定失敗、註冊成功仍可能接不到來電。",
+  "contentVersion": 3,
+  "intro": "同一份音訊 bytes 只有連同格式和測量位置才有診斷意義。本章把格式用在程式交接上：估算一個資料區塊應有多大、查清轉換發生在哪個 handler，以及判讀「資料有流動但聲音仍不對」的觀測缺口。",
   "prerequisites": [
-    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
-    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
+    "已能畫出來源、處理節點和接收端的資料圖。",
+    "已知道 byte 與編碼的基本概念；本章用具體音訊 API 情境連起來，不重講二進位入門。"
   ],
-  "studyTime": {
-    "reading": [
-      15,
-      25
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 registration 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
-  },
   "goals": [
-    "區分顯示名、使用者、認證身分、伺服器與本機媒體埠。",
-    "追蹤註冊命令、認證挑戰、最終回覆、事件和UI的不同階段。",
-    "鑑別拒絕、沒回覆、事件漏接與錯線路，並設計可回歸的修正。"
+    "按格式與區塊時間計算 PCM 節點預期資料量。",
+    "區分來源格式、處理格式、裝置格式及通話 codec。",
+    "為數據標出單位、時間窗口、測量點和證明範圍。"
   ],
   "sections": [
     {
-      "heading": "為何需要註冊：帳號不是目前的網路位置",
-      "kind": "concept",
-      "paragraphs": [
-        "別人撥1001，電話系統需要知道這個帳號現在在哪個端點。帳號代表邏輯身分；電腦的IP、監聽端口與連接可能隨網路或程式重啓變化。SIP REGISTER讓用戶代理把帳號與Contact聯絡位置的綁定提交給registrar。伺服器之後如何路由來電仍取決於代理與PBX政策，所以“有綁定”不是整條來電鏈路的保證。",
-        "註冊有有效期限，和通話不同。你可以註冊後沒有通話，也可以某些環境不靠REGISTER而直接呼叫；這些模式要按配置辨認。註冊成功通常說明伺服器接受這次註冊處理，不證明媒體會通、不證明遠端號碼存在，也不證明麥克風可用。把“線已註冊”顯示為“電話接通”會把三個不同層的問題混淆。",
-        "長期程式還要處理更新與過期。若綁定有效120秒、客戶端100秒刷新、某次刷新失敗，之前成功事件不能永久代表當前可用。維護程式應記錄當前線狀態、最近成功時間、失敗／斷線資訊與事件所屬配置世代。實際刷新機制和狀態API應由SDK管理契約決定；不應另寫無限循環Register與SDK自動刷新搶同一條線。"
-      ]
-    },
-    {
-      "heading": "七個帳號參數各負責什麼",
-      "kind": "concept",
-      "paragraphs": [
-        "SIPAccount 的官方教學構造參數包含 registrationRequired、displayName、userName、authenticationId、registerPassword、domainHost、domainPort。displayName是給人看的名稱，userName是SIP邏輯賬號，authenticationId是認證用身分，密碼與認證身分配對，host/port指出註冊伺服器。很多小範例讓這些文字都一樣，看起來像“一組賬號”；公司設置可能不同，抄同一個號碼進所有欄位會隱藏錯誤。",
-        "例如顯示名“值班台”、SIP用戶1001、認證身分auth-1001、伺服器pbx.lab.invalid:5060。呼叫1001和用auth-1001驗證是兩件事。認證失敗不能只檢查userName，來電路由錯誤也不能只檢查authenticationId。維護時先從配置讀取點追每個欄位到構造參數，檢查順序、空白、預設值與覆蓋來源，別把UI欄位標題當作程式傳值證據。",
-        "DomainPort 是遠端 SIP 服務的端口；SoftPhoneFactory.CreateSoftPhone(5000,10000) 的數字在核對教學中是媒體端口範圍，不是把SIP伺服器設在5000。Transport 也很重要：UDP、TCP、TLS的組合須與伺服器匹配；TLS有證書驗證，不只是改成5061。下列數據為虛構，不會連接此域名，練習只用來建立字段角色。"
-      ],
-      "table": {
-        "caption": "虛構設定，分清用途",
-        "headers": [
-          "欄位",
-          "值",
-          "用途"
-        ],
-        "rows": [
-          [
-            "DisplayName",
-            "值班台",
-            "給人辨識"
-          ],
-          [
-            "UserName",
-            "1001",
-            "SIP賬號/路由身分"
-          ],
-          [
-            "AuthenticationId",
-            "auth-1001",
-            "認證輸入"
-          ],
-          [
-            "DomainHost",
-            "pbx.lab.invalid",
-            "伺服器主機"
-          ],
-          [
-            "DomainPort",
-            "5060",
-            "伺服器端口"
-          ],
-          [
-            "Media range",
-            "5000–10000",
-            "本機媒體端口範圍"
-          ]
-        ]
-      }
-    },
-    {
-      "heading": "Ozeki註冊的物件與順序",
       "kind": "mechanism",
+      "heading": "格式描述同一份 bytes 要如何被解讀",
       "paragraphs": [
-        "官方註冊教學先建立ISoftPhone核心，再用SIPAccount建立IPhoneLine，訂閱line.RegistrationStateChanged，最後core.RegisterPhoneLine(line)。順序有理由：你需要先有線才能訂閱這條線，先有訂閱才能可靠觀察後續過程。外層Softphone.Register可以一次做完這些動作，但它只是包裝；讀公司代碼要展開看裡面到底建立多少條線、訂哪一個物件。",
-        "在這一模型中，創建線和發送註冊不是同一動作。CreatePhoneLine完成不等同伺服器接受；RegisterPhoneLine方法返回也不等同RegistrationSucceeded已到達。方法可能同步拋本地錯誤，伺服器拒絕則可能通過後續狀態事件報告；兩條錯誤路徑都需處理。只在按鈕事件try/catch顯示例外，漏掉事件里的Error，UI會一直停在“註冊中”。",
-        "下面是已核對的SDK操作形態，但不是可直接跑的完整類：account需正確建立，OnLine需使用實際版本事件委託。真實SDK未安裝，不能宣稱編譯驗證；純Lab的註冊模型已在.NET10運行通過。把兩者分開後，你仍能精確追“物件、訂閱、命令、通知”四階段，再把模型映射到真實宣告。"
-      ],
-      "code": {
-        "title": "核對過的官方成員，需當前組件與handler宣告",
-        "text": "ISoftPhone core = SoftPhoneFactory.CreateSoftPhone(5000, 10000);\nIPhoneLine line = core.CreatePhoneLine(account);\nline.RegistrationStateChanged += OnLine;\ncore.RegisterPhoneLine(line);"
-      }
-    },
-    {
-      "heading": "認證挑戰為何會先出現401",
-      "kind": "concept",
-      "paragraphs": [
-        "REGISTER可先沒有認證資訊，伺服器用401和WWW-Authenticate要求客戶端按指定realm、nonce等資料計算認證回應。客戶端再發送帶Authorization的REGISTER，伺服器驗證後可能200。401在這個時序是挑戰，不是最終“密碼錯”；但重復401且沒有成功可能與認證身分、密碼、realm或算法／配置不一致相關，仍要查後續處理。",
-        "用 Call-ID、CSeq method、branch及端點把回應配回同一次交易。只有一個狀態碼的截圖很容易看錯：200可能是OPTIONS回應，401可能屬於另一個賬號，舊REGISTER的200可能晚於新線配置。至少保留method、line/session關聯、請求與最終結果。SIP Call-ID有助關聯，但完整dialog身分還包含tags；註冊交易也不等同通話dialog。",
-        "SDK通常負責SIP認證實現，應用不應自己在紀錄里拼密碼或重算摘要。維護者需驗證配置傳入、挑戰是否到達、SDK是否發後續請求、伺服器是否接受，再看事件層的結果。如果挑戰後沒有新請求，問題範圍偏客戶端認證處理；如果帶認證請求已到伺服器並被拒絕，才需查伺服器政策與賬號參數。這種分層可避免只看到401就重裝SDK。"
+        "追音訊資料時，至少把格式寫成取樣率、每樣本位元數、聲道數和樣本表示/編碼。`16 kHz / 16-bit / mono PCM` 才能讓維護者知道原始樣本如何解讀；只記 `audio bytes=640` 看不出資料是10ms還是20ms，也看不出是否雙聲道。這裡只把格式用於軟體交接，不推導聲卡類比電路。",
+        "若是16,000 samples/s、16 bits/sample、單聲道、20ms一塊：每塊320個樣本；每樣本2 bytes；一塊640 bytes；每秒50塊，未壓縮資料32,000 bytes/s。這是該節點 PCM 資料量，不是所有通話的網路帶寬，因為後段可能重取樣、改編碼或分包。",
+        "同一串 bytes 若用錯格式解讀，可能變速、變調、出現雜音或靜音。處理節點輸入輸出格式不同時，可能需要轉換；轉換在哪個 handler 發生、失敗如何回報、是否緩衝，必須按本地版本文件或來源碼查。"
       ]
     },
     {
-      "heading": "例題一：從兩次REGISTER讀出正確結果",
       "kind": "worked-example",
+      "heading": "逐節點比較預期格式與實際格式",
       "paragraphs": [
-        "輸入時間線是0ms發REGISTER CSeq=1，20ms回401，21ms發帶認證的REGISTER CSeq=2，45ms回200，48ms收到line L1的RegistrationSucceeded，55msUI顯示已註冊。先分別計算交易與顯示延遲：第二次請求到200為24ms，200到SDK事件3ms，事件到UI7ms。這些數字用於理解觀測點，不是廠商保證的延遲。",
-        "結論是這段記錄支持L1本次註冊已被接受；401未否定隨後成功。若UI在22ms就顯示失敗，說明應用在最終結果前錯誤解釋挑戰，最小修正是依SDK最終狀態更新業務顯示，不用抓包中的每一個401直接驅動UI。若55ms顯示的是L2，則事件歸屬或UI映射有問題，不能把整個程式註冊狀態合成一個true。",
-        "對照事件記錄的C#原則是每條線有獨立結果。完整Lab示範先接收403失敗再200成功，handler同時記錄LineId、SipStatus、State。它不模擬Digest算法，只教應用怎樣接收終態；真實認證細節由SIP與SDK驗證，不能把Lab.Register(200)當真實註冊。"
+        "合成流程：Mic-A輸出16kHz/16-bit/mono PCM；處理節點P接受16kHz並輸出16kHz；Speaker-B預期48kHz/16-bit/stereo；最後使用者聽到慢速聲音。不能只把「格式不一致」當確診，要查該版本 MediaConnector 是否自動轉換、支援哪些組合，以及 speaker 初始化時的實際格式。",
+        "舊版1.8.12 MediaConnector 參考明確描述連線會自動轉換來源和目的格式；發行紀錄後續又提 handler 可支援多種格式。這是版本相依事實，不代表任意格式組合都可轉換或沒有成本，也不能當公司 wrapper 保證。應在每個節點記錄實際格式、轉換設定及結果。",
+        "先用固定 PCM 測試檔跑 `source → processor → recorder`，確認轉換後資料能正確解析，再接 speaker。若錄音端格式已錯，故障在 speaker 前；若錄音可聽而 speaker 無聲，範圍往輸出端移動。分段比較可避免同時改來源取樣率、converter 和設備設定。"
       ],
       "code": {
-        "title": "完整 Lab 註冊結果追蹤；對應 registration 情境",
-        "text": "var line = new LabLine(\"L1\");\nvar history = new List<LabRegistrationEvent>();\nline.Changed += e => { history.Add(e); Console.WriteLine($\"{e.LineId} {e.SipStatus} {e.State}\"); };\nline.Register(403); // L1 403 Failed\nline.Register(200); // L1 200 Registered\nConsole.WriteLine(history.Count); // 2\nConsole.WriteLine(line.State); // Registered"
-      },
-      "table": {
-        "caption": "虛構抓包與應用時間線",
-        "headers": [
-          "ms",
-          "來源",
-          "內容"
-        ],
-        "rows": [
-          [
-            "0",
-            "網路",
-            "REGISTER CSeq=1"
-          ],
-          [
-            "20",
-            "網路",
-            "401 challenge"
-          ],
-          [
-            "21",
-            "網路",
-            "REGISTER CSeq=2 + authentication"
-          ],
-          [
-            "45",
-            "網路",
-            "200 for REGISTER CSeq=2"
-          ],
-          [
-            "48",
-            "SDK",
-            "L1 RegistrationSucceeded"
-          ],
-          [
-            "55",
-            "UI",
-            "L1 已註冊"
-          ]
-        ]
+        "title": "格式清單示例（合成資料）",
+        "text": "節點             格式／狀態\nMic-A            16 kHz, 16-bit, mono PCM, ready\nProcessor-P      in=16 kHz mono; out=16 kHz mono\nSpeaker-B        requested=48 kHz, stereo; initialized=?\n\n先查每個實際輸入/輸出格式，再判斷轉換是否支援。"
       }
     },
     {
-      "heading": "例題二：兩條線不能共用一個成功布林值",
-      "kind": "worked-example",
+      "kind": "code-reading",
+      "heading": "讀觀測欄位時同時問單位與位置",
       "paragraphs": [
-        "輸入是L-A註冊成功，L-B註冊被拒絕；用戶在B面板點擊撥號。錯誤程式用anyRegistered=true開啓所有撥號按鈕，因A成功允許B撥出。這個布林值丟失了“哪一條線成功”的關鍵身分，錯誤並非簡單等待時間問題。正確模型把結果按line ID保存，發話時檢查所選線的狀態，再把該線傳給建立通話的方法。",
-        "以下Lab用字典建立獨立狀態。A的200更新A，B的403更新B；最終A=true、B=false。如果查不到線記錄，不能預設為可用。真實系統還需區分NoRegNeeded模式、註冊中和錯誤，不能直接把所有非失敗狀態當已成功。字典只演示獨立歸屬，業務准入規則要明確列出狀態。",
-        "重新配置同一線時還要區分世代。賬號B1替換為B2，B1的成功事件晚到，不應開啓B2。解決可為每次配置分配generation並在接收時核對，或者依實際SDK物件身分隔離。需要同步或單一執行佇列保證檢查與更新原子化，否則“先檢查當前線、後面被換線”的競態仍會發生；並行章會展開這個問題。"
-      ],
-      "code": {
-        "title": "兩條 LabLine 的完整路由",
-        "text": "var a = new LabLine(\"L-A\");\nvar b = new LabLine(\"L-B\");\nvar states = new Dictionary<string, string>();\nvoid Apply(LabRegistrationEvent e) => states[e.LineId] = e.State;\na.Changed += Apply;\nb.Changed += Apply;\na.Register(200);\nb.Register(403);\nbool CanUse(string id) => states.TryGetValue(id, out var state) && state == \"Registered\";\nConsole.WriteLine(CanUse(\"L-A\")); // True\nConsole.WriteLine(CanUse(\"L-B\")); // False"
-      }
-    },
-    {
-      "heading": "拒絕、沒有回覆、事件漏接三種不同失敗",
-      "kind": "concept",
-      "paragraphs": [
-        "伺服器發403表示這個請求在伺服器處理路徑中得到拒絕；它不單獨證明密碼錯。策略、賬號狀態、地址限制或請求要求不符都可能相關。只有客戶端抓到發出而沒有回應，則可能請求未到、回應未回來、transport不匹配、伺服器未處理或抓錯觀察點。兩端抓包或伺服器紀錄才能縮小方向，不應直接說網路絕對斷線。",
-        "若伺服器紀錄與抓包都顯示200，但應用沒有成功事件，可查訂閱物件、訂閱時間、事件轉發和SDK狀態。若handler有成功而UI仍未更新，再查線程派送、過濾條件和狀態覆蓋。將所有症狀都顯示“註冊失敗，請重試”，會丟掉最有用的差異，也可能引發無意義重註冊。",
-        "逾時尤其要細分：應用自己等5秒超時，不代表SDK已取消，也不代表伺服器沒有接受。晚到成功應怎麼處理，由當前操作世代與UI策略決定；關閉舊線之後不能讓舊成功重開按鈕。重試要有上限與間隔，並避免同時建立一堆line。註冊涉及密碼與伺服器負擔，重復按按鈕應由狀態規則控制，不能只靠按鈕視覺上灰掉。"
+        "Ozeki 1.8.12 Microphone 頁列出 `MediaFormat`、`State`、`Level`、`LevelChanged` 和 `MediaDataSent`。頁面說 Level 範圍0–100，但它不是跨版本通用的分貝值；不要把30直接報成30 dB。`MediaDataSent` 提示來源有資料活動，仍需查事件參數、觸發時機，以及是否表示已交給所有接收端。",
+        "應用 log 要把量值和測量點一起寫，例如 `mic.blocks=50/s` 是來源端事件計數，`recorder.bytes=32000/s` 是寫檔端 bytes，`speaker.started=true` 是接收端狀態。每個計數需註明窗口長度、重設規則、是否包含靜音/丟棄，以及它在哪個 handler 量得。",
+        "診斷不在收集更多欄位，而在讓相鄰節點可比較：source 格式/資料活動、處理節點輸入輸出格式和轉換結果、destination 接收/播放狀態。若 SDK 沒有內部統計，就只記錄 wrapper 能合法觀察到的資料，不要捏造「SDK 丟包數」。"
       ]
     },
     {
-      "heading": "註冊成功但接不到來電：綁定與可達性還有距離",
-      "kind": "concept",
-      "paragraphs": [
-        "REGISTER 200證明伺服器接受對應請求，不證明未來入站包能到本機。Contact可能指到不合適的地址、NAT映射可能過期、網路策略可能允許出站卻不允許入站，PBX也可能將呼叫路由到別的賬號。先確認被呼叫的SIP身分與註冊綁定，再用伺服器與客戶端觀測確認INVITE是否到達。",
-        "如果INVITE到網路介面但IncomingCall沒進包裝，要檢查核心是否是註冊使用的同一個實例、來電訂閱是否有效、消息是否由目標程式接收。若IncomingCall已觸發而UI不顯示，則與路由可達性不同，進入應用事件鏈。不能在所有情況都開大防火牆端口，因為某些案例根本是把來電訂到另一份核心。",
-        "註冊狀態過期也會造成“剛啓動能接，過幾分鐘不行”。保留有效期、刷新請求與事件，再比較持續入站通話。驗收需要跨刷新週期和網路恢復，除了一次啓動成功，還要驗證失敗後狀態會撤銷、重獲成功不會多訂一次事件。這裡的網路與狀態機制，說明為何註冊章要建立完整觀念，而不是只教四行方法。"
-      ]
-    },
-    {
-      "heading": "追碼實作：驗證觀測與實際狀態可以不同",
-      "kind": "lab",
-      "paragraphs": [
-        "執行registration，先在bad.Register和Changed訂閱設中斷點，說明為何seen=0而State=Registered；再看good先訂閱，403和200均可觀察。改一個變因：把good訂閱移到第一次Register後，預期failure_is_observed失敗。復原後再把200改503，預期success_is_observed失敗。兩次實驗分別改變觀察能力和真實模型結果，不能混在一起。",
-        "第二個任務按例題二加兩條線，在紙上寫事件ID→字典鍵→CanUse的結果，再逐步執行。故障版故意全部寫入固定鍵L-A，你會發現B更新覆蓋A。修正為e.LineId後，驗收各自獨立。練習產物應包含輸入、事件序列、最終狀態與錯誤位置，而不是只保存控制台截圖。",
-        "真實工程映射卡再列CreatePhoneLine、訂閱、RegisterPhoneLine、包裝轉發、UI更新五個位置。對每個位置寫物件身分與失敗輸出，找到公司代碼後就能沿這五點閱讀。Lab不使用PBX，不測試認證算法；這一限制不會妨礙你學會應用層歸屬、時序和狀態資訊如何保留。"
-      ]
-    },
-    {
-      "heading": "故障鑑別：同樣一直顯示「註冊中」",
       "kind": "diagnostic-case",
+      "heading": "計數正常但聲音異常：定位每個計數的證明邊界",
       "paragraphs": [
-        "案例甲與乙都顯示註冊中超過5秒。甲的網路記錄是REGISTER→200，line.State在診斷快照已成功，訂閱紀錄卻在Register後；乙記錄REGISTER→401→帶認證REGISTER→403，handler也收到Error，但包裝switch只寫成功分支。開始不能把兩案都歸密碼或網路，必須先問控制結果和狀態顯示在哪層不同。",
-        "甲修正為先訂閱後操作，並按SDK支持方式取得初始化快照；驗收快速響應和慢響應、重新配置、程式關閉後晚到事件。乙補失敗轉發與UI終態，不改正確密碼或伺服器；驗收403時撤銷准入並給出可追查錯誤、再次成功可恢復、A/B線互不影響。兩案的修正範圍都是已確認的程式邊界，差異在事件接收與事件表達。",
-        "真正伺服器拒絕仍是乙的輸入條件，不是UI修正能消除。修好顯示後，才能在清楚狀態下繼續查403原因。工程報告應分別寫“顯示卡住已修”“註冊拒絕仍需伺服器證據”；否則一次改變顯示會被誤報成電話系統恢復。你需要同時能說明根本操作與用戶可見狀態，才足以維護長期系統。"
+        "合成紀錄：source `blocks=50/s`；connector 記錄已建邊；recorder `bytes=32000/s`；speaker `State=Started`；使用者回報聲音變慢。這表示源端有資料、錄音支路有寫入、speaker 進入啟動狀態；沒有告訴你轉換輸出節奏、實際播放格式或佇列等待。",
+        "下一步在最靠近症狀的可觀測位置補格式和區塊時序：比對 source 每塊320樣本與 speaker 所需格式；查轉換設定與輸出；用相同測試內容直接記錄處理後結果。若輸入50塊/s、下游只能消耗40塊/s，且沒有丟棄，理論上佇列會增加；這是診斷模型，需用本地計數器確認實際消費率及丟棄策略。",
+        "資料活動正常但主觀品質失敗，最後仍需用固定測試詞或已知錄音做內容驗收。若特定 speaker 變慢，先比較設備和格式協商；所有輸出都慢則回看共享上游。bytes/s 單一數字不能代表速度或可聽品質。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【基礎】註冊、通話和媒體分別回答什麼問題？",
       "level": "foundation",
+      "question": "`16 kHz / 16-bit / mono PCM` 各描述什麼？",
       "answer": [
-        "註冊描述賬號與聯絡位置／有效期；通話描述一次呼叫的建立與終止；媒體描述音訊如何流動。",
-        "註冊成功不是通話成功，InCall不是雙向聲音成功。",
-        "分別記錄line、call和媒體方向的證據，才能定位故障層。"
+        "16 kHz 是每秒每聲道16,000個樣本；16-bit 描述每個原始樣本的表示長度；mono 是一個聲道。",
+        "PCM 指未壓縮樣本表示；實際 API 的格式也可能包含其他封裝或對齊資訊。",
+        "只寫 bytes 數無法還原資料格式。"
       ]
     },
     {
-      "question": "【基礎】UserName=1200、AuthenticationId=login-8，接不到1200時可以直接把認證名改1200嗎？",
-      "level": "foundation",
-      "answer": [
-        "UserName和認證身分負責不同角色，不能從名字不同推定錯誤。",
-        "先對照伺服器賬號與註冊綁定，檢查1200的路由和Contact。",
-        "只有認證資料確實不符才修改認證名；驗收註冊與來電分別測。"
-      ]
-    },
-    {
-      "question": "【基礎】CreateSoftPhone(5000,10000)能代表註冊伺服器port=5000嗎？",
-      "level": "foundation",
-      "answer": [
-        "核對教學習慣中這是媒體端口範圍，不是遠端伺服器設置。",
-        "伺服器由SIPAccount的DomainHost/DomainPort等配置決定。",
-        "讀多載宣告和實值來源，不能把所有port視為同一參數。"
-      ]
-    },
-    {
-      "question": "【應用】REGISTER1在10ms發、401在30ms到；REGISTER2在35ms發、200在80ms到；事件85ms、UI101ms。算三個延遲並結論。",
       "level": "application",
+      "question": "24 kHz、16-bit、mono、每塊10ms，求樣本數、每塊 bytes 和每秒區塊數。",
       "answer": [
-        "第二次請求到200：80-35=45ms。網路成功到事件：85-80=5ms。事件到UI：101-85=16ms。",
-        "首401是後續認證流程的挑戰，不能當作最終失敗。",
-        "這些是本次觀測差值，需確認同一line與請求；不能據此設所有環境45ms超時。"
+        "每塊樣本數為24,000×10/1000=240個。",
+        "16-bit為每樣本2 bytes，單聲道所以每塊240×2=480 bytes。",
+        "每秒1000/10=100塊；數值只描述此 PCM 節點，不含其他封裝。"
       ]
     },
     {
-      "question": "【應用】L-A=Registered，L-B=Failed，包裝用anyRegistered開B按鈕。修正數據模型。",
-      "level": "application",
+      "level": "understanding",
+      "question": "為什麼 MediaDataSent 或 bytes/s 增長仍不能證明使用者聽到正確聲音？",
       "answer": [
-        "全局布林丟失line歸屬，A成功使B誤獲准入。",
-        "按line ID或物件分別保存狀態，B按鈕和CreateCallObject都使用B的判斷。",
-        "回歸A/B成功失敗互換、未知line、重新配置，確保不會跨賬號串用。"
+        "它證明某觀測位置有資料活動，不能單獨確認格式正確、內容非靜音或目的端成功播放。",
+        "須查該版本事件觸發語義，並沿處理/輸出節點補觀察。",
+        "最後用已知內容驗收可聽結果。"
       ]
     },
     {
-      "question": "【應用】舊配置generation=3成功事件在generation=4已開始之後到達，當前4尚未成功。該怎麼處理？",
-      "level": "application",
+      "level": "reasoning",
+      "question": "Mic 是16k mono、speaker預期48k stereo且聲音變慢。如何分段驗證？",
       "answer": [
-        "舊事件對應舊配置，不能升級新配置的狀態。",
-        "接收時核對物件與generation，在一致的同步規則內更新；舊事件可記錄但不應用當前UI。",
-        "測試3失敗/成功晚到、4成功及重新配置，驗證當前准入只由當前世代決定。"
+        "查本地版本 connector/converter 是否支援這個轉換，記錄轉換前後格式與結果。",
+        "先把來源經處理後接到可解析錄音支路，再獨立測 speaker 和實際輸出格式。",
+        "每次只改一個格式或路由因素。"
       ]
     },
     {
-      "question": "【診斷】客戶端沒有回應，伺服器卻記錄200已發；雙方時鐘差未知。先查甚麼？",
       "level": "diagnosis",
+      "question": "source 50塊/s、recorder 32,000 bytes/s、speaker Started，但仍回報變慢。下一筆高價值資料是什麼？",
       "answer": [
-        "請求到達且伺服器發回應，範圍偏回應路徑或客戶端觀察，不支持完全沒到伺服器。",
-        "用請求身分、端點和伺服器本地事件順序關聯，避免直接減不同步時間戳。",
-        "查transport/NAT/抓包位置及客戶端是否接收，再定位SDK處理；驗收兩端關聯記錄與最終line狀態。"
-      ]
-    },
-    {
-      "question": "【診斷】200 REGISTER已確認、IncomingCall未觸發，但客戶端接口看見INVITE。列兩個應用候選原因及區別證據。",
-      "level": "diagnosis",
-      "answer": [
-        "可能來電訂在另一核心，或目標核心的事件轉發／過濾漏掉來電；也可能消息未被目標程式接收。",
-        "比較註冊core ID、IncomingCall訂閱publisher、網路接收與SDK紀錄；handler入口存在與否決定下一層。",
-        "修正確認的訂閱或過濾，回歸兩通連續來電與重註冊，不盲目改賬號或開放全部端口。"
+        "取得 speaker 前最後節點的實際格式、輸入/消耗時序或佇列觀察；現有證據只覆蓋來源和錄音支路。",
+        "用固定 PCM 比較轉換前後每塊長度/時間，檢查消耗是否跟得上。",
+        "Started 是生命週期狀態，不是輸出內容與時序證據。"
       ]
     }
   ],
   "recap": [
-    "註冊是一組賬號到聯絡位置的有期限關係，不是聲道。",
-    "先訂閱再開始操作，保存line與配置世代，避免把舊成功套到新線。",
-    "認證、網路回覆、事件與UI需要分別驗證，修顯示不等於修伺服器拒絕。"
+    "格式與計數先標位置和單位。",
+    "轉換是媒體圖中的責任，不可只因格式不同就判錯。",
+    "資料流量是活動證據，不是可聽品質驗收。"
   ],
-  "resources": [
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab.zip",
-      "label": "下載本主題完整 C# 教學專案",
-      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
-    },
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
-      "label": "下載自製 C# 事件與媒體模型原始碼",
-      "description": "完整專案由主題練習包提供；本章追讀 registration，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
-    }
-  ],
+  "resources": [],
   "sources": [
     {
-      "label": "Ozeki：SIPAccount與RegistrationStateChanged",
-      "url": "https://voip-sip-sdk.com/p_7535-how-to-register-to-a-pbx-using-sip-account.html"
+      "label": "Ozeki MediaConnector API 參考（頁面標 OzekiSDK 1.8.12.0）：來源與目的格式自動轉換的說明；需核對本地版本",
+      "url": "https://voip-sip-sdk.com/doc/html/fd3ef57a-c7f3-df17-509b-9d11890938e5.htm"
     },
     {
-      "label": "RFC3261 §10 註冊、§22 認證",
-      "url": "https://www.rfc-editor.org/rfc/rfc3261.html#section-10"
+      "label": "Ozeki Microphone API 參考（頁面標 OzekiSDK 1.8.12.0）：MediaFormat、Level、State 和 MediaDataSent/LevelChanged 觀察點",
+      "url": "https://voip-sip-sdk.com/doc/html/1acde4be-300f-ff36-9df0-54b1d2a849b8.htm"
     },
     {
-      "label": "Ozeki：TLS配置與註冊事件",
-      "url": "https://www.voip-sip-sdk.com/p_7383-how-to-encrypt-voip-sip-calls-with-sip-encryption.html"
+      "label": "Ozeki Speaker API 參考（頁面標 OzekiSDK 1.8.12.0）：播放端格式、狀態與裝置屬性",
+      "url": "https://voip-sip-sdk.com/doc/html/13fd25fe-5822-b770-de51-afd58fd7c14f.htm"
     },
     {
-      "label": "Microsoft：訂閱與解除事件",
-      "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/how-to-subscribe-to-and-unsubscribe-from-events"
+      "label": "Ozeki 官方發行紀錄：11.0.0 提到 handler 支援多種音訊/視訊格式，提醒維護者依版本查格式契約",
+      "url": "https://www.voip-sip-sdk.com/p_7021-download-ozeki-voip-sip-sdk.html"
     }
   ]
 }

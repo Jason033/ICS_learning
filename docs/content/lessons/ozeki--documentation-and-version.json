@@ -1,273 +1,164 @@
 {
-  "contentVersion": 2,
-  "intro": "維護現有程式時，「最新版文件」常不是最重要的文件。你需要把產品、實際載入的組件、專案目標、型別宣告與範例來源接起來，才能解釋為什麼同名事件有不同參數、同樣原始碼在另一台機器失敗。這章建立可操作的版本與契約模型。",
+  "contentVersion": 3,
+  "intro": "本系列講的是本機音訊資料如何從來源流到播放、處理或錄音端；Ozeki Media API 是其中一種可能實作。第一步不是複製網路範例，而是找出公司程式實際載入的套件、組件與包裝層，再選對應文件。因公開資料存在不同產品/版本標記的下載紀錄與標記舊版的 API 參考，本章會教你辨認這種落差。",
   "prerequisites": [
-    "能區分程式中的變數與資料；本章會補充所有必要的 C# 物件與事件概念。",
-    "若未讀 SIP 主題，可以先用本章的訊息圖理解，不必背封包格式。"
+    "知道一個專案可能同時包含應用程式、第三方 SDK、公司封裝及作業系統裝置 API。",
+    "本章不假設公司一定使用 Ozeki；查證時只讀你有權限的專案檔、部署包或正式環境診斷輸出，不把機密貼到外部服務。"
   ],
-  "studyTime": {
-    "reading": [
-      14,
-      24
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      40
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀含兩個例題的逐步推導；實作需執行 version 情境、設中斷點、改一個變因並復原；作答需寫出判斷與驗收。範圍待個人計時校準。"
-  },
   "goals": [
-    "辨認原始碼、組件、SDK、執行環境和範例版本的不同。",
-    "用完整型別和方法宣告對照文件，解釋編譯錯誤與執行錯誤。",
-    "建立可重現的依賴清單，避免用更新全部套件掩蓋問題。"
+    "分開辨認產品版本、NuGet 版本、載入組件版本、.NET target framework 與公司 wrapper 版本。",
+    "能找到範例程式中一個音訊型別的宣告、來源套件及實際載入位置。",
+    "在 API 不相符時，先停下來建立差異清單，而不是用猜測補出不存在的方法。"
   ],
   "sections": [
     {
-      "heading": "原始碼如何變成能執行的程式",
-      "kind": "concept",
+      "kind": "mechanism",
+      "heading": "為什麼「最新版文件」可能解釋不了眼前的程式",
       "paragraphs": [
-        "C# 編譯器先讀專案目標、原始碼與參考組件，檢查型別和成員是否存在，再產生應用程式組件。編譯時看到的方法宣告，必須和你寫的參數及事件處理器相容；因此「註冊功能一樣」不足以讓另一版方法直接替換。執行時 CLR 載入組件並執行方法，還可能載入底層音訊或其他原生元件。建置成功只通過第一道關卡，並未測到裝置、網路、認證和執行中的資源使用。",
-        "專案裡的 Reference 常指本機 DLL 路徑；PackageReference 指套件名稱和版本，套件可能含多種目標框架的組件。專案設定的 net48、net10.0 或 Windows 專用目標會影響可用 API 和選用資產。舊公司專案使用 .NET Framework，不代表將 TargetFramework 改成 .NET 10 就完成升級：UI、原生相依、組件載入與廠商支援都要逐項驗證。",
-        "維護時先回答兩個不同問題：編譯器參考哪份組件？執行程式真正載入哪份組件？輸出資料夾有舊 DLL、部署腳本複製錯檔、測試工具啟動另一個 EXE，都可能讓兩者不同。若只在原始碼搜尋版本而沒有查執行檔位置，你可能一直修改正確程式卻測另一份程式，形成「修正完全沒效果」的假象。"
+        "除錯時最重要的是執行中的程式載入哪個實作，不是搜尋引擎排第一的頁面。`.csproj` 的 `PackageReference` 描述建置時的套件需求；`packages.lock.json` 或還原結果可補充解析出的套件版本；部署目錄裡的 DLL 則是可供執行的組件。若公司再包一層 `IAudioService`，呼叫者看到的介面還可能不是原廠型別。四者名稱相像，責任卻不同。",
+        "文件也有自己的版本。官方下載頁頂部列出 Ozeki SDK 10.5.1、.NET 10 套件並標示 2026-07-08；同頁歷史區又包含 11.x、12.x 和早期版本條目，不能只憑版號大小推斷它們是同一套 API 的線性升級。MediaConnector、Microphone、Speaker 公開 API 參考則明確標 OzekiSDK 1.8.12.0。這些是頁面範圍不同的證據，不能單憑下載頁和 API 頁推論 10.x/11.x/12.x 的型別相容性。",
+        "所以先建立四欄對照：專案宣告了什麼、實際載入什麼、文件描述什麼、應用封裝額外做了什麼。只有型別名稱或版本字串對得上時，才把文件行為拿來解釋現場。若對不上，把方法簽名和可觀察行為記下，作為待驗證差異；不要先把 wrapper 行為歸給 SDK。"
       ]
     },
     {
-      "heading": "版本不是一個數字，而是一組身分",
-      "kind": "concept",
+      "kind": "code-reading",
+      "heading": "沿著建置與執行證據定位實際契約",
       "paragraphs": [
-        "SDK 產品名稱、套件版本、AssemblyVersion、檔案版本、資訊版本和目標框架不是同一件事。AssemblyVersion 是組件身分的一部分；FileVersion 可用於識別建置檔案；InformationalVersion 可能包含產品版本或提交資訊。廠商可在某些更新保持 AssemblyVersion，因此兩個檔案有相同版本號仍不代表內容相同。精確識別還要記實際路徑與檔案雜湊。",
-        "例如部署清單寫 VoIPSDK.dll 11.2.4.290，但程式載入 C:/temp/VoIPSDK.dll，而預期是 C:/app/VoIPSDK.dll。即使版本相同，來源已不符合清單。雜湊不同時，下一步是查部署檔案與來源；雜湊相同時，再查設定、架構、音訊裝置及運行環境。這個順序把「版本問題」拆成可驗證的假說，而不是把任何錯誤都歸咎於 SDK。",
-        "紀錄也要說明量到的是誰。對包裝 LabController 執行 typeof(LabController).Assembly，得到的是你自己的應用程式組件，不會變成 SDK 版本。要量 SDK，必須選 SDK 中確定存在的型別，例如當前專案實際參考的 ISoftPhone；若使用介面來自另一個組件，也要如實記錄。型別身分包含命名空間與組件，單看名稱很容易混淆。"
-      ]
+        "從啟動專案開始，確認 `.csproj` 使用 `PackageReference` 還是 `Reference` 加 `HintPath`，再查目標框架與部署輸出。`dotnet list package --include-transitive` 能列出解析到的 NuGet 套件，但它不會替你證明另一個部署目錄沒有放入不同 DLL，也不會顯示執行時動態載入的每一個原生元件。發生「本機可用、服務機不能用」時，兩端的部署清單和 DLL 雜湊才是可比較的證據。",
+        "讀 C# 呼叫時，記下變數的宣告型別、建立位置、傳入的參數與回呼訂閱。若欄位型別是公司 `AudioRouter`，追進 wrapper 看它何時建立 `MediaConnector`、如何選擇設備、是否把例外轉成狀態碼。這種閱讀方式會把「Ozeki 沒開始」拆成 wrapper 未呼叫、SDK 回報失敗、OS 裝置不可用等不同假設。",
+        "PowerShell 下列命令用來讀本機 DLL 的識別與雜湊，不會執行它。實際檔案路徑必須從專案或程序載入位置取得；`ProductVersion` 可能是檔案資源版本，不一定等同 NuGet 套件版或 API 相容性。記錄路徑、檔案雜湊、組件名稱/版本和採集時間，才可在另一台機器重現比較。"
+      ],
+      "code": {
+        "title": "先盤點，不先套用網路範例",
+        "text": "dotnet list .\\App.csproj package --include-transitive\n\n$dll = Resolve-Path .\\bin\\Release\\net10.0\\OzekiSDK.dll\n[Reflection.AssemblyName]::GetAssemblyName($dll.Path).FullName\nGet-FileHash $dll.Path -Algorithm SHA256\n(Get-Item $dll.Path).VersionInfo | Format-List FileVersion,ProductVersion\n\n# 同時查 App.csproj：PackageReference、Reference/HintPath、TargetFramework\n# 路徑與 TargetFramework 只作盤點示例；須改成實際專案值。"
+      }
     },
     {
-      "heading": "官方網站有不同年代，先辨認範例的範圍",
-      "kind": "concept",
+      "kind": "worked-example",
+      "heading": "把新下載頁和舊 API 頁放在同一張證據表",
       "paragraphs": [
-        "本次核對的官方註冊教學使用 RegistrationStateChanged 和 RegistrationStateChangedArgs 的 e.State；較早的註冊頁及桌面教學可見 PhoneLineStateChanged 或 VoIPEventArgs<PhoneLineState> 的 e.Item。官方 IncomingCall 參考頁明列組件 VoIPSDK.dll、版本 11.2.4.290。這些是具體頁面提供的線索，不能把網站今日首頁的產品資訊當作所有歷史範例都已遷移。",
-        "另一個差異在接聽：較早的接聽頁文字提 Accept，後續通話教學程式使用 Answer；多通教學又可見 ICall，而其他教學是 IPhoneCall。讀者應看完整方法宣告、下載範例和手上組件，而不是把同義英文硬替換。維護用法必須能回答這個方法在哪個型別、參數為何、可於何狀態呼叫，以及錯誤怎麼回報。",
-        "這不表示網路文件沒用。文件提供操作意圖和可搜尋的成員；Object Browser／Go To Definition 提供目前專案的型別宣告；實際測試提供行為。三者有衝突時，先保存衝突再釐清。不要為了讓一頁範例編譯而把帳號、媒體與 UI 相關程式全部改名，否則你不知道修好的是哪個不相容點。"
+        "假設專案引用公司封裝 `Company.AudioBridge` 4.2.1，部署目錄裡另有 `OzekiSDK.dll`，而公開 API 頁面寫 1.8.12.0。此時不能因下載頁頂部列 10.5.1，就直接把專案判定為該版或同一 API 分支；部署包可能仍是較舊版本，或封裝可能帶有自己的相依項。查 `OzekiSDK.dll` 識別、雜湊及安裝/套件清單，再追 wrapper 的建構呼叫。",
+        "把得到的結果寫成「證據」與「未知」兩欄。例如：部署 DLL 識別為 X、SHA-256 為 Y，能證明檢查的檔案是 X；仍未知的是正式服務進程實際載入的路徑。要補足這一點，需在啟動後由程序記錄載入組件位置，或由受控部署清單確認。避免只貼一行版本字串就下結論。",
+        "本系列往後遇到 `MediaConnector.Connect`、`Microphone.Start` 等具體名稱，會標明來自 1.8.12 公開參考。先確認本地 DLL 文件、IntelliSense/反編譯的型別簽名或公司包裝層映射，再照該版本學。若方法不存在，這代表 API 版本差異或 wrapper 邊界待查，不是你漏背了某個通用音訊名詞。"
       ],
       "table": {
-        "caption": "已核對的具體頁面差異",
+        "caption": "版本證據例（合成盤點資料；不代表公司實況）",
         "headers": [
-          "頁面",
-          "看到的形式",
-          "維護含義"
+          "位置",
+          "合成觀察",
+          "可下的結論／不可下的結論"
         ],
         "rows": [
           [
-            "註冊教學 p_7535",
-            "RegistrationStateChanged，e.State",
-            "核對line實際事件宣告"
+            "下載頁",
+            "Ozeki SDK 10.5.1，.NET 10 套件",
+            "這是查閱當日公開發行頁列出的版本；不證明專案引用它"
           ],
           [
-            "舊桌面教學 p_7272",
-            "VoIPEventArgs，e.Item",
-            "handler參數不能直接混用"
+            "MediaConnector API 頁",
+            "Assembly OzekiSDK 1.8.12.0",
+            "該頁敘述與簽名屬頁面標示的 1.8.12；不當作 10.x 保證"
           ],
           [
-            "IncomingCall API參考",
-            "VoIPSDK.dll 11.2.4.290",
-            "可作特定組件文件線索"
+            "專案檔",
+            "Company.AudioBridge 4.2.1",
+            "能辨認直接引用的 wrapper；仍須追它攜帶或動態載入的 SDK"
           ],
           [
-            "接聽頁 p_7092／通話頁 p_7537",
-            "文字Accept／程式Answer",
-            "以當前型別宣告確認可用方法"
+            "執行程序",
+            "目前沒有記錄 DLL 載入路徑",
+            "不能判定部署檔與執行中組件相同；需補一個執行期證據"
           ]
         ]
       }
     },
     {
-      "heading": "完整簽章教你判斷「可以呼叫」的條件",
-      "kind": "concept",
-      "paragraphs": [
-        "一個方法宣告包含所在型別、方法名稱、參數型別、回傳型別與存取限制；多載代表同名有不同參數組合。CreateSoftPhone 的兩個整數版本和帶本機 IP 的版本，不應只看參數數目猜各數字用途。官方註冊教學的兩個數字是媒體使用的埠範圍；SIPAccount 的 DomainPort 是伺服器端口。兩者都叫 port，卻位於不同角色與層次。",
-        "事件宣告還多一層委託型別。EventHandler<RegistrationStateChangedArgs> 要求 handler 具有相容的 sender 和事件參數；使用 VoIPEventArgs<PhoneLineState> 的 handler 未必能接上它。編譯器抱怨參數不相容時，先比較事件委託與 handler 簽章；不要只把 e.Item 改成 e.State，而保留錯的參數型別。也不要用 dynamic 略過編譯檢查，讓錯誤延後到真實通話才發生。",
-        "事件名稱若來自外層包裝，簽章可能是包裝作者設計的另一種型別。你需要追包裝何處訂閱內層事件、何處將 e.State 轉換為自訂 enum，以及何處重新發出通知。這條轉換鏈可能漏掉錯誤或終止狀態；所以版本核對不只是名詞比較，也是在驗證狀態資訊有沒有在層與層之間丟失。"
-      ]
-    },
-    {
-      "heading": "例題一：相同版本，為什麼修正只在本機有效？",
-      "kind": "worked-example",
-      "paragraphs": [
-        "案例輸入是建置清單指 C:/app/VoIPSDK.dll，AssemblyVersion 11.2.4.290，測試程式實際載入 C:/temp/VoIPSDK.dll，版本也是 11.2.4.290。LabManifest 用虛構資料示範比較：先比版本結果 true，再比路徑結果 false，因此版本一致不足以證明正確部署。修正應檢查啟動目標、複製規則與輸出目錄，讓觀測身分符合清單。",
-        "若實際路徑已一致仍不工作，再比較雜湊與應用 EXE 提交、設定和程式架構，不能無限循環複製 DLL。案例結論是目前有部署來源差異，並非直接證明SDK內容損壞。修正後要在正式測試啓動方式下重印加載資訊；從Visual Studio啓動正常而服務啓動仍錯，表示測試尚未覆蓋真正的啓動路徑。"
-      ],
-      "code": {
-        "title": "完整 LabManifest 比較；對應 version 情境",
-        "text": "var expected = new LabManifest(\"App\", \"11.2.4.290\", \"net48\", \"x86\", \"C:/app/VoIPSDK.dll\");\nvar observed = expected with { Path = \"C:/temp/VoIPSDK.dll\" };\nConsole.WriteLine(expected.AssemblyVersion == observed.AssemblyVersion); // True\nConsole.WriteLine(expected.Path == observed.Path); // False\nConsole.WriteLine(expected == observed); // False\nobserved = expected;\nConsole.WriteLine(expected == observed); // True\n// 虛構清單，不會載入 Ozeki DLL。"
-      }
-    },
-    {
-      "heading": "例題二：一行事件處理器要追兩個宣告",
-      "kind": "worked-example",
-      "paragraphs": [
-        "輸入是編譯錯誤：不能把 OnLine 的方法群組轉為事件所需委託。假設 Object Browser 顯示 Changed 的型別為 Action<LabRegistrationEvent>，但你寫的是 OnLine(object sender, EventArgs e)。Action<T> 只帶一個參數，兩參數 handler 不相容。先對照委託，就能知道改哪個宣告；用 lambda 轉接可以，但必須確保保留 line ID、狀態和錯誤資料。",
-        "修正為 OnLine(LabRegistrationEvent e) 後，先訂閱再 Register(200)，會輸出 L1 Registered。這個方法是自製 Lab 事件的正確用法，不是 Ozeki handler 簽章。真實項目若事件是 EventHandler<RegistrationStateChangedArgs>，就需要兩參數且用該型別。例題的工程能力是「從發布者宣告推導接收者」，而不是背一組在所有SDK都通用的handler。"
-      ],
-      "code": {
-        "title": "可放入 Lab 專案的完整方法形態",
-        "text": "static void ReadLineEvent()\n{\n    var line = new LabLine(\"L1\");\n    line.Changed += OnLine;\n    line.Register(200);\n}\nstatic void OnLine(LabRegistrationEvent e)\n{\n    Console.WriteLine($\"{e.LineId} {e.State} {e.SipStatus}\");\n}\n// LabLine.Changed 的宣告是 Action<LabRegistrationEvent>，不是SDK事件。"
-      }
-    },
-    {
-      "heading": "讀取真實專案的組件資訊，和反射的使用邊界",
-      "kind": "code-reading",
-      "paragraphs": [
-        "這段是 .NET 的診斷程式概念：在已經參考 Ozeki 的應用中，選 ISoftPhone 型別取得 Assembly，再印 FullName 與 Location。程式會量目前型別所屬組件，不會自動替你找「最新 SDK」。已安裝SDK不在本練習範圍，所以這個片段只供未來在授權專案內追讀；可跑的 version 情境只比較虛構清單。",
-        "Assembly.Location 在一般 DLL 部署常可取得檔案位置，但單一檔案發布或特殊載入方式可能是空字串。此時應記載部署模式及組件完整身分，不能拿空位置當未載入。雜湊應由部署檔案產生並保存，不要在每次音訊事件中讀大檔案。診斷資料屬啟動與版本記錄，不該讓回呼的即時處理變慢。",
-        "反射也能列出事件和方法，適合核對簽章；但看到方法存在不能證明可在任意狀態呼叫。Hold 出現在API並不意味來電振鈴階段就能用，Dispose 存在也不意味你是owner。文件的行為契約與程式的狀態模型仍須合併理解。維護清單應至少有每個關鍵操作的前置狀態、事件結果、終止處理和試驗項目。"
-      ],
-      "code": {
-        "title": "需已參考實際 Ozeki 的閱讀片段，未於 SDK 編譯",
-        "text": "var sdkAssembly = typeof(ISoftPhone).Assembly;\nConsole.WriteLine(sdkAssembly.FullName);\nConsole.WriteLine(sdkAssembly.Location);\nConsole.WriteLine(typeof(ISoftPhone).FullName);\nforeach (var evt in typeof(ISoftPhone).GetEvents())\n    Console.WriteLine($\"{evt.Name}: {evt.EventHandlerType}\");"
-      }
-    },
-    {
-      "heading": "CPU 架構、設定與授權也是可比較的相依",
-      "kind": "concept",
-      "paragraphs": [
-        "x86 與 x64 是程式架構，不是帳號類型。純受控程式可能 AnyCPU，但它所依賴的原生元件未必同時提供兩種架構。BadImageFormatException 可以提示格式或架構不相容，但也需看錯誤檔案和載入鏈；不能只看到名稱就斷言所有 DLL 都要換 x86。最小驗證是記程式位元、失敗元件與可重現的啟動步驟，對照既有正常環境。",
-        "設定也是程式輸入。相同 EXE、DLL 和版本，若 PBX Host、Transport、裝置選擇或帳號不同，行為仍不同。不要把登入密碼貼到公開紀錄；保留去識別的欄位名稱、設定來源和是否一致即可。授權或試用行為需核對目前產品與授權文件，歷史網頁的次數限制可能不同，不能隨便把第二通失敗解釋成試用限制。",
-        "完整依賴清單的價值是控制比較。基準機成功、問題機失敗時，一次比較一項：檔案身分、目標框架、架構、設定、裝置、網路路徑。改全部項目可能碰巧恢復，卻無法教你未來如何維護，也很難回滾到可說明的狀態。保留清單能讓下一位維護者理解“哪些條件相同、哪些已被驗證”。"
-      ]
-    },
-    {
-      "heading": "追碼實作：把文件差異變成版本閱讀卡",
-      "kind": "lab",
-      "paragraphs": [
-        "先在 Lab 專案執行 version，於 manifest 建立與比較設斷點，預測三個比較的結果。把 observed 的路徑恢復、把 Arch 改成 x64，重新列出匹配與不匹配欄位；不要刪除斷言，應讓它呈現你刻意加入的差異。復原後 all 應全部通過。這練習讓你看見“版本相同”和“環境相同”是不同命題。",
-        "第二部分不需要 SDK：開啟本章來源中的註冊教學、IncomingCall API頁與舊桌面教學，記下每個事件的所在型別、名稱、參數與頁面版本線索。選兩份不同寫法，不把它們混成可編譯程式，而是寫“要到現有專案查何宣告”。驗收產物是一張能使別人復核的卡：專案參考來源、實際載入來源、目前宣告、文件地址、預期行為與未測項目。",
-        "若未來取得公司專案，先做唯讀檢查再提出修改：查 csproj、packages.lock.json（若有）、實際組件與啟動路徑。不要先升級，再回頭尋找正常基準。長期維護的第一個完整結果是能夠重現原版本，而不是強迫所有專案採用最新環境。"
-      ]
-    },
-    {
-      "heading": "同一個「事件沒更新」，兩種不相容問題",
       "kind": "diagnostic-case",
+      "heading": "遇到範例編譯失敗，先判斷是哪層不同",
       "paragraphs": [
-        "症狀是註冊事件在新機器沒更新畫面。原因甲是拿舊 handler 的 VoIPEventArgs<PhoneLineState> 去訂新事件，建置其實失敗，測試人仍執行上一次成功的EXE。原因乙是建置成功，但包裝只轉發 RegistrationSucceeded，漏掉 Error，失敗時畫面不變。兩者看似相同，第一個是產物與型別不相容，第二個是資訊轉換缺漏。",
-        "先記EXE版本與啓動路徑，並確認最新建置退出碼。若發現編譯失敗，修handler與事件的型別配對，清楚指出為何 e.State 或 e.Item 應使用哪個；驗收清單包括執行產物為此次建置。若內層事件已到達、外層沒發送，畫出轉換表，補上必要狀態並保留原始錯誤。驗收至少模擬成功、拒絕與終止，而不是只試一次成功註冊。",
-        "有限修正需說明影響範圍。改包裝轉換不應同時換PBX或更新SDK；改組件參照也應先完成原行為回歸。對中級維護工作而言，能把“新版壞了”拆成可定位、可重跑的依賴與契約差異，才是比背方法名更重要的能力。"
+        "合成案例：教學寫 `Speaker.GetDefaultDevice()`，公司程式只出現 `IAudioOutput.Open(deviceId)`；搜尋 SDK 文件看不到公司這個方法。第一個結論不應是「新版 Ozeki 改名了」。先追 `IAudioOutput` 的命名空間和組件，找實作類別及建構位置；若它屬於公司 wrapper，先閱讀 wrapper 如何選 deviceId、如何回報失敗。",
+        "若編譯器錯誤指 `MediaConnector` 找不到，檢查參考是否存在與 namespace 是否正確；若建置成功、執行時找不到 DLL，這是部署/載入問題；若建置和載入成功但 `Start` 後沒有資料，才進入本機音訊流程診斷。把三種失敗分層，可以避免把建置故障交給音訊裝置人員。",
+        "每次驗證只改一個已定位的因素：例如先讓測試程式引用專案已鎖定的同一套件，而不是更新全部相依套件。保留修改前的 lockfile、組件清單和錯誤文字，確認差異後再回復或走正式變更程序。版本盤點是排除假設的起點，不是升級 SDK 的理由。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "【基礎】套件版號、AssemblyVersion、DLL路徑各回答什麼問題？",
       "level": "foundation",
+      "question": "下載頁版本、API 參考頁版本、NuGet 版本和執行中 DLL 版本為什麼不能視為同一數字？",
       "answer": [
-        "套件版號描述取得哪個交付套件，AssemblyVersion描述型別所屬組件的身分線索，路徑描述執行時來源。",
-        "三者可以不一致；同版號不保證相同檔案，相同檔名不保證相同版本。",
-        "建立清單並補檔案雜湊及目標框架，才能比較實際產物。"
+        "它們描述不同位置：發行頁列可取得版本、參考頁描述某版型別、套件描述建置解析的依賴，載入 DLL 才是執行程序使用的組件。",
+        "公司 wrapper 可能再遮蔽或轉換 SDK 呼叫，所以還需要追它的來源與執行時載入位置。",
+        "只有逐一對照後，才能判斷範例能否直接套用。"
       ]
     },
     {
-      "question": "【基礎】為何 typeof(MyWrapper).Assembly 不能當作 Ozeki 版本？",
-      "level": "foundation",
-      "answer": [
-        "MyWrapper由自己的專案編譯，所以Assembly是包裝的組件。",
-        "SDK型別必須由目前實際參考的組件提供，選該型別才能觀察它的Assembly。",
-        "記FullName、Location與部署模式；Location空值也不能直接推未載入。"
-      ]
-    },
-    {
-      "question": "【基礎】官方範例同時有 Softphone.Register 與 ISoftPhone.RegisterPhoneLine，維護者如何配對？",
-      "level": "foundation",
-      "answer": [
-        "先追Softphone的class宣告，辨認它是範例包裝。",
-        "再進Register內容，找到建帳號、線路、訂閱與內層RegisterPhoneLine呼叫。",
-        "把外層意圖與內層實際操作分開記，避免在SDK介面搜尋不存在的包裝方法。"
-      ]
-    },
-    {
-      "question": "【應用】預期與實際DLL版本都12.0.1，但SHA256不同，實際路徑又正確。先做什麼？",
       "level": "application",
+      "question": "你看到 `.csproj` 的 PackageReference 是版本 A，正式機 DLL 的組件版本是版本 B。下一步如何取得可比較證據？",
       "answer": [
-        "版本與路徑相同仍不能保證文件內容相同；雜湊差異是可驗證的部署證據。",
-        "比較構建來源、複製腳本和基準文件；先保留故障產物，不盲目覆蓋全部組件。",
-        "替換為已確認的產物後，驗證實際hash並跑註冊、撥號和第二通回歸。"
+        "先確認 PackageReference 是直接還是轉移套件，並查 lockfile/還原結果及部署檔案路徑。",
+        "讀 DLL assembly identity 和 SHA-256，正式程序若允許則確認它實際載入的路徑；不要只比較檔名。",
+        "同時檢查 wrapper 依賴與 target framework，列出差異後再決定是否為部署不一致。"
       ]
     },
     {
-      "question": "【應用】事件Action<LabCallEvent>卻接 OnState(object,EventArgs)。改e.Item就能修嗎？",
-      "level": "application",
+      "level": "understanding",
+      "question": "為什麼「目前官方最新下載頁」不必然是你排查舊程式時的正確 API 依據？",
       "answer": [
-        "事件需要一參數委託，handler有兩參數，首先是不相容的簽章。",
-        "修改為OnState(LabCallEvent e)或明確轉接，並保留CallId和State。",
-        "建置通過後模擬一條事件，確認不是只把編譯錯誤移到執行時。"
+        "因為舊程式可能仍部署先前版本，簽名、命名空間、裝置共享語義或套件布局都可能不同。",
+        "本次查核裡下載頁為 10.5.1，而幾個 API 頁明確標 1.8.12，這正是必須比版本的例子。",
+        "應以實際執行版本配對的 API 契約來解釋現象；新版本文件只用來規劃另一次有驗收的升級。"
       ]
     },
     {
-      "question": "【應用】開發機x64成功、服務程式x86出現原生DLL加載失敗，SDK版本相同。有哪些下一項資料？",
-      "level": "application",
+      "level": "reasoning",
+      "question": "範例的 `Speaker.GetDefaultDevice()` 在公司 wrapper 型別中不存在，但公司程式可正常播放聲音。你會怎樣解釋並繼續追查？",
       "answer": [
-        "先取得程式架構、錯誤指向的原生文件、加載路徑和部署目標。",
-        "比較基準架構與原生依賴支持範圍；同SDK版本不能排除部署缺文件或位元不匹配。",
-        "只修已確認的依賴/架構組合，再用服務啓動方式驗證，不能用IDE啓動替代。"
+        "先辨認呼叫端拿到的是哪個 namespace/assembly 的型別，不從方法拼字猜 API。",
+        "追 wrapper 的播放物件建立、設備選擇與錯誤映射，確認它是否包裝 SDK 或作業系統 API。",
+        "若需求是維護現有行為，記下 wrapper 契約和其底層版本；不需要為了符合教學範例而重寫公司呼叫。"
       ]
     },
     {
-      "question": "【診斷】SDK收到RegState.Error，包裝紀錄沒有事件，UI仍舊成功。如何修與驗收？",
       "level": "diagnosis",
+      "question": "正式機沒有音訊，但 `dotnet list package` 顯示 SDK 套件和開發機一致。下一個最能區分原因的證據是什麼？",
       "answer": [
-        "內層已收到Error，說明觀察斷點在包裝轉發而非註冊入口。",
-        "檢查轉換switch是否遺漏Error，新增適當失敗/過期狀態，記錄原始錯誤與line歸屬。",
-        "測試成功→失敗→重註冊，以及UI晚到成功事件，確保舊成功不能蓋當前失敗。"
-      ]
-    },
-    {
-      "question": "【診斷】Go To Definition顯示新簽章，運行紀錄仍舊e.Item格式，build失敗但程式正常啓動。首要原因？",
-      "level": "diagnosis",
-      "answer": [
-        "這些資料支持正在執行舊產物，不支持“新SDK仍發舊事件”的結論。",
-        "先確認建置退出碼和啓動EXE位置，再修編譯不相容並部署新產物。",
-        "驗收同時比對啓動版本、事件簽章對應處理器與註冊狀態回歸；留下可復現命令。"
+        "先比較正式機程序實際載入的組件路徑、版本與雜湊；套件清單只證明建置解析資訊，不保證部署載入相同檔案。",
+        "若載入組件相同，再比較目標裝置識別、wrapper 選擇結果、初始化/Start 狀態與來源資料是否非零。",
+        "每個觀察都對應一段責任，不能以「套件一樣」排除部署和裝置差異。"
       ]
     }
   ],
   "recap": [
-    "用實際產物身分配對文件，不把網站的所有年代當成一版。",
-    "簽章決定可接哪種 handler；行為契約決定何時可呼叫。",
-    "最小依賴比較和清楚回歸，比一次升級全部更能建立維護能力。"
+    "先從實際專案與執行程序找版本，再讀相符的 API 契約。",
+    "wrapper 也是一層需要閱讀的程式，不要把它的狀態轉換當成 SDK 保證。",
+    "公開 API 範例的版本標示是證據的一部分；版本不明時，不把方法名寫成無版本的標準行為。"
   ],
-  "resources": [
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab.zip",
-      "label": "下載本主題完整 C# 教學專案",
-      "description": ".NET 10 原始碼與操作說明；解壓後依本章指定模式追讀。自行建立的模型，與公司專案分開。"
-    },
-    {
-      "path": "./assets/labs/ozeki-maintenance-lab/Program.cs",
-      "label": "下載自製 C# 事件與媒體模型原始碼",
-      "description": "完整專案由主題練習包提供；本章追讀 version，型別均為 Lab 前綴，沒有 Ozeki DLL 或真實通話。"
-    }
-  ],
+  "resources": [],
   "sources": [
     {
-      "label": "Ozeki：註冊與事件宣告的教學",
-      "url": "https://voip-sip-sdk.com/p_7535-how-to-register-to-a-pbx-using-sip-account.html"
+      "label": "Ozeki 官方下載與版本紀錄：下載頁頂部列 SDK 10.5.1（標示更新日 2026-07-08），同頁的歷史區亦出現 11.x／12.x 與舊版條目；不要自行推定它們屬同一可直接比較的 API 分支",
+      "url": "https://www.voip-sip-sdk.com/p_7021-download-ozeki-voip-sip-sdk.html"
     },
     {
-      "label": "Ozeki：IncomingCall 參考頁，明列11.2.4.290",
-      "url": "https://voip-sip-sdk.com/doc/html/7e045b12-18d6-48b7-8951-3dff3b61b2a6.htm"
+      "label": "Ozeki 公開 API 參考：MediaConnector 類別與 Connect/Disconnect/Dispose，頁面標記 OzekiSDK 1.8.12.0",
+      "url": "https://voip-sip-sdk.com/doc/html/fd3ef57a-c7f3-df17-509b-9d11890938e5.htm"
     },
     {
-      "label": "Ozeki：舊桌面範例 e.Item",
-      "url": "https://voip-sip-sdk.com/p_7272-voip-softphone-development.html"
+      "label": "Ozeki 公開 API 參考：Microphone 類別與裝置、格式、狀態、事件，頁面標記 OzekiSDK 1.8.12.0",
+      "url": "https://voip-sip-sdk.com/doc/html/1acde4be-300f-ff36-9df0-54b1d2a849b8.htm"
     },
     {
-      "label": "Microsoft：Assembly.Location 的部署限制",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.reflection.assembly.location"
+      "label": "Ozeki 公開 API 參考：Speaker 類別，頁面標記 OzekiSDK 1.8.12.0",
+      "url": "https://voip-sip-sdk.com/doc/html/13fd25fe-5822-b770-de51-afd58fd7c14f.htm"
     },
     {
-      "label": "Ozeki：接聽頁需與當前宣告配對",
-      "url": "https://voip-sip-sdk.com/p_7092-how-to-accept-incoming-call-using-csharp.html"
+      "label": "Microsoft .NET：dotnet list package 顯示專案直接與轉移相依的 NuGet 套件",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-list-package"
+    },
+    {
+      "label": "Microsoft .NET：AssemblyName.GetAssemblyName 讀取組件識別資訊",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.reflection.assemblyname.getassemblyname?view=net-10.0"
     }
   ]
 }

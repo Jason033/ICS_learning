@@ -1,288 +1,218 @@
 {
-  "contentVersion": 2,
-  "intro": "通話聽起來穩定又能及時互動，需要在到達變化、播放期限和等待延遲之間取捨。Jitter buffer不是越大越好，Jitter統計也不是使用者評分。本章從媒體時鐘和播放排程建立模型，再用同一到達時間比較兩種緩衝、手算抖動與延遲預算，學習判斷網絡和本地處理的不同機制。",
+  "contentVersion": 3,
+  "intro": "RTP 封包到達時間不均，不一定立刻成為斷音；接收端會依媒體時間線緩衝資料，並在預定播放期限取用。緩衝可以吸收部分到達變動，代價是多等一段時間；遺失、重排、晚到和兩端時鐘略有差異，造成的證據也不同。本篇用 8 kHz 時鐘的短時間線推算 jitter，再把指標連到實際播放期限。",
   "prerequisites": [
-    "理解 RTP timestamp、媒體 clock 與每包媒體時間；本章重新列出換算方式。",
-    "能區分到達時間與目標播放時間；不需 Wireshark，例題完整提供資料與時間基準。"
+    "先讀 RTP/RTCP，了解 timestamp 是媒體時間而非網路到達時間，並認得 RTCP jitter 欄位。",
+    "本篇聚焦接收時序。Wireshark 欄位操作另在 Wireshark 系列；本機音訊裝置問題另在 Ozeki 系列。"
   ],
   "goals": [
-    "能解釋到達變化、重排、緩衝、late drop與端到端延遲的關係。",
-    "能手算播放期限、RFC jitter與階段延遲，不混用平均和尾部。",
-    "能以同輸入對照驗證緩衝取捨並區分網絡／解碼／輸出瓶頸。"
+    "能用 RTP timestamp clock 把一段媒體時間換成 tick，並計算到達間隔相對媒體間隔的差。",
+    "能解釋 RTP interarrival jitter 是平滑統計量，不等於最大延遲、jitter buffer 大小或主觀音質。",
+    "能利用序號、timestamp、到達時間、播放期限與 RTCP 報告區分遺失、重排、晚到和時鐘漂移候選。"
   ],
   "sections": [
     {
-      "kind": "concept",
-      "heading": "即時聲音爲什麼需要時間表，而非收到就直接播",
-      "paragraphs": [
-        "發送者通常按穩定媒體時鐘生成20ms一段，但網絡與系統調度讓到達間隔變化。若每份一到就播，會把這種變化變成播放不均；若按媒體時間穩定播放，需要先等待一些資料。Jitter buffer保存已到達的媒體並按排程取出，是把運輸時間變動轉換成穩定輸出的機制。",
-        "播放有deadline：到期需要這一段樣本時，資料還沒來，就只能等待、隱藏、靜音或丟棄遲到內容，策略由系統決定。後來到達不表示還能照原時間播放。TCP最終補齊舊資料的想法不直接適合媒體，因爲聲音需要順序與及時一起成立。完整接收數量可能與可播放數量不同。",
-        "等待越長可吸收更多到達變化，但增加通話反應。PTT許可、採樣、編碼、排隊、網絡、緩衝、解碼和輸出都貢獻延遲；只調接收buffer會改變其中一段。基礎概念是區分網絡實際到達、應用可用時刻和用戶體驗，不把三種時間叫同一latency。"
-      ]
-    },
-    {
       "kind": "mechanism",
-      "heading": "建立播放時間：媒體基準、clock與等待量",
+      "heading": "播放時要對齊媒體時間，不是封包一到就播",
+      "flow": [
+        "RTP timestamp 標明媒體時間",
+        "網路封包按不均勻時間抵達",
+        "接收端暫存並依序／期限取用",
+        "期限內資料解碼呈現；逾期資料可能丟棄或隱藏"
+      ],
       "paragraphs": [
-        "本章固定期限例題採同一本地相對時間軸：參考時刻 T0＝0ms，S0 是第一幀的 timestamp；所有 arrival 與 deadline 都相對此本地起點計量。簡單模型選擇第一幀媒體起點S0和本地參考時刻T0，clock將timestamp差換秒，deadline(i)=T0+(Si－S0)/clock+buffer。它讓媒體按自身時間進度播放，而非按封包到達間隔。實際有啓動、drift、重排、丟失與自適應策略，本文先用固定基準使每項可手算。",
-        "來源重新開始、timestamp繞回、codec clock變更都會影響對應，不能舊映射無限沿用。跨主機時間可能不同，單程絕對延遲需要同步條件；本模型直接給共同起點。把RTP timestamp當電腦日期，會得到巨量或負等待，這不是網絡異常而是單位錯誤。",
-        "固定buffer參數表達等待，不是絕對網絡時限。自適應buffer可依據到達變化調整，調整又影響播放速度、靜音插入或遲到策略。選擇依產品反應目標與資料特性；穩定幾十秒不保證突發都能處理，需正常與故障窗口對照。"
+        "sender 以穩定的媒體時鐘產生音訊 frame；封包經網路後可能早到、晚到、重排或遺失。若接收端每包一抵達就立即播放，播放節奏會直接跟著網路抖動變化。jitter buffer 暫存一段媒體，再按 timestamp 對應的時間順序輸出。",
+        "buffer target 延長可增加封包在 deadline 前抵達的機會，但會增加播放延遲。固定 buffer 可能對小抖動穩定、對大突發不足；adaptive buffer 依觀察增減 target，仍需避免突然調整引起聲音跳動。遲到封包即使最終到達，也可能已無法趕上對應播放期限。",
+        "packet loss concealment（PLC）是接收端在缺資料時依 codec/實作填補或預測一小段輸出的策略，不能復原原始遺失內容。是否使用 PLC、如何調整 buffer 和何時丟棄，是媒體引擎策略；本篇不把特定 SDK 的行為當規範。"
       ]
     },
     {
       "kind": "worked-example",
-      "heading": "例題一：同一網絡資料，40ms與60ms兩種期限",
-      "paragraphs": [
-        "本例 T0＝0ms、S0＝0，arrival 和 deadline 使用相同本地相對毫秒基準。項目arrival表爲seq10..14，timestamp0、160、320、480、640，clock8000，媒體時刻0、20、40、60、80ms；arrival25、45、82、85、105ms。buffer40時deadline40、60、80、100、120。前三筆分別提前15、15、晚2；後兩提前15，所以唯一遲到是seq12。",
-        "buffer60時deadline60、80、100、120、140，五筆都在期限前。網絡arrival未變，減少late來自多等20ms，不是包傳得更快。若業務只能容忍原預算，要看這20ms是否可接受；一張「late0」表不能單獨證明總體更好。",
-        "若buffer40時對seq12用PLC填2ms後再處理完整20ms幀，實際策略需查實現，不能從CSV斷言聽到特定缺字。示例只驗證按給定期限分類。對於晚到整幀或重複資料，播放、丟棄與隱藏的規則要與媒體格式一起定，不把圖上的點當真實聲音。"
-      ],
+      "heading": "用同一條 8 kHz RTP 時間線算 interarrival jitter",
       "table": {
-        "caption": "給定模型中的播放期限",
+        "caption": "合成資料；每個媒體間隔是 20 ms，RTP clock 為 8000 Hz",
         "headers": [
-          "seq",
-          "媒體ms",
-          "到達ms",
-          "deadline40",
-          "deadline60"
+          "packet",
+          "timestamp tick",
+          "到達時間",
+          "到達間隔 − 媒體間隔",
+          "累積估計 J"
         ],
         "rows": [
           [
-            "10",
+            "P0",
             "0",
-            "25",
-            "40",
-            "60"
+            "0 ms",
+            "—",
+            "0 ms（初始）"
           ],
           [
-            "11",
-            "20",
-            "45",
-            "60",
-            "80"
+            "P1",
+            "160",
+            "20 ms",
+            "0 ms",
+            "0 ms"
           ],
           [
-            "12",
-            "40",
-            "82",
-            "80：晚2",
-            "100"
+            "P2",
+            "320",
+            "45 ms",
+            "+5 ms",
+            "0.3125 ms"
           ],
           [
-            "13",
-            "60",
-            "85",
-            "100",
-            "120"
+            "P3",
+            "480",
+            "60 ms",
+            "−5 ms",
+            "0.6055 ms"
           ],
           [
-            "14",
-            "80",
-            "105",
-            "120",
-            "140"
+            "P4",
+            "640",
+            "80 ms",
+            "0 ms",
+            "0.5676 ms"
           ]
         ]
-      }
+      },
+      "paragraphs": [
+        "在 8000 Hz 時鐘下，一個 tick 是 1/8000 秒；20 ms 對應 160 ticks。RFC 3550 的 jitter estimator 逐包更新：J←J+(|D|−J)/16，其中 D 是接收間隔和媒體 timestamp 間隔在同一時鐘單位下的差。P1 到 P2 的實際到達間隔為25ms，媒體間隔20ms，故 D=+5ms=40ticks。從 J=0 開始，更新後 J=0+(40−0)/16=2.5ticks=0.3125ms。",
+        "P2 到 P3 的到達間隔15ms，比媒體間隔20ms短5ms，D=−40ticks；公式取絕對值，J=2.5+(40−2.5)/16=4.84375ticks，換算約0.6055ms。P3 到 P4 間隔20ms，D=0；J=4.84375−4.84375/16≈4.5413ticks，即0.5676ms。表中值是用同一媒體 clock 算出的平滑估計，不是 max arrival deviation。",
+        "若直接比較 capture wall-clock 和 timestamp，前提是 timestamp clock rate 正確、到達時間精度足夠、流向與 SSRC 一致。時鐘單位先一致再算；Opus 的 RTP clock 是48 kHz，不能把表內 8000Hz 套到 Opus。實際解碼時間、buffer deadline 和對端輸出都不由這個 J 單一數字決定。"
+      ]
     },
     {
       "kind": "mechanism",
-      "heading": "重排、重複、遺失、晚到分別改變什麼",
+      "heading": "重排、遺失和晚到需要不同觀測",
+      "table": {
+        "caption": "相似的序列空缺可有不同時間結果",
+        "headers": [
+          "資料現象",
+          "序號／到達表現",
+          "對播放的可能影響"
+        ],
+        "rows": [
+          [
+            "遺失",
+            "後續序號到達，預期序號未見",
+            "接收端可能 conceal 一段媒體"
+          ],
+          [
+            "重排",
+            "較大序號先到，較小序號稍後補到",
+            "若較小序號趕在期限前，可恢復順序"
+          ],
+          [
+            "晚到",
+            "封包在對應播放期限之後抵達",
+            "即使收到也可能丟棄，使用者仍聽到缺口"
+          ],
+          [
+            "重複",
+            "同一序號／封包再次出現",
+            "接收端通常去重；抓包重複未必是重複播放"
+          ]
+        ]
+      },
       "paragraphs": [
-        "亂序是到達次序與媒體／seq次序不同，等待窗口允許時可重新排序；重複是同來源同區間再次出現，通常不應播放兩次；遺失是所需資料未可用；晚到是資料最終出現但錯過播放。這些機制可同時發生，需要分別計數，不用一個loss欄包全部。",
-        "例如seq20、22、21到達，21在播放前到即可補順；在播放後到是晚到，當前檔仍包含全部seq。若21永遠不在該觀察窗，先叫未收錄缺口，雙端和完整性查證後才縮小遺失原因。重複22增加接收包數但不增加可播放媒體時間。",
-        "軟件queue增長則是另一個問題：輸入服務速率持續大於消費速率，buffer越加越大也無法長期穩定。需要容量、丟棄或背壓策略，音訊deadline通常更重及時性；哪些業務可丟取決產品合同，不能把媒體drop策略硬套控制命令。"
+        "單一 capture 的 seq 缺口只能說該觀察點沒有記錄到中間序號；抓包本身可丟包，過濾器也可能只保留部分流。跨兩端 capture 時需核對相同 media leg/SSRC、capture loss counters 和時間窗。若經 relay 轉送時重建了 RTP，兩側序號可能不再可直接逐包配對。",
+        "late 和 lost 的差別是期限：接收端 buffer 若等待足夠時間，重排或延遲可能仍能按順序播；但更大的 buffer 也增加延遲。RTCP RR 的 fraction lost 按統計窗口估算封包遺失，不會逐項告訴你哪個 packet 在播放器 deadline 前是否到達；應用層 late/drop/PLC 指標更貼近播放結果。",
+        "音質體驗還受 codec、payload mapping、播放設備、回音和音量影響。若封包與 decoder 正常，不要繼續單獨調網路 jitter buffer；應沿資料路徑往本機交接查證。"
       ]
     },
     {
       "kind": "worked-example",
-      "heading": "例題二：Jitter估計不等於最大晚到",
+      "heading": "buffer target 是期限預算，不是讓延遲消失",
       "paragraphs": [
-        "相同項目序列，到達間隔20、37、3、20ms，媒體間隔全20。D以8000Hz單位依次0、136、-136、0。J從0起：第一次0，第二136/16＝8.5，第三8.5+(136－8.5)/16＝16.46875，第四16.46875+(0－16.46875)/16＝15.439453125。",
-        "最後J換毫秒是15.439453125/8000×1000＝1.929931640625ms。它沒有等於37ms到達間隔，也沒有等於17ms相對變化峯值或seq12晚到2ms。三種數有不同定義；工具的max jitter、mean jitter、delta與應用late count不能混成一列延遲。",
-        "該平滑算法在資料恢復穩定後會逐漸下降，之前尖峯仍影響一段時間。少量樣本不足以評價整通話質量；來源clock與窗口變化也會改變數值含義。例題給全部輸入和中間值，便於你獨立檢查程序輸出不是只信PASS。"
+        "假設 receiver 採 40ms 的目標緩衝，第一個必要媒體時間點在 t=0；相關封包若在 t=0 到 t=40ms 間抵達，還有機會進入期限內播放，超過期限就可能成為 late。這是合成說明，不是所有 buffer 對 timestamp 的固定實作方式。目標從 40ms 改 60ms，可能多吸收約 20ms 的到達變動，也會增加相應的播放等待。",
+        "緩衝不是重傳：對方不會因為接收端多等 20ms 自動把遺失包送回來。太短的 buffer 可能丟棄大量可趕上的 late packet；太長可能讓互動變慢。一次調整要同時量測 buffer target/actual delay、late discard、concealment、RTCP 指標與端到端互動延遲。",
+        "不同廠商將 jitter、network delay、buffer delay、playout delay 命名可能不同；需查統計定義和單位。只看到儀表板寫「Jitter=25 ms」不能直接把它當成應將 buffer 改成 25 ms，也不能說最大封包晚到 25 ms。"
       ]
     },
     {
       "kind": "mechanism",
-      "heading": "端到端預算：每段延遲有不同原因",
+      "heading": "時鐘漂移能在沒有突發 jitter 時逐漸累積",
       "paragraphs": [
-        "用一個指定的最早樣本模型：湊包20ms、codec額外等待5、網絡15、接收buffer40、解碼3、輸出buffer10，合計93ms。每數是當前設計給定的階段，不是通用標準或實測。改接收buffer60後合計113ms；保持網絡15，不能寫網絡延遲增加20。",
-        "若雙向對話還涉及人反應與控制許可，往返交互感受可能更復雜。RTT不能直接二分得到每向的準確單程，SIP邀請時間也不是持續媒體延遲。針對哪種業務體驗先定義起點與終點，例如講話到遠端輸出或PTT按鍵到第一幀；測量纔可比較。",
-        "預算應留正常變化與峯值餘量，又不能無限等待。平均低但偶發長停頓可能更影響體驗；用足夠樣本觀察尾部、burst、late drop與隊列。參數選擇要對應業務需要與實際負載，不根據教材93ms就宣佈公司系統上限。",
-        "平均值、最大值與百分位回答不同問題。五次延遲90、90、91、92、150ms，平均513/5＝102.6ms，中位數91ms，最大150ms；用最近秩定義p95在這五次會取150，但樣本太少不能穩定描述真實尾部。只寫平均約103會隱藏那次長停頓，只有最大又不說明發生頻率。測量必須同時保留樣本數、窗口與算法。",
-        "連續丟失和分散丟失也有不同媒體後果。100幀缺5，五份分散可能各由PLC短時隱藏，連續五份則100ms缺口；平均缺失率同5%仍可能聽感不同。報告記錄burst長度、晚到、緩衝策略與編碼條件，不只用百分比排名。沒有授權真人音頻時，先講這項機制與合成時序，不宣佈主觀品質已驗證。",
-        "MOS等主觀評分或估計模型有自己的輸入、條件與評價流程，不是把jitter數字換名稱即可得到。實際體驗還含裝置、聲學環境和用戶動作。工程目標應寫成可測要求，例如指定負載下late比例與互動期限，再補實際聽測；標準統計是診斷線索而非單一合格印章。"
-      ]
-    },
-    {
-      "kind": "mechanism",
-      "heading": "Clock drift與播放速率：穩定到達仍可慢慢堆積",
-      "paragraphs": [
-        "發端與收端硬體採樣時鐘可能有微小頻率差，長時間累計會讓buffer漸增或漸減，稱drift；不是每個網絡延遲波動。系統可能用重採樣或其他適應機制管理，需遵循音訊格式與品質要求。短5包或1秒tone無法驗證小時級drift。",
-        "如果發端每秒產生8000frames而收端只消費7990，差10frames/s，一分鐘多600frames＝75ms媒體。網絡各包準時也會發生；改變網絡jitter等待不能消除持續頻率差。查裝置時鐘、重採樣與消費計數，而不只抓一個delta圖。",
-        "另一個相似症狀是解碼CPU平均不足：每秒50幀輸入、45處理，每秒多5幀20ms，即100ms/s積壓。兩者速率機制不同，需處理耗時與實際時鐘記錄區分。持續趨勢與短期抖動分開，才能選擇有效修正。"
-      ]
-    },
-    {
-      "kind": "code-reading",
-      "heading": "讀項目的期限與J計算：單位是一條不變量",
-      "paragraphs": [
-        "以下程式採本例 T0＝0ms、S0＝0；a.Milliseconds 是相對同一本地起點的到達時間。Arrival記錄seq、timestamp和Milliseconds，代碼先timestamp/(double)rate×1000換成媒體ms，再加40或60。比較arrival>deadline判斷late，等於deadline在此模型不算late。這是模型明確的邊界；實際音訊系統是否留處理餘量需合同，不能直接用相同比較替代SDK。",
-        "J循環用到達ms差乘rate/1000換成RTP單位，再減timestamp差。Math.Abs保證早／晚相對變化都納入，除16平滑，最後再換毫秒。若忘記除1000，D會擴大1000倍；若把int除法用於clock，可能把小間隔截成0。數據類型與單位解釋是逐行追碼的核心。",
-        "Check驗證40ms一筆late、60ms零，而不是用Thread.Sleep製造不可控時間。固定輸入可重跑，變因只改buffer或arrival表，所以能測試規則。項目沒有音訊device、網絡或專業jitter buffer實現，真實播放和自適應仍需產品驗證。"
-      ],
-      "code": {
-        "title": "取自已編譯的期限與抖動模型",
-        "text": "double media = a.Timestamp / (double)rate * 1000;\ndouble deadline = media + 40;\nbool late = a.Milliseconds > deadline;\ndouble d = arrivalDeltaMs * rate / 1000.0 - timestampDelta;\njitter += (Math.Abs(d) - jitter) / 16;"
-      }
-    },
-    {
-      "kind": "lab",
-      "heading": "實作：相同輸入比較緩衝，再製造一次故障變因",
-      "paragraphs": [
-        "運行項目讀取playout.csv，先不看late列自己算五個deadline和早晚；確認40ms一late、60ms零。再手算J中間值與輸出1.929931640625ms。交付表寫輸入不變、改等待20ms帶來哪項改善與代價，並註明不是真人音質測試。",
-        "變因將seq12 arrival82改95，保持其他輸入，預測40ms晚15、60ms仍提前5；如果改105則兩者都晚。源Check會因預期不同而失敗，先修改實驗期待並保存對照，再恢復原值驗證基準。不要爲了PASS忽略失敗，這正是確定輸入／期待一起構成驗收的練習。",
-        "另手算每秒8000/7990消費差與50/45解碼差，解釋哪種不能僅加buffer解決。驗收包括單位、邊界、時間預算與持續速率；圖或CSV只是證據，報告用白話說明因果。已編譯固定模型不代表現場網絡、聲卡或SDK已測量。"
+        "傳送端取樣時鐘和接收端播放時鐘是兩個獨立時鐘，頻率有微小差異時，封包到達可能看似平穩，buffer 卻逐漸變滿或變空。ppm 表示每百萬份的相對偏差。若兩端相差 50 ppm，10 分鐘可能累積 50×10⁻⁶×600s=0.03s，也就是約30ms 的媒體量。",
+        "接收端可透過重取樣、clock recovery、調整緩衝或其他實作處理。維護時看 buffer occupancy 是否長期單向變化、時間戳斜率和 sample/clock 轉換；若只有短窗口平均 jitter，可能完全看不出這項慢性問題。",
+        "也要排除 log clock 不同步。wall-clock 偏差會讓跨主機時間比較錯位，但它與媒體時鐘漂移不同：前者影響觀測排序，後者會使播放佇列逐漸變化。兩者都需要不同的量測基準。"
       ]
     },
     {
       "kind": "diagnostic-case",
-      "heading": "音訊斷續的兩份新證據如何改變優先級",
+      "heading": "同樣「聲音斷續」：讓新證據改變候選排序",
       "paragraphs": [
-        "初始症狀斷續，候選是網絡burst、接收等待不足、解碼排程或裝置underrun。證據A顯示到達間隔偶發80ms，缺少幀的播放期限40ms，late計數同步增長，CPU穩定。可有限比較緩衝策略或改善運輸burst，測late及增加延遲，不把所有timeout拉長。",
-        "證據B顯示到達準時，decode每幀25ms卻輸入20ms、queue持續增長。此時先處理計算或工作調度，增buffer只能延後症狀；測試同負載後處理平均與尾部都趕得上，queue不增長。兩份不同機制可能有同一聽感，額外證據才決定修正。",
-        "迴歸持續語音、突發、靜音恢復、重連、負載與裝置切換，記錄所有影響體驗的結果。小樣本單次聽起來好不能宣佈根因解決；目標是可解釋、可重現、可維護的取捨。基礎時間與容量模型完整，纔不會讓一串品質縮寫取代推理。"
+        "合成症狀：通話每數秒短暫斷音。起始候選至少有短暫媒體遺失、封包晚到超過播放期限、decoder 格式不合及本機呈現中斷。不要先把所有現象標成 jitter。",
+        "補證 A：接收端 RR interval loss 上升，RTP 序號空缺也在兩個觀察點之間出現；先調查路徑與 capture drop，再核對 sender 是否實際送出。補證 B：序號最後完整，接收端 late-discard/PLC 增加，arrival deviation 超過 buffer target；較支持 deadline/queue 問題，調整 target 前先檢查延遲預算。補證 C：RTP 與 decoder frame 正常，但本機呈現計數停頓；轉向 Ozeki/本機媒體輸出邊界。",
+        "最有區分力的測試是取得同一 media flow 的 packet deadline 統計及 decoder/presentation counters，並在只改一項變因下重跑。有些 SDK 不暴露這些欄位，則先查統計定義與替代觀察方式；缺資料時寫明未知，不以 RTCP jitter 硬補。"
       ]
     }
   ],
   "exercises": [
     {
       "level": "foundation",
-      "question": "收到包總數等於發送爲何仍可斷續？",
+      "question": "RTP clock rate 8000 Hz，連續 PCMU packet 承載 20 ms 媒體。正常 timestamp increment 是多少 tick？",
       "answer": [
-        "可能重複抵消缺失，也可能完整到達但晚於播放期限。",
-        "分來源去重、看媒體順序及late/drop，再覈對解碼與輸出。",
-        "總和回答數量，不回答及時可用；報告附窗口與條件。"
-      ]
-    },
-    {
-      "level": "foundation",
-      "question": "Jitter buffer越大是否永遠更好？",
-      "answer": [
-        "更多等待可吸收變化但增加交互延遲，也不能解決持續處理能力不足。",
-        "保持同arrival比較late與總預算，按業務目標選擇。",
-        "同時驗收反應與播放，不只追late0。"
+        "20 ms = 0.020 s。",
+        "8000 ticks/s ×0.020s = 160 ticks。",
+        "若 capture 的到達間隔不是 20ms，timestamp 仍描述媒體時序，不應直接用 arrival interval 代替。"
       ]
     },
     {
       "level": "application",
-      "question": "新資料：共同本地相對時間軸 T0＝0ms、首 timestamp S0＝0；clock8000、ts0/160/320，arrival30/55/88ms，buffer50。各deadline與late？",
+      "question": "新合成三包的 RTP clock 是 8000Hz。第一到第二包媒體間隔20ms、arrival間隔24ms；第二到第三包媒體間隔20ms、arrival間隔18ms。依起始 J=0 算兩次更新後的 J（ms）。",
       "answer": [
-        "媒體0/20/40ms，deadline50/70/90。",
-        "三筆都提前20/15/2ms，late0；若buffer40最後deadline80晚8。",
-        "增加10ms等待讓最後可用，網絡arrival不改，記錄代價。"
+        "第一個 D=24−20=+4ms=32 ticks；J=0+(32−0)/16=2 ticks=0.25ms。",
+        "第二個 D=18−20=−2ms=−16 ticks；取絕對值16，J=2+(16−2)/16=2.875 ticks。",
+        "2.875/8000s≈0.3594ms。這是平滑 estimator，不是最大 jitter 或 buffer target。"
       ]
     },
     {
-      "level": "application",
-      "question": "新資料：clock8000、媒體間隔20ms、arrival間隔44ms，Jold0。D與首次Jms？",
+      "level": "reasoning",
+      "question": "同一序號 205 在預定播放時刻後 55ms 才抵達，buffer target 顯示 40ms。為什麼接收端仍可能報 interval loss 為零？",
       "answer": [
-        "到達352單位、媒體160，D192單位＝24ms。",
-        "J192/16＝12單位，12/8000×1000＝1.5ms。",
-        "不是44ms網絡延遲；平滑統計與最大變化分別說明。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：階段延遲包10、codec5、network25、buffer30、decode4、render6ms。合計與改buffer50後？",
-      "answer": [
-        "原總10+5+25+30+4+6＝80ms。",
-        "新buffer多20，總100ms；network仍25。",
-        "指定是哪份樣本與測量起止，不能把所有階段稱網絡RTT。"
-      ]
-    },
-    {
-      "level": "application",
-      "question": "新資料：輸入48000frames/s，消費47976，一分鐘積壓多少媒體ms？",
-      "answer": [
-        "差24frames/s×60＝1440frames。",
-        "1440/48000秒＝.03秒30ms。",
-        "持續速率差需時鐘／消費機制處理，單純增等待不消除增長。"
+        "該 packet 雖然晚到，仍被序號統計在 report interval 中收到，因此 RTCP 的封包遺失統計可不把它算作缺失。",
+        "它到達時已超過合成的40ms播放期限，播放器可能早已丟棄並用 PLC 填補。",
+        "核對 late/discard/PLC 或 buffer deadline 指標；不要以 fraction lost=0 排除晚到造成的斷音。"
       ]
     },
     {
       "level": "diagnosis",
-      "question": "每包及時且完整，decode30ms一幀而媒體20ms，增加jitter等待合理嗎？",
+      "question": "新觀察：短時間 interarrival jitter 平均很低，但 buffer occupancy 從 1 分鐘到 11 分鐘由 10ms 緩慢升到 40ms，序號與 RR loss 穩定。哪個候選值得檢查？",
       "answer": [
-        "處理服務能力不足，平均只能約33.3幀/s但輸入50，queue增長。",
-        "優化長處理或實際支持的工作分派，保持輸入測試吞吐與尾部。",
-        "buffer只能拖後故障；驗收queue穩定和播放期限，不僅短時聽感。"
+        "這種慢速單向累積與突發網路 jitter 不同，時鐘頻率微小差異或播放速率偏差值得檢查。",
+        "比較發送 RTP timestamp 斜率、接收解碼/呈現速率和長期 buffer occupancy，並核對兩端媒體 clock。",
+        "若修正 resampling/clock synchronization，回歸長時間穩態測試；不要只縮小 buffer 掩蓋持續漂移。"
       ]
     },
     {
-      "level": "diagnosis",
-      "question": "短五包的jitter很低，可以宣佈整小時通話品質正常嗎？",
+      "level": "application",
+      "question": "對方的 jitter buffer 從40ms調至80ms後斷音減少，交談延遲增加。如何判斷是否是合理修正？",
       "answer": [
-        "不可以，窗口不覆蓋burst、drift、負載或真實音訊體驗。",
-        "增加代表性時段與足夠樣本，分來源看late/drop、處理與裝置。",
-        "固定模型驗證算法，不能取代現場品質測量。"
+        "確認 late-discard/PLC 是否按預期下降、實際 buffer delay 是否增加約對應幅度，並量互動端到端延遲。",
+        "在正常與高變動網路下比較同一 codec/流量，評估通話用途能否接受新增延遲及容量影響。",
+        "若原故障其實是 clock drift、codec mapping 或本機輸出，增大 buffer 只隱藏症狀；保留根因證據並驗證長時間運作。"
       ]
     }
   ],
   "recap": [
-    "能解釋到達變化、重排、緩衝、late drop與端到端延遲的關係。",
-    "能手算播放期限、RFC jitter與階段延遲，不混用平均和尾部。",
-    "能以同輸入對照驗證緩衝取捨並區分網絡／解碼／輸出瓶頸。"
+    "jitter buffer 將不均勻到達轉回媒體時間線，以額外延遲換取較多封包趕上播放期限的機會。",
+    "RTP interarrival jitter 是以 RTP clock 計算的平滑統計，不等於最大延遲、buffer target 或主觀音質。",
+    "遺失、重排、晚到、時鐘漂移及本機呈現故障需結合序號、timestamp、期限和兩端計數器區分。"
   ],
   "sources": [
     {
-      "label": "IETF RFC 3550：RTP 標頭、來源與到達抖動",
-      "url": "https://www.rfc-editor.org/rfc/rfc3550.html#section-6.4.1"
+      "label": "IETF RFC 3550：RTP interarrival jitter estimator、RTCP RR、RTT欄位",
+      "url": "https://www.rfc-editor.org/rfc/rfc3550.html"
     },
     {
-      "label": "Wireshark 官方：RTP Streams、Analysis 與播放限制",
-      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChTelRTP.html"
+      "label": "IETF RFC 7587：Opus 的 RTP 48 kHz timestamp clock，適用於 Opus over RTP",
+      "url": "https://www.rfc-editor.org/rfc/rfc7587.html"
     },
     {
-      "label": "IETF RFC3551：音頻RTP profile與格式",
+      "label": "IETF RFC 3551：音訊 RTP profile 與 clock/format 範例",
       "url": "https://www.rfc-editor.org/rfc/rfc3551.html"
-    },
-    {
-      "label": "Microsoft：WASAPI與音訊端點緩衝",
-      "url": "https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi"
     }
-  ],
-  "resources": [
-    {
-      "path": "./assets/labs/voip-maintenance-lab.zip",
-      "label": "VoIP獨立計算與WAV示範（.NET10）",
-      "description": "標準庫；不連網絡、不錄音、不操作音訊裝置。生成合成tone/silence/clipped WAV與播放期限CSV。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-mixed.pcap",
-      "label": "第二版混合流量 PCAP",
-      "description": "171 個合成 Ethernet frame；含多條 TCP、DNS 雜訊、兩通 SIP 與三條 RTP，不含真人流量。"
-    },
-    {
-      "path": "./assets/labs/wireshark-maintenance-receiver.pcap",
-      "label": "第二版對照觀測 PCAP",
-      "description": "172 個合成 frame；與混合檔的遺漏位置不同，可練習觀測不完整的推理。"
-    }
-  ],
-  "studyTime": {
-    "reading": [
-      12,
-      20
-    ],
-    "practice": [
-      40,
-      65
-    ],
-    "exercises": [
-      30,
-      50
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 閱讀涵蓋定義、機制、算式與兩個完整例題；實作時間對應本章指定篩選、欄位匯出與變因比較；作答時間包含陌生資料推理。全部為估計，尚待使用者計時校準。"
-  }
+  ]
 }

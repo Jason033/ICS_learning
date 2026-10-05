@@ -1,239 +1,295 @@
 {
-  "contentVersion": 2,
-  "intro": "維護程式不是收集最多日誌，而是讓每個觀測回答一個明確問題。先建立連線、框架、請求與UI之間的證據鏈，再用日誌、封包、端點和程式堆疊互相驗證。",
+  "contentVersion": 3,
+  "intro": "讀 Socket 日誌的目標，是沿著一筆操作回答三件事：程式走到哪個交接、證據來自哪個連線／請求、還有哪些結論不能下。本篇只建立通訊維護需要的最小關聯欄位，示範怎麼把應用事件和同一擷取點的封包時間線對齊。",
   "prerequisites": [
-    "前章的連線世代和請求結果未知；本章用關聯欄位保持證據完整。",
-    "知道收送和解析是不同階段；正文教如何把觀測串成可理解的結論。"
+    "可獨立閱讀；熟悉 IP、Port 和 TCP 即可，不重講端點或封包欄位。",
+    "若需回看 Socket 物件的建立及釋放責任，參考〈Client 與 Server 的收送流程〉中「把 Dispose 責任交給一個清楚的範圍」；若需回看 Wireshark 的檢視操作，參考〈Wireshark：封包與程式紀錄整合練習〉。兩者都不是必修前置。"
   ],
   "goals": [
-    "設計能把同一連線與請求串起來的欄位與階段。",
-    "計算各段本地耗時，辨識跨機時鐘偏差與觀測盲點。",
-    "用第一個缺口提出可反駁假說，寫出有前因後果的維護結論。"
+    "為一筆通訊操作選出足以關聯的 connection、generation、request 和 operation 欄位。",
+    "用同一程序的事件順序與 elapsed time 定位延遲段，不以檔案行序或跨機時鐘差臆測因果。",
+    "把應用日誌和封包擷取配對，並說清 API 返回、TCP ACK、解析與 UI 更新分別能證明什麼。"
   ],
-  "studyTime": {
-    "reading": [
-      12,
-      20
-    ],
-    "practice": [
-      20,
-      35
-    ],
-    "exercises": [
-      25,
-      45
-    ],
-    "basis": "閱讀為未經個人計時校準的估計：中文正文與英文詞換算閱讀量，以每分鐘180–300單位，另加逐行追碼每分鐘6–12行；不含練習答案。操作與作答依本章任務估計。 操作：閱讀並執行本機模型，修改一項輸入後復原；作答：八題追算與診斷。閱讀將按實際正文統一估算，所有區間尚待使用者計時。"
-  },
   "sections": [
     {
-      "heading": "先畫正常路徑，日誌才知道要記哪一段",
-      "kind": "concept",
-      "paragraphs": [
-        "一條查詢可經過建立連線→序列化→送出→對端讀取→框架完成→命令處理→回覆→本端解析→事件分派→UI應用。故障可能在任何箭頭上。若只記「查詢失敗」，你甚至不知道是不是還沒Connect；若每步都叫成功，雖然行數多仍無法定位。先列正常路徑與各階段完成條件，再給觀測命名。",
-        "connectionId標記一條物件生命週期，generation區分重連新舊，requestId關聯一次協定請求，operationId可能關聯跨重試的同一業務意圖。它們不能互相隨意替代：一個operation可能有多次request嘗試，一個connection可以有多筆request。每行至少保留階段與能關聯的ID；建立連線時尚沒有requestId是合理，不應捏造一個假請求填滿欄位。",
-        "對Socket收送，應分別記bufferRequested、bytesReturned、cumulative、expected和retained；其中expected是應用框架當前需要的數量，retained是尚未完成的資料。Send開始與接受完畢、Receive返回與frameParsed都要區分。紀錄要在狀態真正改變之後寫，若先寫success再執行，日誌會成為假的證據。"
-      ]
-    },
-    {
-      "heading": "三種工具觀測不同層",
       "kind": "mechanism",
+      "heading": "先決定要確認哪一次交接，再放日誌",
       "paragraphs": [
-        "應用日誌看到程式走到哪個點及部分內容；封包擷取看到擷取點的網路報文和傳輸行為；netstat看到本機端點、連線狀態與程式關聯。沒有一種能單獨回答完整業務。抓到ACK不證明應用讀取，netstat ESTABLISHED不證明READY，UI沒有更新也不證明沒有收到。",
-        "封包可能因擷取介面、顯示過濾、加密、硬體解除安裝或開始時間而缺資料。日誌可能因取樣、級別、非同步寫入、程式崩潰或錯關聯而缺行。說「沒看到」之前先說明在哪個觀測點、何時開始、儲存哪些型別及是否有完整性檢查。缺行是待驗證的缺口，不能無條件當成事件未發生。",
-        "堆疊顯示執行緒此刻在做甚麼，適合查阻塞Receive、鎖等待或UI同步等待；單次快照仍可能只是正常短暫等待，需用有間隔的多次觀測和時間線佐證。現代.NET可用dotnet-stack等工具，舊Framework要用對應偵錯程式/工具，不能複製命令就假定支援。教材不採集公司程序，只說明觀察責任。"
-      ]
-    },
-    {
-      "heading": "指標與日誌分別回答總體和個案",
-      "kind": "concept",
-      "paragraphs": [
-        "日誌串起某個request的因果，指標描述一段時間內的計數、分佈與積壓。請求傳送100、結果成功80、超時15、待完成5時，不能寫成功率100%，也不能簡單把80/95當整體成功率而忽略仍等待。需要定義分母、統計視窗和最終狀態；診斷記錄還要避免同一個請求先超時後又遲到成功被算兩次。",
-        "佇列深度、未完成請求數、接收解析率與錯誤率可以提示總體趨勢，但仍需個案證據定位機制。平均回應快可能掩蓋極少數長尾；重連次數下降也可能因為接收監控根本停了。指標的改善應和業務結果及觀測持續性一起看，不能用單一數值證明系統健康。",
-        "取樣時優先保留關聯及關鍵最終結果；錯誤樣本和正常樣本可用不同政策，但說明哪些已取樣。為每次請求建立Activity能傳播關聯資訊，可是沒有監聽/收集器時不會自動有可見追蹤報告。加埋點、產生遙測與儲存證據是三項工作，不能只加StartActivity就宣稱除錯資料完整。"
-      ]
-    },
-    {
-      "heading": "讀碼時同時審查證據怎樣生成",
-      "kind": "concept",
-      "paragraphs": [
-        "日誌寫在await前表示操作即將開始，寫在await後才表示該作業完成；然而完成仍要看返回值和解析階段。若catch後寫同一句success，錯誤也被包裝成成功。若finally不管結果都記completed，這可能只表示流程退出，必須註明result狀態，避免業務完成與清理完成混淆。",
-        "多個執行緒日誌可以交錯，非同步輸出也可能改變寫入順序；需攜帶本地序號、物件ID與階段，不以檔案相鄰行配對。若秒級時間戳讓許多操作同一時刻，應用自己的單調elapsed與遞增事件序號可提供更細的本地順序；跨執行緒共享序號還需正確原子更新。",
-        "驗證證據可以故意觸發一個已知錯誤，檢查是否儲存原始階段、錯誤類別、ID與真實返回。如果觀測本身不可靠，後續任何精細表格都無法修復因果。維護結論要把記錄覆蓋範圍與已測機制說明白，讀者才知道哪些是確認、哪些是下一步。"
-      ]
-    },
-    {
-      "heading": "時間資料先分清本地耗時與跨端時間",
-      "kind": "mechanism",
-      "paragraphs": [
-        "同一程序的階段耗時可用Stopwatch：duration=endElapsed-startElapsed，不受牆上時間調整影響。日誌UTC時間用於對齊事件，但兩臺機器可能偏移。若client記傳送12:00:00.100，server記接收12:00:00.090，不代表資料穿越時間；可能server時鐘慢。不能直接把差值當負網路延遲。",
-        "總回應時間可以拆成本機排隊、傳送等待、網路/對端未知區間、解析和UI等待。跨端若沒有可靠同步，只能分別測每端的本地耗時，再把剩餘範圍作為未定位區間；還需注意多個階段有重疊，不能把並行等待簡單相加。所有數字寫清單位和起止點，避免request總耗時與單次Read耗時被混比。",
-        "等待長的第一處不一定是根因。例如接收端業務佇列堵塞可能最終讓TCP接收緩衝滿，導致客戶端Send也慢；客戶端觀察到Send慢只是鏈上後果。要找最早異常狀態和可驗證因果，例如消費者被鎖住→佇列上升→停止讀取→流量控制等待，並用有限變因驗證。"
-      ]
-    },
-    {
-      "heading": "例題一：回覆已到，畫面仍慢",
-      "kind": "worked-example",
-      "paragraphs": [
-        "同一request=r51、本機Stopwatch時間：requestStart=0，sendDone=8，receiveDone=60，frameParsed=62，eventQueued=65，uiApplied=405。總405ms，送出8，send後到接收52，解析2，分派前3，UI等待340。可以準確說主要已觀測延遲在UI排隊後；52ms仍混合網路與對端，不能獨立命名為純網路往返。",
-        "若server本地記錄handler耗時10ms，沒有可信跨機時鐘同步，只能說對端已測業務10ms，不可用兩個UTC時間相減計算每方向。下一步查UI同步等待、長處理函式或事件佇列，並在有限修正後比較uiApplied-eventQueued。調長Socket期限不改變這段UI排隊。",
-        "驗證應比較同樣輸入與負載，並保留正常路徑的最終結果。若減少日誌後UI變快，可能發現日誌輸出本身阻塞，也可能改變排程隱藏競爭；必須重複對照並觀測佇列或處理耗時，不能只跑一次就宣告修復。"
-      ]
-    },
-    {
-      "heading": "例題二：總bytes正確卻內容錯誤",
-      "kind": "worked-example",
-      "paragraphs": [
-        "client記傳送請求總7bytes，server兩次Read返回3、4，累計7，卻parseError。原始切片第一段00 05 48，第二段45 4C 4C 4F，應組成00 05 HELLO。若第二次仍寫入buffer從索引0，實際buffer頭部變45 4C 4C 4F，累計數量仍7；長度欄位被覆蓋。",
-        "所以只檢查sum(n)不夠。日誌應加本次寫入offset和有限hex字首，或在離線測試比較最終buffer；觀察第二次offset=0支援覆寫假說。修正AsMemory(offset)並以3/4、1/1/5、7等分段回歸，確保最終內容和框架次數正確。",
-        "若兩端raw bytes一致且offset正確，卻decode不同，再查端序/編碼/版本；若傳送raw已錯，問題在序列化之前。證據鏈從生成到讀取逐段比較，才能排除同樣表現為parseError的不同機制。"
-      ]
-    },
-    {
-      "heading": "例外需要保留位置、類別與上下文",
-      "kind": "code-reading",
-      "paragraphs": [
-        "SocketException應記錄SocketErrorCode和階段，例如Connect、Send或Receive，不能只儲存Message。ConnectionRefused說明本次連線被拒絕，不直接證明遠端程式為什麼沒服務；可能監聽位址、Port、程序或拒絕策略。OperationCanceledException需配合取消原因，ObjectDisposedException需配合所有權和世代，才能判斷正常退出還是競爭。",
-        "重新丟擲用throw保持原堆疊；使用throw ex可能改變原發生位置。若包裝成更高層異常，應儲存inner exception和request/context，而不是丟掉底層。最外層要決定使用者可理解的訊息，不能把低階異常直接當業務結論。日誌的完整異常與使用者畫面的簡潔說明可分開，均需有同一關聯ID。",
-        "raw資料有敏感風險與效能成本。實際維護先記錄長度、型別、ID、有限且脫敏的hex片段；取樣與保留政策應保證關鍵錯誤有證據。持續全量記錄音訊或憑證會增大I/O與洩露風險，這不是建立基本觀念所需。教學使用虛構資料，可完整保留作比較。"
+        "一次狀態查詢的責任可能依序經過 request 建立、Socket 呼叫、接收 bytes、產生完整回覆、解析欄位、handler 決定結果、UI 狀態更新。維護時不是每個 byte 都打一行，而是在能區分「還沒呼叫」「呼叫已返回」「程式已拿到回覆」「結果已套用」的位置記錄。事件名要描述已發生的事，例如 `send.returned`，不要在 await 前就寫 `send.success`。",
+        "一筆紀錄至少要能回答：事件屬於哪個程式執行個體、哪條連線或世代、哪次請求、在哪個階段，以及返回值或失敗類別是什麼。連線建立階段還沒有 request ID 很正常；不要填假值讓表格看起來完整。傳輸 API 結束、應用 parser 成功、業務結果確定和畫面狀態改變，應是不同事件。"
       ],
-      "code": {
-        "title": "保留階段與原例外；示意日誌不依賴第三方",
-        "text": "try\n{\n    int n = await socket.ReceiveAsync(buffer.AsMemory(offset), SocketFlags.None, ct);\n    Console.WriteLine($\"recv gen={generation} offset={offset} n={n}\");\n}\ncatch (SocketException ex)\n{\n    Console.WriteLine($\"recvFailed gen={generation} code={ex.SocketErrorCode} exception={ex}\");\n    throw;\n}"
+      "table": {
+        "caption": "只保留能把相鄰責任接起來的欄位",
+        "headers": [
+          "欄位",
+          "回答的問題",
+          "何時需要"
+        ],
+        "rows": [
+          [
+            "host / processInstance",
+            "哪一台主機、哪一次程序執行？",
+            "跨服務或跨重啟查同一事故；PID 單獨使用會重複。"
+          ],
+          [
+            "connectionId + generation",
+            "是哪個 Socket 生命週期？這是重連前還是重連後？",
+            "連線建立、結束、錯誤和背景工作；每個新 Socket 使用新 generation。"
+          ],
+          [
+            "requestId",
+            "是哪一次協定請求／回覆？",
+            "對應送出、解析及最終結果；只在協定或應用程式能取得時記錄。"
+          ],
+          [
+            "operationId（選用）",
+            "不同重試是否仍屬同一業務意圖？",
+            "一次操作有多個 request attempt 時；不能拿它代替每次 requestId。"
+          ],
+          [
+            "stage + outcome / errorCode",
+            "程式在何處完成、失敗或停止？",
+            "使用穩定階段名稱和例外類別，不只保留一段自由文字。"
+          ],
+          [
+            "requested / returned / expected bytes（按需）",
+            "這次呼叫的輸入範圍、返回範圍和仍欠的範圍是多少？",
+            "只在收送或框架故障相關的路徑；記錄實際返回數，不要把 buffer 容量當成已收資料。"
+          ]
+        ]
       }
     },
     {
-      "heading": "從第一個缺口到可以推翻的假說",
-      "kind": "maintenance",
+      "kind": "code-reading",
+      "heading": "完成事件記在操作返回後，並保留可關聯的欄位",
       "paragraphs": [
-        "假說必須附預測。例如「解析器丟字尾」預測多框一片失敗而每框單獨透過；「端序錯」預測非對稱bytes出錯，而00 00可能掩蓋；「UI堵塞」預測frameParsed已完成而uiApplied延遲。選擇能區分候選原因的最小證據，比重複做同一Ping更有效。",
-        "修改也要有反證。放大buffer看似修好，只能說明某些分段發生率改變；如果解析不變數仍錯誤，故障會在別的負載再出現。建立正常、錯誤和邊界測試，用同一輸入改變一個因素，記錄為何結果支援這個機制。正式環境操作前先用授權的讀碼/日誌與可重跑模型形成具體、有限的修正。",
-        "給自己或同事的結論應按「症狀→已確認階段→原因證據→有限修正→驗證→剩餘限制」寫。不要只有錯誤碼錶或專有名詞。例如「資料已於62ms解析，畫面直到405ms才應用；主要延遲為UI排隊340ms，Socket期限不是控制該段」就能讓外行明白因果。"
-      ]
+        "以下節錄假設專案已注入 `ILogger`，且 `connectionId`、`generation`、`requestId` 屬於目前 handler。message template 的具名欄位會保留為結構化欄位；字串插值後才記錄，則可能只剩一段難以穩定查詢的文字。這不是要求新專案改用某一種 logging provider，而是讀既有 logger 時要確認欄位是否真的被保存。",
+        "`send.started` 表示程式準備呼叫；`send.returned` 在 await 正常返回後記錄 `sent`，描述該次 .NET 呼叫的返回數量。若 await 拋例外，應走帶 `SocketErrorCode`／例外類別的失敗事件，不能沿用成功模板。事件建立時可同時記錄 UTC 時間與本請求本機經過時間，後者從 requestStart 的 timestamp 計算；若要單獨量 `SendAsync` 呼叫耗時，還要在呼叫前另取 `sendStart`。",
+        "這段範例採 .NET 10 的 `Socket.SendAsync(ReadOnlyMemory<byte>, ...)` 和 `Stopwatch.GetElapsedTime`；舊 TFM 請先確認 overload 與計時 API，再用該專案等價呼叫保留相同事件邊界。"
+      ],
+      "code": {
+        "title": "把返回值和連線世代寫在它真正返回之後",
+        "text": "using System.Diagnostics;\nusing System.Net.Sockets;\nusing Microsoft.Extensions.Logging;\n\n// socket、logger、payload、connectionId、generation、requestId、ct\n// 由目前連線 handler 提供。\nlong requestStart = Stopwatch.GetTimestamp();\nDateTimeOffset startedUtc = DateTimeOffset.UtcNow;\nlogger.LogInformation(\n    \"send.started atUtc={AtUtc} connection={ConnectionId} generation={Generation} request={RequestId} bytes={Bytes}\",\n    startedUtc, connectionId, generation, requestId, payload.Length);\n\nint sent = await socket.SendAsync(payload, SocketFlags.None, ct);\nDateTimeOffset returnedUtc = DateTimeOffset.UtcNow;\ndouble requestElapsedMs = Stopwatch.GetElapsedTime(requestStart).TotalMilliseconds;\nlogger.LogInformation(\n    \"send.returned atUtc={AtUtc} connection={ConnectionId} generation={Generation} request={RequestId} bytesReturned={BytesReturned} requestElapsedMs={RequestElapsedMs:F1}\",\n    returnedUtc, connectionId, generation, requestId, sent, requestElapsedMs);"
+      }
     },
     {
-      "heading": "實作：把輸出變成一份可讀的證據鏈",
-      "kind": "lab",
+      "kind": "worked-example",
+      "heading": "用同一程序的 elapsed time 找到等待落在哪一段",
       "paragraphs": [
-        "執行.NET10模型，抄出一組LISTEN/CONNECT/ACCEPT、SEND、READ、PARSE、COMPLETE與PASS。為每行標出所屬物件、能證明哪一步、還不能證明哪一步；把每次READ n和累計長度對照ReadExact，注意日誌順序受到兩個非同步流程交錯，不能認為相鄰行必然屬於同一個動作。",
-        "變因是給每次READ輸出增加明確connection標籤，並在Serve和client分別傳標記，或先用人工表格分組，不改變協定。故障檢查可在自己的副本把offset輸出固定為0，觀察日誌會誤導而實際程式仍正確，說明日誌欄位也需審查。復原後儲存脫敏輸出與自己的六句結論。驗收是別人單看結論能知道已定位哪段以及尚未確認什麼。"
-      ]
+        "合成時間線屬於同一台客戶端、同一程序、同一 request `R31`，elapsed 都由 requestStart 的同一計時來源量出：開始 0 ms；`SendAsync` 返回 9 bytes 時 4 ms；完整回覆交給 parser 時 121 ms；parser 輸出 `READY` 時 122 ms；view model 接受新狀態時 302 ms。這些是課程自行定義的測試數值，不是實際公司的量測。對應的合成 UTC 時間是 start `12:00:00.100Z`、send returned `.104Z`、frame complete `.221Z`、parse `.222Z`、view model `.402Z`；與同一 request 的 elapsed 欄位相差均可直接用這些值驗算。",
+        "可重算的結論是總經過時間 302 ms；request 起點到 `send.returned` 為 4 ms（不是單獨的 SendAsync 呼叫耗時，因為時間線沒有 `send.started` 的 elapsed）；send 返回至完整回覆交付為 121−4=117 ms；解析階段 122−121=1 ms；parser 結果到 view model 更新為 302−122=180 ms。117 ms 仍混合對端處理、傳輸、接收等待與程式排程；180 ms 支持主要已量到的延遲在 UI 狀態更新前，但若要知道是哪個 dispatcher 或 handler 等待，還要在那段內加證據。",
+        "elapsed time 的起點與單位要固定；不要把一筆 request 的總耗時和另一筆 Receive 呼叫時間相減。多個非同步 handler 可以重疊，檔案最後寫入行序也可能不同於事件發生次序。若需要重建先後，靠同一 request 的關聯欄位和事件階段；同程序細部耗時用同一個 Stopwatch 起點計算。"
+      ],
+      "table": {
+        "caption": "階段時間線；差值只涵蓋表中明列的兩個本地事件",
+        "headers": [
+          "事件",
+          "Elapsed ms",
+          "可重算的前後段"
+        ],
+        "rows": [
+          [
+            "request.started",
+            "0",
+            "起點"
+          ],
+          [
+            "send.returned bytesReturned=9",
+            "4",
+            "request 起點至返回 4 ms；這不是 SendAsync 單獨耗時，因表中未記 send.started 的 elapsed。"
+          ],
+          [
+            "reply.frame.completed bytes=11",
+            "121",
+            "send 返回後到完整回覆交付 117 ms；不能全算成網路"
+          ],
+          [
+            "reply.parsed status=READY",
+            "122",
+            "解析 1 ms"
+          ],
+          [
+            "viewModel.updated status=READY",
+            "302",
+            "解析後到狀態更新 180 ms；總耗時 302 ms"
+          ]
+        ]
+      }
     },
     {
-      "heading": "診斷：沒有Server紀錄不代表Server沒做",
+      "kind": "mechanism",
+      "heading": "把 Wireshark 封包時間線對到同一端的應用事件",
+      "paragraphs": [
+        "用於教學的第二份合成證據，是同一客戶端網卡擷取，當時 `C7/g3` 只有一筆未完成 request：本機 `10.24.6.8:53124` 連到 `10.24.6.20:41000`。應用記 `request.started=12:00:00.100Z`；該主機 PCAP 時間已正規化為 UTC，約 `.102Z` 看到向外的請求資料，`.105Z` 看到覆蓋該段序號的回 ACK，`.219Z` 看到伺服器方向進來的回覆 payload。減去應用開始時間後，就是約 2、5、119 ms。這和 4 ms `send.returned`、121 ms `frame.completed` 的寬時間窗相容，可支持「請求已離開此端擷取點，回覆 bytes 也在此端被擷取」；它不把 pcap 時間當成 parser 實際拿到資料的精確時刻。",
+        "同一台主機的 UTC 日誌和擷取時間比兩台主機的時間更容易對照，但仍要確認匯出時間是否正規化為 UTC、Wireshark 顯示的是絕對時間或相對時間，以及擷取起點和網卡位置。Wireshark 的時間戳來自擷取程式／作業系統路徑；顯示到微秒或奈秒只是表示資料精度，不保證事件真實時刻也有該準確度。設定封包 time reference 可以把一個已知請求封包作為相對零點，便利看前後差值，不會修正時鐘偏差或捕捉延遲。",
+        "在不同主機的 PCAP 與日誌之間比絕對 UTC 前，先確認時鐘同步狀況與誤差範圍；否則把差值當成單向傳輸時間不可靠。若同一 TCP 連線同時有多筆請求、payload 加密或協定沒有可辨識 requestId，4-tuple 和相近時間只能縮小候選範圍，不能保證某段 payload 就是某個 request。此時用程式的 request 關聯、序號／方向及受控單一請求重現，而不是硬配對。"
+      ],
+      "table": {
+        "caption": "合成擷取與應用記錄的交會；所有時間只用來示範對齊方法",
+        "headers": [
+          "觀測",
+          "Elapsed 約值",
+          "它補上的線索"
+        ],
+        "rows": [
+          [
+            "客戶端擷取：向 10.24.6.20:41000 傳送 payload",
+            "2 ms",
+            "同一擷取點看到該連線方向的封包，不表示 handler 已處理。"
+          ],
+          [
+            "客戶端擷取：回 ACK 覆蓋請求序號",
+            "5 ms",
+            "對端 TCP 已確認相應序號範圍；不能推成應用程式已讀取或執行。"
+          ],
+          [
+            "客戶端擷取：伺服器方向的回覆 payload",
+            "119 ms",
+            "回覆在客戶端擷取介面可見；parser、request 關聯與 UI 尚需應用證據。"
+          ],
+          [
+            "應用 parser 記錄完整回覆",
+            "121 ms",
+            "程式已到達該記錄點並交付完整回覆；不能單憑它確認回覆屬於當前操作。"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "mechanism",
+      "heading": "每種證據都只回答它所在的那一層",
+      "paragraphs": [
+        "用同一筆操作走過的紀錄，可以把「傳輸已動作」「應用拿到內容」「結果已改變」拆開。以下的「支持」是該觀測點直接支持的結論；「不能證明」提醒還需要往後的程式事件或另一種證據。"
+      ],
+      "table": {
+        "caption": "一筆查詢各階段的證據範圍",
+        "headers": [
+          "看到的證據",
+          "可支持",
+          "不能單獨推出"
+        ],
+        "rows": [
+          [
+            "Socket.SendAsync 正常返回 n",
+            "呼叫端取得這次 .NET API 的返回數量 n。",
+            "遠端收到所有請求 bytes、完成框架或執行命令。"
+          ],
+          [
+            "擷取點看到向外封包／對端 ACK",
+            "封包在該擷取位置出現；ACK 對應 TCP 序號範圍被對端 TCP 確認。",
+            "應用層 parser、業務 handler 或設備已完成操作。"
+          ],
+          [
+            "ReceiveAsync 返回 bytesReturned=n",
+            "該程式這次取得 n bytes。",
+            "n bytes 已組成完整應用回覆，或屬於正在等待的 request。"
+          ],
+          [
+            "frame.complete / parser.success",
+            "程式抵達該記錄點，並依此 parser 的條件完成對應步驟。",
+            "handler 已執行、request 未過期或狀態已持久化。"
+          ],
+          [
+            "handler.result 記錄在結果提交後",
+            "程式抵達記錄所定義的結果提交點；記錄定義需真的位於提交之後。",
+            "外部設備已執行，除非該結果本身就是設備回報的確認。"
+          ],
+          [
+            "view model／畫面狀態記錄",
+            "程式更新了被記錄的狀態或到達記錄點。",
+            "UI 已完成繪製，或使用者看見了同一畫面。"
+          ]
+        ]
+      }
+    },
+    {
       "kind": "diagnostic-case",
+      "heading": "沒有一行紀錄，只能先確認觀測有沒有覆蓋它",
       "paragraphs": [
-        "甲與乙都沒有server requestHandled行。甲日誌範圍完整，有frameParsed後立即業務exception；乙只有INFO取樣，處理行在DEBUG且未儲存。甲支援處理失敗，乙不足以證明沒處理。補證甲的異常與同request，乙查詢operation記錄或臨時授權的關鍵階段日誌，才能繼續縮小。",
-        "有限修正甲處理異常並返回協定允許的失敗狀態，乙改善關鍵結果可追蹤性而非修改業務。回歸正常/錯誤輸入，以及日誌級別變化時仍保留最終結果。結論應分別陳述「已確定失敗階段」和「觀察不足、結果未知」，不能把資料缺失包裝成確定根因。"
+        "假設客戶端有 `request.sent`，伺服器日誌卻沒有 `handler.completed`。如果伺服器的記錄只保留 Warning、handler 成功事件在 Information，或收集器在事故前停止，缺行不能判定 request 沒到或 handler 沒做。若記錄點證實 parser 已收到同 request 並緊接著記 exception，則可定位到 handler 之後的已知錯誤階段；兩種資料完整度不能混成同一個結論。",
+        "下一步先核對伺服器擷取／日誌時間窗是否涵蓋 request、實際啟用的層級與過濾、收集器健康及保留狀態，再找一個可確認的 requestId 結果或一個獲授權的短期診斷記錄點。寫報告時應是「在目前保存的證據中未找到該事件；此日誌層級未保存成功 handler 行，因此執行結果未知」，而非「伺服器沒有處理」。若改動 log level 或加記錄，保留輸入和版本，並比較它是否能在相同重現下留下預期階段。",
+        "日誌本身也可能在非同步輸出前因程序崩潰而未落盤。只有查到收集範圍、落盤／傳送狀態和事件定義後，才可把缺行當成更強證據；即使如此，它通常也只是排除「該記錄確實寫出」而非直接證明業務動作未發生。"
       ]
     }
   ],
   "exercises": [
     {
-      "question": "connectionId、requestId、operationId為什麼分開？",
-      "level": "foundation",
-      "answer": [
-        "連線是傳輸生命週期，請求是一次協定互動，操作是業務意圖。",
-        "一連線多請求，一個操作可能多次嘗試，層級不一。",
-        "分開能追舊會話、遲到回覆與重試，避免錯誤關聯。"
-      ]
-    },
-    {
-      "question": "netstat ESTABLISHED、TCP ACK和frameParsed各能證明什麼？",
-      "level": "foundation",
-      "answer": [
-        "前者是本機傳輸連線狀態，ACK是傳輸確認，frameParsed是應用解析點。",
-        "三者逐步靠近業務，但都不自動證明裝置執行完畢。",
-        "還要按應用協定找handled/result/applied證據。"
-      ]
-    },
-    {
-      "question": "start0、send12、recv90、parsed94、queued100、applied250，求總時間與UI排隊。",
       "level": "application",
+      "question": "時間線的 `send.returned=4ms`、`frame.completed=121ms`、`parsed=122ms`、`viewModel.updated=302ms`。總操作多久？最久已觀測區段是哪段？哪些時間不能叫純網路延遲？",
       "answer": [
-        "總耗時250-0=250ms。",
-        "UI排隊150ms，解析4ms；send後recv78ms仍含未知遠端與網路。",
-        "先查150ms那段依賴，再以階段耗時驗證修正。"
+        "request 從 0 ms 到 view model 更新共 302 ms。",
+        "send 返回到 frame 完整交付為 117 ms；parser 到 view model 更新為 180 ms，兩者邊界可分別計算。",
+        "117 ms 混有遠端工作、傳輸、等待與本機排程，不能從這些本地事件再拆成純網路單向延遲。"
       ]
     },
     {
-      "question": "客戶端UTC傳送1000ms、伺服器接收990ms，能寫網路延遲-10ms嗎？",
-      "level": "application",
+      "level": "reasoning",
+      "question": "客戶端 PCAP 看見資料送出，並看見伺服器 TCP ACK。能否寫「伺服器 handler 已執行」？若不能，下一個有用的證據是什麼？",
       "answer": [
-        "跨機器時鐘可能偏移，差值沒有可靠單向延遲含義。",
-        "分別用本地單調計時測階段，並註明時鐘同步或誤差界線。",
-        "不能以負數判斷程式違反因果或刪除此樣本。"
+        "不能。擷取資料和 ACK 支持封包在此點出現、對端 TCP 確認相應序號範圍，沒有表明伺服器應用讀取或處理。",
+        "需要同 requestId／operationId 的伺服器接收、parser、handler result 等應用階段證據；若沒有，結果仍未知。",
+        "TCP ACK 的欄位語意屬於傳輸序號確認，不能當成應用層成功回覆。"
       ]
     },
     {
-      "question": "Read請求8返回2，日誌寫received8。會造成什麼推定錯誤？",
-      "level": "application",
-      "answer": [
-        "把容量當返回值，會讓讀者認為已收滿，隱藏部分讀取。",
-        "應同時記requested8/returned2/cumulative，並核對實際offset。",
-        "回歸短讀，讓日誌與真實範圍一致。"
-      ]
-    },
-    {
-      "question": "多框一片失敗、單框分片透過，哪種最小實驗能區分丟字尾與網路丟包？",
       "level": "diagnosis",
+      "question": "同一連線同時有加密的多筆請求。你有 4-tuple、一份客戶端擷取和各 request 的應用日誌，但封包不含 requestId。可以把每個回覆封包精確指定給 request 嗎？",
       "answer": [
-        "直接把相同完整bytes離線一次Feed，繞過網路。",
-        "若仍只輸出首框，支援解析移除/迴圈問題；網路丟失不足以解釋。",
-        "看retained與輸出次數，修正後比較所有切片的同一列表。"
+        "不能只靠接近的時間或 4-tuple 精確指定，因同一條連線可承載多筆重疊操作，而加密內容不暴露應用 ID。",
+        "先用方向、連線世代、序號範圍和應用記錄把候選收斂；必要時在授權環境用單一請求受控重現，或在程式可觀測處記錄解密後的 request 關聯。",
+        "報告明確寫「封包流量屬於此連線，但目前資料不足以把特定加密回覆配給單一 request」，不把推測寫成已證實配對。"
       ]
     },
     {
-      "question": "沒有handled行，但日誌取樣率10%，可宣稱操作未執行嗎？",
       "level": "diagnosis",
+      "question": "日誌沒有 `handler.completed`。目前不知道該事件在 Error 還是 Information 層級，而擷取也只從 request 開始後 3 秒才啟動。最合理的結論與下一步是什麼？",
       "answer": [
-        "缺行可能只是沒有采樣，觀察不完整。",
-        "查同operation的持久結果或完整關鍵記錄，不能靠不在樣本中推未執行。",
-        "結論寫結果未知與下一條證據，不自動重送副作用命令。"
-      ]
-    },
-    {
-      "question": "調大buffer後故障消失一次，但沒有分段測試，結論應怎麼寫？",
-      "level": "diagnosis",
-      "answer": [
-        "只能說這次配置下未復現，不能確定邊界邏輯正確。",
-        "大buffer可能改變分段發生率，未修不變數。",
-        "補多框一片、一框多片與內容一致性測試，透過後才說明對應機制驗證。"
+        "證據覆蓋與 log level 都未知；缺行不能證明 handler 未執行。",
+        "先查記錄點、有效層級、收集狀態和擷取時間窗，明確涵蓋下一次受控重現。",
+        "若仍不能取得 handler 結果，保留 operation 結果未知，避免以此缺行重送可能有副作用的操作。"
       ]
     }
   ],
   "recap": [
-    "設計能把同一連線與請求串起來的欄位與階段。",
-    "計算各段本地耗時，辨識跨機時鐘偏差與觀測盲點。",
-    "用第一個缺口提出可反駁假說，寫出有前因後果的維護結論。"
+    "關聯欄位要反映 connection、generation、request 和 operation 的不同生命週期。",
+    "同程序 elapsed 可算階段耗時；PCAP 時間用來對齊擷取點，不是程式處理時刻。",
+    "API 返回、TCP ACK、parser 完成及業務／UI 更新是不同證據，缺行要先驗證觀測覆蓋。"
   ],
   "sources": [
     {
-      "label": "Microsoft：Socket錯誤分類",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socketexception.socketerrorcode?view=net-10.0"
+      "label": "Microsoft .NET：ILogger message template 欄位與結構化記錄",
+      "url": "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging"
     },
     {
-      "label": "Microsoft：本地經過時間",
-      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch?view=net-10.0"
+      "label": "Microsoft .NET 10：Socket.SendAsync 返回已送出的 byte 數",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.sendasync?view=net-10.0"
     },
     {
-      "label": "Microsoft：Windows netstat端點與程式觀察",
-      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netstat"
+      "label": "Microsoft .NET 10：Socket.ReceiveAsync 返回 byte 數、EOF 與取消",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0"
     },
     {
-      "label": "Microsoft：分散式追蹤、Activity與記錄收集",
-      "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/distributed-tracing-instrumentation-walkthroughs"
+      "label": "Microsoft .NET 10：Stopwatch.GetElapsedTime 由兩個 timestamp 計算本地經過時間",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.stopwatch.getelapsedtime?view=net-10.0"
     },
     {
-      "label": "Microsoft：dotnet-stack的執行緒堆疊",
-      "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-stack"
+      "label": "IETF RFC 9293 §3.3：TCP acknowledgment 欄位與下一個預期序號",
+      "url": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.3"
+    },
+    {
+      "label": "Wireshark User’s Guide §6.12：絕對、相對時間與 packet time reference",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChWorkTimeFormatsSection.html"
+    },
+    {
+      "label": "Wireshark User’s Guide §7.6：封包時間戳來源、精度與準確度限制",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChAdvTimestamps.html"
     }
   ],
   "resources": [
     {
-      "label": "下載 C# Socket 維護教材模型",
+      "label": "C# Socket 維護教材模型（.NET 10）",
       "path": "./assets/labs/sockets-maintenance-lab.zip",
-      "description": "獨立 .NET 10 Console 教學協定；只在本機回環執行，含解析失敗與半關閉檢查，不使用公司 API。"
+      "description": "本機回環模型的 expected-output 有 LISTEN、CONNECT、ACCEPT、SEND、READ、PARSE、COMPLETE 階段，可練習分辨各行支持的交接；範例沒有時間戳，不適合推算延遲或直接對齊 PCAP。"
     }
   ]
 }

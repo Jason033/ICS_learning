@@ -1,7 +1,7 @@
 {
   "checked_at_utc": "2026-10-03T16:08:50.063831+00:00",
   "record_kind": "historical_snapshot",
-  "notice": "This file verifies the earlier 2026-10-03 pilot commit 1cddfda5579344987d1186fe0f659fac61824927, which had 3 refreshed lessons and 123 legacy lessons. It does not verify the current six-series revision. That revision is prepared in the local repository; GitHub main was still 97911ebf28c59d50bfa504f8924a2ab2f910f522 when checked, and publication is pending because this environment has no GitHub write credential.",
+  "notice": "This file retains the detailed byte-for-byte verification for the earlier 2026-10-03 pilot commit 1cddfda5579344987d1186fe0f659fac61824927 (3 refreshed lessons and 123 legacy lessons). It is a historical snapshot, not a file-by-file live-site check of the newer six-series revision. The six-series revision was published to main as 188090e624556352504da4ed0768fb8fcaad4766; its tree matches the locally verified source, and GitHub Pages build run 28 completed successfully. A live HTTP probe from this execution environment could not resolve the Pages hostname, so browser delivery of each file remains unverified here.",
   "published_content_commit": "1cddfda5579344987d1186fe0f659fac61824927",
   "base_url": "https://jason033.github.io/ICS_learning/",
   "checked_files": 288,
@@ -1745,5 +1745,23 @@
     "error": null
   },
   "new_teaching_lessons": 3,
-  "legacy_reference_lessons": 123
+  "legacy_reference_lessons": 123,
+  "latest_publication": {
+    "checked_at_utc": "2026-10-05T14:57:47Z",
+    "commit": "188090e624556352504da4ed0768fb8fcaad4766",
+    "tree_sha": "cd5e4a55ab89feed1bf6e11b5244bc6768a058a2",
+    "matches_locally_verified_tree": true,
+    "pages_url": "https://jason033.github.io/ICS_learning/",
+    "pages_build": {
+      "run_number": 28,
+      "run_id": 37328588323,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/Jason033/ICS_learning/actions/runs/37328588323"
+    },
+    "live_http_probe": {
+      "status": "not_verified",
+      "reason": "curl could not resolve jason033.github.io from the execution environment."
+    }
+  }
 }

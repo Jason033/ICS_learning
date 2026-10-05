@@ -39,7 +39,7 @@
 
 本次環境沒有 Playwright／Chromium、Wireshark／TShark，也無法啟動 .NET SDK，因此沒有本輪瀏覽器畫面、原生 dissector 或新建置 C# 教材程式的結果。舊的 .NET 測試紀錄是歷史驗證，不能代替本輪重跑。使用者本人尚未連續試讀；公司程式、部署、Ozeki 實際版本和設備亦未提供。這些是後續驗收要補的證據，並非教材可以代替的假設。
 
-目前公開網址仍是 [GitHub Pages](https://jason033.github.io/ICS_learning/)，但本輪六系列更新尚未發布。GitHub 主分支最後確認仍在舊版；本機已備妥新版提交，唯目前環境沒有可用的 GitHub 寫入憑證。[publication-verification.json](publication-verification.json) 保留的是 2026-10-03 三篇試行教材的歷史快照，不可當成本輪發布證據。取得寫入權限並發布後，必須以本輪 commit 和公開頁面檢查結果更新該檔及 [verification.json](verification.json)。
+本輪六系列教材已發布到 GitHub main，提交為 [188090e6](https://github.com/Jason033/ICS_learning/commit/188090e624556352504da4ed0768fb8fcaad4766)；發布當時，遠端檔案樹與待發本機版本完全一致。GitHub Pages 建置第 28 次執行成功（[建置紀錄](https://github.com/Jason033/ICS_learning/actions/runs/37328588323)），網站入口是 [GitHub Pages](https://jason033.github.io/ICS_learning/)。目前執行環境無法解析 Pages 網域，因此尚未完成瀏覽器端逐檔驗證；[publication-verification.json](publication-verification.json) 另列本次發布狀態，並保留 2026-10-03 三篇試行教材的歷史快照。
 
 ## 重要檔案
 

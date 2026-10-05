@@ -107,8 +107,23 @@
     ]
   },
   "publication": {
-    "status": "pending",
+    "status": "published_pages_build_succeeded",
     "public_main_sha_before_update": "97911ebf28c59d50bfa504f8924a2ab2f910f522",
-    "verification_file": "revision/learning-redesign/publication-verification.json"
+    "published_commit": "188090e624556352504da4ed0768fb8fcaad4766",
+    "published_tree_sha": "cd5e4a55ab89feed1bf6e11b5244bc6768a058a2",
+    "pages_site": "https://jason033.github.io/ICS_learning/",
+    "pages_build": {
+      "run_number": 28,
+      "run_id": 37328588323,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/Jason033/ICS_learning/actions/runs/37328588323"
+    },
+    "live_http_probe": {
+      "status": "not_verified",
+      "reason": "The execution environment could not resolve jason033.github.io during an HTTP HEAD probe."
+    },
+    "verification_file": "revision/learning-redesign/publication-verification.json",
+    "tree_matched_local_head_at_publish": true
   }
 }
